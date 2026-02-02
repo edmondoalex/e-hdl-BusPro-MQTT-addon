@@ -45,7 +45,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.249"
+ADDON_VERSION = "0.1.250"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -3044,7 +3044,7 @@ self.addEventListener('fetch', (event) => {{
         icons = cfg.get("hub_icons") if "hub_icons" in cfg else cfg
         if not isinstance(icons, dict):
             return names
-        for k in ("lights", "covers", "extra"):
+        for k in ("lights", "scenarios", "covers", "extra"):
             mdi = parse_mdi_icon(str(icons.get(k) or ""))
             if mdi:
                 names.append(mdi)
