@@ -254,9 +254,17 @@
       <button id="collapseBtn" class="filterBtn" type="button" aria-label="Collassa/espandi gruppi">
         <svg id="collapseIcon" viewBox="0 0 24 24" aria-hidden="true"></svg>
       </button>
-      <button id="scenesBtn" class="filterBtn" type="button" aria-label="Scenari">
+      <button id="scenesPageBtn" class="filterBtn" type="button" aria-label="Vai a scenari">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M12 3l2.6 5.4L20.5 9l-4.3 4.2 1 6-5.2-2.8-5.2 2.8 1-6L3.5 9l5.9-.6z" fill="none" />
+          <path d="M14 12h6" fill="none" />
+          <path d="M18 10l2 2-2 2" fill="none" />
+        </svg>
+      </button>
+      <button id="scenesSettingsBtn" class="filterBtn" type="button" aria-label="Impostazioni scenari">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z" fill="none"/>
+          <path d="M19.4 15a7.9 7.9 0 0 0 .1-2l2-1.1-2-3.5-2.3.7a7.7 7.7 0 0 0-1.7-1l-.3-2.4H11l-.3 2.4a7.7 7.7 0 0 0-1.7 1L6.7 8.4l-2 3.5 2 1.1a7.9 7.9 0 0 0 .1 2l-2 1.1 2 3.5 2.3-.7a7.7 7.7 0 0 0 1.7 1l.3 2.4h4.1l.3-2.4a7.7 7.7 0 0 0 1.7-1l2.3.7 2-3.5z" fill="none"/>
         </svg>
       </button>
     </div>
@@ -1163,8 +1171,11 @@
         queueRender();
       });
 
-      // Scenarios modal wiring
-      qs('scenesBtn').addEventListener('click', () => openScenarios());
+      // Scenarios navigation + editor
+      qs('scenesPageBtn').addEventListener('click', () => {
+        try { window.location.href = absUrl('scenarios'); } catch (e) {}
+      });
+      qs('scenesSettingsBtn').addEventListener('click', () => openScenarios());
       qs('scCloseBtn').addEventListener('click', () => closeScenarios());
       qs('scSaveOnBtn').addEventListener('click', () => saveScenario({ onlyOn: true }));
       qs('scSaveAllBtn').addEventListener('click', () => saveScenario({ onlyOn: false }));
@@ -1181,6 +1192,16 @@
       document.addEventListener('keydown', (evt) => {
         if (evt && evt.key === 'Escape') closeScenarios();
       });
+
+      // Deep-link: /lights?sc=1 opens scenario editor
+      (function () {
+        try {
+          const u = new URL(window.location.href);
+          if (u.searchParams.get('sc') === '1') {
+            setTimeout(() => { try { openScenarios(); } catch (e) {} }, 50);
+          }
+        } catch (e) {}
+      })();
 
       window.addEventListener('resize', () => queueCenter());
     </script>

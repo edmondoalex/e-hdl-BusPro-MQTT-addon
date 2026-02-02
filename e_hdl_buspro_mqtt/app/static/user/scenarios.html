@@ -1,0 +1,220 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BusPro - Scenari</title>
+    <style>
+      :root{
+        --bg0:#05070b;
+        --text:#f2f5ff;
+        --muted:rgba(255,255,255,.60);
+        --line:rgba(255,255,255,.08);
+        --danger:#ff6b6b;
+      }
+      body{
+        margin:0;
+        font-family:system-ui,Segoe UI,Roboto,Arial;
+        color:var(--text);
+        -webkit-font-smoothing:antialiased;
+        text-rendering:optimizeLegibility;
+        min-height:100vh;
+      }
+      body::before{
+        content:'';
+        position:fixed;
+        inset:0;
+        z-index:-2;
+        background: radial-gradient(1200px 800px at 50% 50%, rgba(26,34,48,.65) 0%, var(--bg0) 52%, #000 100%);
+        background-position:center center;
+        background-repeat:no-repeat;
+      }
+      main{max-width:820px;margin:0 auto;padding:10px 14px 24px;min-height:100vh;display:flex;flex-direction:column}
+      .list{border-radius:18px;overflow:hidden;border:1px solid var(--line);background:rgba(0,0,0,.05);backdrop-filter: blur(10px)}
+      .topBtns{
+        position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:20;
+        display:flex;gap:10px;align-items:center;justify-content:center;
+      }
+      .btnIcon{
+        width:42px;height:42px;border-radius:999px;
+        border:1px solid rgba(255,255,255,.10);
+        background:rgba(0,0,0,.28);
+        backdrop-filter: blur(10px);
+        display:flex;align-items:center;justify-content:center;
+        cursor:pointer;
+        -webkit-tap-highlight-color: transparent;
+        user-select:none;
+      }
+      .btnIcon:active{transform:scale(.98)}
+      .btnIcon svg{width:20px;height:20px}
+      .btnIcon path{stroke:rgba(242,245,255,.78);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+      .btnIcon .fill{fill:rgba(242,245,255,.78);stroke:none}
+      .row{
+        display:flex;gap:14px;align-items:center;justify-content:space-between;
+        padding:14px 16px;
+        border-top:1px solid rgba(255,255,255,.06);
+        background:rgba(0,0,0,.05);
+        -webkit-tap-highlight-color: transparent;
+      }
+      .row:first-child{border-top:none}
+      .name{font-size:19px;line-height:1.15;font-weight:420;opacity:.88;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .meta{font-size:12px;color:rgba(255,255,255,.55);margin-top:6px}
+      .left{flex:1;min-width:0}
+      .btn{
+        height:38px;padding:0 12px;
+        border:1px solid rgba(255,255,255,.14);
+        background:rgba(255,255,255,.06);
+        color:rgba(242,245,255,.86);
+        cursor:pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .btn:active{transform:scale(.99)}
+      .btn.primary{border-color:rgba(255,215,0,.35); background:rgba(255,215,0,.08)}
+      .error{color:var(--danger);font-size:13px;margin-top:10px}
+    </style>
+  </head>
+  <body>
+    <div class="topBtns">
+      <button id="homeBtn" class="btnIcon" type="button" aria-label="Home">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 10.5l8-7 8 7" fill="none" />
+          <path d="M6.5 9.8V20h11V9.8" fill="none" />
+        </svg>
+      </button>
+      <button id="editBtn" class="btnIcon" type="button" aria-label="Modifica scenari">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 3l2.6 5.4L20.5 9l-4.3 4.2 1 6-5.2-2.8-5.2 2.8 1-6L3.5 9l5.9-.6z" fill="none" />
+          <path d="M18 7l3 3" fill="none" />
+          <path d="M14 21l6-6" fill="none" />
+        </svg>
+      </button>
+      <button id="settingsBtn" class="btnIcon" type="button" aria-label="Impostazioni scenari">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z" fill="none"/>
+          <path d="M19.4 15a7.9 7.9 0 0 0 .1-2l2-1.1-2-3.5-2.3.7a7.7 7.7 0 0 0-1.7-1l-.3-2.4H11l-.3 2.4a7.7 7.7 0 0 0-1.7 1L6.7 8.4l-2 3.5 2 1.1a7.9 7.9 0 0 0 .1 2l-2 1.1 2 3.5 2.3-.7a7.7 7.7 0 0 0 1.7 1l.3 2.4h4.1l.3-2.4a7.7 7.7 0 0 0 1.7-1l2.3.7 2-3.5z" fill="none"/>
+        </svg>
+      </button>
+    </div>
+    <main>
+      <div id="list" class="list"></div>
+      <div id="err" class="error"></div>
+    </main>
+
+    <script>
+      const qs = (id) => document.getElementById(id);
+      function absUrl(path) { return new URL(path, window.location.href).toString(); }
+      async function getJson(path, opts) {
+        const r = await fetch(absUrl(path), opts);
+        if (!r.ok) throw new Error(await r.text());
+        const ct = (r.headers.get('content-type')||'').toLowerCase();
+        if (ct.includes('application/json')) return r.json();
+        return r.text();
+      }
+      function escapeHtml(s){
+        const v = (s === null || s === undefined) ? '' : String(s);
+        return v
+          .replace(/&/g,'&amp;')
+          .replace(/</g,'&lt;')
+          .replace(/>/g,'&gt;')
+          .replace(/\"/g,'&quot;')
+          .replace(/'/g,'&#039;');
+      }
+
+      async function runScenario(id) {
+        await getJson(`api/control/light_scenario/${encodeURIComponent(String(id||''))}`, { method:'POST' });
+      }
+
+      async function load() {
+        const root = qs('list');
+        const err = qs('err');
+        root.replaceChildren();
+        err.textContent = '';
+        let data = null;
+        try {
+          data = await getJson('api/user/light_scenarios');
+        } catch (e) {
+          err.textContent = 'Errore caricamento scenari';
+          return;
+        }
+        const items = (data && data.items) ? data.items : [];
+        if (!Array.isArray(items) || !items.length) {
+          const row = document.createElement('div');
+          row.className = 'row';
+          row.innerHTML = `<div class="left"><div class="name">Nessuno scenario</div><div class="meta">Crea uno scenario dalla pagina Luci</div></div>`;
+          root.appendChild(row);
+          return;
+        }
+        items
+          .slice()
+          .sort((a,b) => String(a.name||'').localeCompare(String(b.name||''), undefined, {sensitivity:'base'}))
+          .forEach((sc) => {
+            const row = document.createElement('div');
+            row.className = 'row';
+            const name = String(sc.name || '').trim() || '(senza nome)';
+            const n = Array.isArray(sc.items) ? sc.items.length : 0;
+            row.innerHTML = `
+              <div class="left">
+                <div class="name">${escapeHtml(name)}</div>
+                <div class="meta">${escapeHtml(String(n))} luci</div>
+              </div>
+              <button class="btn primary" type="button" data-id="${escapeHtml(String(sc.id||''))}">Esegui</button>
+            `;
+            row.querySelector('button').addEventListener('click', async () => {
+              try {
+                err.textContent = '';
+                await runScenario(sc.id);
+              } catch (e) {
+                err.textContent = 'Errore esecuzione scenario';
+              }
+            });
+            root.appendChild(row);
+          });
+      }
+
+      qs('homeBtn').addEventListener('click', () => {
+        try { window.location.href = absUrl('home2'); } catch (e) {}
+      });
+      // Star (page) indicates "scenari": it keeps you here.
+      qs('editBtn').addEventListener('click', () => {
+        try { window.location.href = absUrl('lights?sc=1'); } catch (e) {}
+      });
+      qs('settingsBtn').addEventListener('click', () => {
+        try { window.location.href = absUrl('lights?sc=1'); } catch (e) {}
+      });
+
+      (async () => { await load(); })();
+    </script>
+    <script>
+      // Hidden back gesture: long-press top-left corner.
+      (function () {
+        const CORNER = 60;
+        const HOLD_MS = 450;
+        let timer = null;
+        function inCorner(e) {
+          return !!e && Number(e.clientX) <= CORNER && Number(e.clientY) <= CORNER;
+        }
+        function goHome() {
+          try { window.location.href = absUrl('home2'); } catch (e) {}
+        }
+        function doBack() {
+          try {
+            if (window.history && window.history.length > 1) { window.history.back(); return; }
+          } catch (e) {}
+          goHome();
+        }
+        function clear() {
+          if (timer) { clearTimeout(timer); timer = null; }
+        }
+        document.addEventListener('pointerdown', (e) => {
+          if (timer) return;
+          if (!inCorner(e)) return;
+          timer = setTimeout(() => { timer = null; doBack(); }, HOLD_MS);
+        }, { passive: true });
+        document.addEventListener('pointerup', clear, { passive: true });
+        document.addEventListener('pointercancel', clear, { passive: true });
+        document.addEventListener('pointermove', (e) => { if (timer && !inCorner(e)) clear(); }, { passive: true });
+      })();
+    </script>
+  </body>
+</html>
+

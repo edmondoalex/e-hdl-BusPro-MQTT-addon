@@ -45,7 +45,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.246"
+ADDON_VERSION = "0.1.247"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -336,7 +336,7 @@ def create_app() -> FastAPI:
             return await call_next(request)
 
         # User pages
-        if path in ("/", "/home", "/home2", "/lights", "/covers", "/extra"): 
+        if path in ("/", "/home", "/home2", "/lights", "/covers", "/extra", "/scenarios"): 
             return await call_next(request) 
 
         # User allowed APIs (read-only + control)
@@ -2849,6 +2849,12 @@ self.addEventListener('fetch', (event) => {{
     @api.get("/lights", response_class=HTMLResponse)
     async def user_lights():
         p = os.path.join(static_dir, "user", "lights.html")
+        with open(p, "r", encoding="utf-8") as f:
+            return f.read()
+
+    @api.get("/scenarios", response_class=HTMLResponse)
+    async def user_scenarios():
+        p = os.path.join(static_dir, "user", "scenarios.html")
         with open(p, "r", encoding="utf-8") as f:
             return f.read()
 

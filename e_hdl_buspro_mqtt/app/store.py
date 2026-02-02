@@ -30,6 +30,7 @@ class StateStore:
     def default_hub_icons() -> dict[str, str]:
         return {
             "lights": "mdi:lightbulb-group",
+            "scenarios": "mdi:star",
             "covers": "mdi:window-shutter",
             "extra": "mdi:shape",
         }
@@ -38,6 +39,7 @@ class StateStore:
     def default_hub_show() -> dict[str, bool]:
         return {
             "lights": True,
+            "scenarios": True,
             "covers": True,
             "extra": True,
         }

@@ -2,7 +2,7 @@
     "name":  "e-hdl BusPro MQTT",
     "slug":  "e_hdl_buspro_mqtt",
     "description":  "BusPro UDP bridge with MQTT Discovery + Web UI.",
-    "version":  "0.1.246",
+    "version":  "0.1.247",
     "startup":  "services",
     "boot":  "auto",
     "host_network":  true,
