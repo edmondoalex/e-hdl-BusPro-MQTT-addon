@@ -429,8 +429,7 @@
       function deviceByAddrLookup() {
         const m = new Map();
         for (const d of (lastDevices || [])) {
-          if (String(d.type || 'light') !== 'light') continue;
-          if (isExtraSwitch(d)) continue;
+          if (!isLightListDevice(d)) continue;
           m.set(addrOf(d), d);
         }
         return m;
@@ -772,7 +771,7 @@
       function buildScenarioItems({ onlyOn }) {
         const items = [];
         const groupSel = selectedScenarioGroupKey();
-        const lights = (lastDevices || []).filter(d => String(d.type || 'light') === 'light' && !isExtraSwitch(d));
+        const lights = (lastDevices || []).filter(isLightListDevice);
         for (const d of lights) {
           if (groupSel && groupSel !== '__all__' && groupKeyFromGroup(d.group) !== groupSel) continue;
           const addr = addrOf(d);
@@ -918,7 +917,7 @@
       }
 
       function updateSectionCounts() {
-        const allLights = (lastDevices || []).filter(d => String(d.type || 'light') === 'light' && !isExtraSwitch(d));
+        const allLights = (lastDevices || []).filter(isLightListDevice);
         const groupStats = new Map();
         for (const d of allLights) {
           const k = groupKeyFromGroup(d.group);
@@ -943,7 +942,7 @@
         refreshDeviceIndex();
  
         const allLights = lastDevices
-          .filter(d => String(d.type || 'light') === 'light' && !isExtraSwitch(d))
+          .filter(isLightListDevice)
           .slice();
         const lights = allLights
           .filter(d => !showActiveOnly || isActiveLight(d))
