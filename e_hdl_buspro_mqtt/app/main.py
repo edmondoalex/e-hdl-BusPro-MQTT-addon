@@ -31,6 +31,7 @@ from .discovery import (
     air_quality_discovery,
     gas_percent_discovery,
     light_discovery,
+    light_scenario_button_discovery,
     slugify,
     temperature_discovery,
 )
@@ -44,7 +45,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.238"
+ADDON_VERSION = "0.1.243"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -1322,6 +1323,10 @@ self.addEventListener('fetch', (event) => {{
         nid = f"buspro_{settings.gateway.host.replace('.', '_')}_{settings.gateway.port}"
         return f"{settings.mqtt.discovery_prefix}/cover/{nid}/group_{gid}_no_pct/config"
 
+    def _light_scenario_config_topic(*, sid: str) -> str:
+        nid = f"buspro_{settings.gateway.host.replace('.', '_')}_{settings.gateway.port}"
+        return f"{settings.mqtt.discovery_prefix}/button/{nid}/light_scenario_{sid}/config"
+
     def _publish_cover_group_state(*, gid: str, state: str, position: int | None) -> None:
         state_u = str(state or "").upper() or "STOP"
         pos_i = int(position) if position is not None else None
@@ -1876,6 +1881,37 @@ self.addEventListener('fetch', (event) => {{
                 continue
 
         store.set_published_cover_group_ids(current_gids)
+
+        # Light scenarios as MQTT button entities + cleanup removed ones
+        scenarios = store.list_light_scenarios()
+        current_sids: list[str] = []
+        for sc in scenarios:
+            try:
+                sid = str(sc.get("id") or "").strip()
+            except Exception:
+                sid = ""
+            if sid:
+                current_sids.append(sid)
+
+        prev_sids = store.get_published_light_scenario_ids()
+        for sid in prev_sids:
+            if sid not in current_sids:
+                mqtt.publish(_light_scenario_config_topic(sid=sid), "", retain=True)
+
+        for sc in scenarios:
+            try:
+                topic, payload = light_scenario_button_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=settings.gateway.host,
+                    gateway_port=settings.gateway.port,
+                    scenario=sc,
+                )
+                mqtt.publish(topic, payload, retain=True)
+            except Exception:
+                continue
+
+        store.set_published_light_scenario_ids(current_sids)
 
     @api.on_event("startup")
     async def _startup() -> None:
@@ -2642,6 +2678,7 @@ self.addEventListener('fetch', (event) => {{
         await _republish_discovery()
         # Subscribe to light command topics
         mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/light/+/+/+")
+        mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/light_scenario/+")
         mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/cover/+/+/+")
         mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/cover_raw/+/+/+")
         mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/cover_pos/+/+/+")
@@ -2656,6 +2693,10 @@ self.addEventListener('fetch', (event) => {{
                     return
 
                 kind2 = parts[-2]
+                if kind2 == "light_scenario":
+                    sid = parts[-1]
+                    asyncio.run_coroutine_threadsafe(run_light_scenario(scenario_id=sid), loop)
+                    return
                 if kind2 == "cover_group":
                     gid = parts[-1]
                     cmd = payload.strip().upper()
@@ -4764,6 +4805,10 @@ self.addEventListener('fetch', (event) => {{
             out = store.add_light_scenario(payload)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+        try:
+            await _republish_discovery()
+        except Exception:
+            pass
         return out
 
     @api.put("/api/user/light_scenarios/{scenario_id}")
@@ -4774,6 +4819,10 @@ self.addEventListener('fetch', (event) => {{
             raise HTTPException(status_code=400, detail=str(e))
         if out is None:
             raise HTTPException(status_code=404, detail="Not Found")
+        try:
+            await _republish_discovery()
+        except Exception:
+            pass
         return out
 
     @api.delete("/api/user/light_scenarios/{scenario_id}")
@@ -4781,6 +4830,10 @@ self.addEventListener('fetch', (event) => {{
         ok = store.delete_light_scenario(scenario_id=scenario_id)
         if not ok:
             raise HTTPException(status_code=404, detail="Not Found")
+        try:
+            await _republish_discovery()
+        except Exception:
+            pass
         return {"ok": True}
 
     @api.post("/api/control/light_scenario/{scenario_id}")

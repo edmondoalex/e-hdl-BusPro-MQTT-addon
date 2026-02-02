@@ -15,6 +15,45 @@ def node_id(gateway_host: str, gateway_port: int) -> str:
     return f"buspro_{gateway_host.replace('.', '_')}_{gateway_port}"
 
 
+def light_scenario_button_discovery(
+    *,
+    discovery_prefix: str,
+    base_topic: str,
+    gateway_host: str,
+    gateway_port: int,
+    scenario: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    name = str(scenario.get("name") or "").strip() or "Scenario"
+    sid = str(scenario.get("id") or "").strip() or slugify(name)
+
+    nid = node_id(gateway_host, gateway_port)
+    oid = f"light_scenario_{sid}"
+    uid = f"{nid}_light_scenario_{sid}"
+
+    availability_topic = f"{base_topic}/availability"
+    cmd_topic = f"{base_topic}/cmd/light_scenario/{sid}"
+
+    payload: dict[str, Any] = {
+        "name": name,
+        "unique_id": uid,
+        "availability_topic": availability_topic,
+        "payload_available": "online",
+        "payload_not_available": "offline",
+        "command_topic": cmd_topic,
+        "payload_press": "RUN",
+        "device": {
+            "identifiers": [f"buspro:light_scenarios:{nid}"],
+            "name": "BusPro Scenari luci",
+            "manufacturer": "HDL",
+            "model": "BusPro",
+        },
+        "icon": "mdi:play-circle-outline",
+    }
+
+    topic = f"{discovery_prefix}/button/{nid}/{oid}/config"
+    return topic, payload
+
+
 def light_discovery(
     *,
     discovery_prefix: str,

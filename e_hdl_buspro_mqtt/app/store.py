@@ -49,6 +49,7 @@ class StateStore:
             "cover_groups": [],
             "cover_groups_published": [],
             "light_scenarios": [],
+            "light_scenarios_published": [],
             "hub_links": [],
             "hub_icons": StateStore.default_hub_icons(),
             "hub_show": StateStore.default_hub_show(),
@@ -99,6 +100,7 @@ class StateStore:
         raw["ui"].setdefault("cover_groups", [])
         raw["ui"].setdefault("cover_groups_published", [])
         raw["ui"].setdefault("light_scenarios", [])
+        raw["ui"].setdefault("light_scenarios_published", [])
         raw["ui"].setdefault("hub_links", [])
         raw["ui"].setdefault("hub_icons", self.default_hub_icons())
         raw["ui"].setdefault("hub_show", self.default_hub_show())
@@ -133,6 +135,8 @@ class StateStore:
             raw["ui"]["proxy_targets"] = []
         if not isinstance(raw["ui"].get("light_scenarios", []), list):
             raw["ui"]["light_scenarios"] = []
+        if not isinstance(raw["ui"].get("light_scenarios_published", []), list):
+            raw["ui"]["light_scenarios_published"] = []
         if not isinstance(raw["ui"].get("pwa", {}), dict):
             raw["ui"]["pwa"] = self._default_ui().get("pwa")
         return raw
@@ -229,6 +233,7 @@ class StateStore:
         raw["ui"].setdefault("cover_groups", [])
         raw["ui"].setdefault("cover_groups_published", [])
         raw["ui"].setdefault("light_scenarios", [])
+        raw["ui"].setdefault("light_scenarios_published", [])
         raw["ui"].setdefault("hub_links", [])
         raw["ui"].setdefault("hub_icons", self.default_hub_icons())
         raw["ui"].setdefault("hub_show", self.default_hub_show())
@@ -262,6 +267,8 @@ class StateStore:
             ui["cover_groups_published"] = []
         if not isinstance(ui.get("light_scenarios", []), list):
             ui["light_scenarios"] = []
+        if not isinstance(ui.get("light_scenarios_published", []), list):
+            ui["light_scenarios_published"] = []
         if not isinstance(ui.get("hub_links", []), list):
             ui["hub_links"] = []
         if not isinstance(ui.get("hub_icons", {}), dict):
@@ -271,6 +278,48 @@ class StateStore:
         if not isinstance(ui.get("proxy_targets", []), list):
             ui["proxy_targets"] = []
         self.write_raw({"devices": devices, "states": states, "ui": ui})
+
+    def get_published_light_scenario_ids(self) -> list[str]:
+        raw = self.read_raw()
+        ui = raw.get("ui") or {}
+        ids = ui.get("light_scenarios_published") or []
+        if not isinstance(ids, list):
+            return []
+        out: list[str] = []
+        for v in ids:
+            s = str(v or "").strip()
+            if not s:
+                continue
+            out.append(s)
+        # de-dupe preserving order
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for s in out:
+            k = s.casefold()
+            if k in seen:
+                continue
+            seen.add(k)
+            cleaned.append(s)
+        return cleaned
+
+    def set_published_light_scenario_ids(self, ids: list[str]) -> list[str]:
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for v in ids or []:
+            s = str(v or "").strip()
+            if not s:
+                continue
+            k = s.casefold()
+            if k in seen:
+                continue
+            seen.add(k)
+            cleaned.append(s)
+        raw = self.read_raw()
+        ui = dict(raw.get("ui") or {})
+        ui["light_scenarios_published"] = cleaned
+        raw["ui"] = ui
+        self.write_raw(raw)
+        return cleaned
 
     def list_light_scenarios(self) -> list[dict[str, Any]]:
         raw = self.read_raw()
