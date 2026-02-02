@@ -946,13 +946,21 @@
                     <input id="hubIconLights" list="usedIcons" placeholder="Es: mdi:lightbulb-group" />
                   </div>
                   <div>
+                    <label>Scenari (mdi)</label>
+                    <input id="hubIconScenarios" list="usedIcons" placeholder="Es: mdi:star" />
+                  </div>
+                  <div>
                     <label>Cover (mdi)</label>
                     <input id="hubIconCovers" list="usedIcons" placeholder="Es: mdi:window-shutter" />
                   </div>
+                </div>
+                <div class="row3" style="margin-top:10px">
                   <div>
                     <label>Extra (mdi)</label>
                     <input id="hubIconExtra" list="usedIcons" placeholder="Es: mdi:shape" />
                   </div>
+                  <div></div>
+                  <div></div>
                 </div>
                 <div class="row3" style="margin-top:10px">
                   <div style="display:flex;align-items:end;gap:10px">
@@ -963,16 +971,26 @@
                   </div>
                   <div style="display:flex;align-items:end;gap:10px">
                     <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
+                      <input id="hubShowScenarios" type="checkbox" checked />
+                      Mostra Scenari
+                    </label>
+                  </div>
+                  <div style="display:flex;align-items:end;gap:10px">
+                    <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
                       <input id="hubShowCovers" type="checkbox" checked />
                       Mostra Cover
                     </label>
                   </div>
+                </div>
+                <div class="row3" style="margin-top:10px">
                   <div style="display:flex;align-items:end;gap:10px">
                     <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
                       <input id="hubShowExtra" type="checkbox" checked />
                       Mostra Extra
                     </label>
                   </div>
+                  <div></div>
+                  <div></div>
                 </div>
                 <div class="flex" style="margin-top:10px">
                   <button class="btn secondary small" id="btnSaveHubIcons" type="button">Salva icone</button>
@@ -3889,6 +3907,7 @@
       function renderHubIcons() {
         if (!hubIcons) return;
         qs('hubIconLights').value = String(hubIcons.lights || '');
+        qs('hubIconScenarios').value = String(hubIcons.scenarios || '');
         qs('hubIconCovers').value = String(hubIcons.covers || '');
         qs('hubIconExtra').value = String(hubIcons.extra || '');
       }
@@ -3896,6 +3915,7 @@
       function renderHubShow() {
         if (!hubShow) return;
         qs('hubShowLights').checked = !!hubShow.lights;
+        qs('hubShowScenarios').checked = !!hubShow.scenarios;
         qs('hubShowCovers').checked = !!hubShow.covers;
         qs('hubShowExtra').checked = !!hubShow.extra;
       }
@@ -3918,11 +3938,13 @@
         const payload = {
           hub_icons: {
             lights: String(qs('hubIconLights').value || '').trim(),
+            scenarios: String(qs('hubIconScenarios').value || '').trim(),
             covers: String(qs('hubIconCovers').value || '').trim(),
             extra: String(qs('hubIconExtra').value || '').trim(),
           },
           hub_show: {
             lights: !!qs('hubShowLights').checked,
+            scenarios: !!qs('hubShowScenarios').checked,
             covers: !!qs('hubShowCovers').checked,
             extra: !!qs('hubShowExtra').checked,
           },
