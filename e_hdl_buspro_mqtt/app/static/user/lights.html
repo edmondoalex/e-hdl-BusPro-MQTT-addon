@@ -178,6 +178,12 @@
         color:rgba(242,245,255,.88);
         outline:none;
       }
+      .scField select{
+        height:38px;padding:0 10px;
+        border:1px solid rgba(255,255,255,.14);
+        background:rgba(0,0,0,.24);
+        color:rgba(242,245,255,.86);
+      }
       .scItems{border:1px solid rgba(255,255,255,.10); background:rgba(0,0,0,.14)}
       .scItem{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px;border-top:1px solid rgba(255,255,255,.07)}
       .scItem:first-child{border-top:none}
@@ -227,6 +233,9 @@
         <div class="modalTop">
           <div class="modalTitle">Scenari</div>
           <div class="btnRow">
+            <select id="scGroupSelect" class="scSel" aria-label="Gruppo scenari">
+              <option value="__all__">TUTTE</option>
+            </select>
             <button id="scSaveOnBtn" class="btn primary" type="button">Salva (solo accese)</button>
             <button id="scSaveAllBtn" class="btn" type="button">Salva (tutte)</button>
             <button id="scCloseBtn" class="btn" type="button">Chiudi</button>
@@ -275,6 +284,7 @@
       let editingScenarioId = '';
       let editingScenarioName = '';
       let editingScenarioItems = [];
+      const LS_SC_GROUP = 'buspro_scenarios_group_lights';
 
       const GROUP_NONE = '__none__';
       const LS_COLLAPSED = 'buspro_collapsed_groups_lights';
@@ -366,6 +376,48 @@
           m.set(addrOf(d), d);
         }
         return m;
+      }
+
+      function groupsFromDevices() {
+        const allLights = (lastDevices || []).filter(d => String(d.type || 'light') === 'light' && !isExtraSwitch(d));
+        const groups = new Map(); // key -> label
+        for (const d of allLights) {
+          const key = groupKeyFromGroup(d.group);
+          const label = groupLabelFromKey(key);
+          groups.set(key, label);
+        }
+        const keys = Array.from(groups.keys()).sort((a,b) => String(groups.get(a)||a).localeCompare(String(groups.get(b)||b), undefined, { sensitivity:'base' }));
+        return keys.map((k) => ({ key: k, label: String(groups.get(k) || k) }));
+      }
+
+      function selectedScenarioGroupKey() {
+        const sel = qs('scGroupSelect');
+        const v = String((sel && sel.value) || '__all__').trim();
+        return v;
+      }
+
+      function ensureScenarioGroupSelect() {
+        const sel = qs('scGroupSelect');
+        if (!sel) return;
+        const prev = selectedScenarioGroupKey();
+        const groups = groupsFromDevices();
+        const opts = [{ key: '__all__', label: 'TUTTE' }, ...groups.map((g) => ({ key: g.key, label: g.label }))];
+        sel.replaceChildren();
+        for (const o of opts) {
+          const opt = document.createElement('option');
+          opt.value = o.key;
+          opt.textContent = String(o.label || o.key).toUpperCase();
+          sel.appendChild(opt);
+        }
+        let desired = prev;
+        if (desired === '__all__') {
+          try {
+            const stored = String(localStorage.getItem(LS_SC_GROUP) || '').trim();
+            if (stored) desired = stored;
+          } catch (e) {}
+        }
+        const has = Array.from(sel.options || []).some((o) => String(o.value) === desired);
+        sel.value = has ? desired : '__all__';
       }
 
       function renderLightScenarios() {
@@ -586,11 +638,16 @@
         if (!root) return;
         root.replaceChildren();
         const search = String((qs('scAddSearch') && qs('scAddSearch').value) || '').trim().toLowerCase();
+        const groupSel = selectedScenarioGroupKey();
         const devMap = deviceByAddrLookup();
         const existing = new Set((editingScenarioItems || []).map(addrFromItem));
         const all = Array.from(devMap.entries())
           .map(([addr, d]) => ({ addr, d }))
           .filter(({addr, d}) => !existing.has(addr))
+          .filter(({addr, d}) => {
+            if (!groupSel || groupSel === '__all__') return true;
+            return groupKeyFromGroup(d.group) === groupSel;
+          })
           .filter(({addr, d}) => {
             if (!search) return true;
             const name = String((d && d.name) || '').toLowerCase();
@@ -656,8 +713,10 @@
 
       function buildScenarioItems({ onlyOn }) {
         const items = [];
+        const groupSel = selectedScenarioGroupKey();
         const lights = (lastDevices || []).filter(d => String(d.type || 'light') === 'light' && !isExtraSwitch(d));
         for (const d of lights) {
+          if (groupSel && groupSel !== '__all__' && groupKeyFromGroup(d.group) !== groupSel) continue;
           const addr = addrOf(d);
           const st = stateByAddr.get(addr) || { state:'?', brightness:0 };
           const on = String(st.state || '').toUpperCase() === 'ON';
@@ -699,6 +758,7 @@
         const back = qs('scenesModalBack');
         if (!back) return;
         back.classList.add('show');
+        ensureScenarioGroupSelect();
         loadLightScenarios().catch(() => {});
       }
       function closeScenarios() {
@@ -1074,6 +1134,10 @@
       qs('scBackBtn').addEventListener('click', () => closeScenarioEditor());
       qs('scSaveEditBtn').addEventListener('click', () => saveScenarioEdits());
       qs('scAddSearch').addEventListener('input', () => renderScenarioAddList());
+      qs('scGroupSelect').addEventListener('change', () => {
+        try { localStorage.setItem(LS_SC_GROUP, selectedScenarioGroupKey()); } catch (e) {}
+        try { renderScenarioAddList(); } catch (e) {}
+      });
       qs('scenesModalBack').addEventListener('click', (evt) => {
         if (evt && evt.target === qs('scenesModalBack')) closeScenarios();
       });
