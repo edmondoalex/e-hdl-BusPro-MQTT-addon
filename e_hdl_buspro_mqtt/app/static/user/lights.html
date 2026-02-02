@@ -162,17 +162,11 @@
       .btn.primary{border-color:rgba(255,215,0,.35); background:rgba(255,215,0,.08)}
       .btn.danger{border-color:rgba(255,107,107,.40); background:rgba(255,107,107,.10)}
       .scList{
-        border-radius:18px;
-        overflow:hidden;
-        border:1px solid var(--line);
-        background:rgba(0,0,0,.05);
-        backdrop-filter: blur(10px);
+        /* Styled by .list (same as lights list) */
       }
       .scRow{
-        display:flex;gap:10px;align-items:center;justify-content:space-between;
-        padding:14px 16px;
-        border-top:1px solid rgba(255,255,255,.06);
-        background:rgba(0,0,0,.05);
+        /* Layout overrides for scenario rows (base style from .row) */
+        justify-content:space-between;
       }
       .scRow:first-child{border-top:none}
       .scName{min-width:0;flex:1;font-size:16px;opacity:.90;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -283,7 +277,7 @@
           </div>
         </div>
         <div id="scErr" class="error" style="margin:0 0 10px 0"></div>
-        <div id="scList" class="scList"></div>
+        <div id="scList" class="list scList"></div>
         <div id="scEditor" class="scEditor">
           <div class="scGrid" style="margin-top:12px">
             <div class="scField">
@@ -473,7 +467,7 @@
         const items = (lightScenarios || []).slice().sort((a,b) => String(a.name||'').localeCompare(String(b.name||''), undefined, {sensitivity:'base'}));
         if (!items.length) {
           const empty = document.createElement('div');
-          empty.className = 'scRow';
+          empty.className = 'row scRow';
           empty.innerHTML = `<div class="scName">Nessuno scenario salvato</div><div class="scMeta">Crea uno scenario dopo aver impostato le luci</div>`;
           root.appendChild(empty);
           return;
@@ -481,7 +475,7 @@
 
         for (const sc of items) {
           const row = document.createElement('div');
-          row.className = 'scRow';
+          row.className = 'row scRow';
           const name = String(sc.name || '').trim() || '(senza nome)';
           const count = Array.isArray(sc.items) ? sc.items.length : 0;
           row.innerHTML = `
