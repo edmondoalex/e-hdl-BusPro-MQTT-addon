@@ -65,6 +65,7 @@
         border:1px solid rgba(255,255,255,.14);
         background:rgba(255,255,255,.06);
         color:rgba(242,245,255,.86);
+        border-radius:12px;
         cursor:pointer;
         -webkit-tap-highlight-color: transparent;
       }
@@ -174,9 +175,9 @@
       qs('homeBtn').addEventListener('click', () => {
         try { window.location.href = absUrl('home2'); } catch (e) {}
       });
-      // Star (page) indicates "scenari": it keeps you here.
-      qs('editBtn').addEventListener('click', () => {
-        try { window.location.href = absUrl('lights?sc=1'); } catch (e) {}
+      // Star (page) indicates "scenari": keep on this page (refresh list)
+      qs('editBtn').addEventListener('click', async () => {
+        try { await load(); } catch (e) {}
       });
       qs('settingsBtn').addEventListener('click', () => {
         try { window.location.href = absUrl('lights?sc=1'); } catch (e) {}

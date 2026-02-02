@@ -1052,6 +1052,70 @@
             </div>
           </details>
 
+          <details class="acc" data-acc="ha_devices">
+            <summary>
+              <h2 style="margin:0;font-size:16px">Home Assistant devices (UI utente)</h2>
+            </summary>
+            <div class="accBody">
+              <div class="muted" style="margin-top:6px">
+                Aggiungi entità di Home Assistant (light/switch/cover) da mostrare nelle pagine utente <code>/lights</code>, <code>/covers</code>, <code>/extra</code>.
+                Non pubblica nulla su MQTT: controlla tramite API di Home Assistant.
+              </div>
+
+              <form id="haForm" style="margin-top:10px">
+                <input id="ha_id" type="hidden" />
+                <div class="row3">
+                  <div>
+                    <label>entity_id</label>
+                    <input id="ha_entity" required placeholder="Es: light.sala" />
+                  </div>
+                  <div>
+                    <label>Pagina</label>
+                    <select id="ha_page">
+                      <option value="lights">Luci</option>
+                      <option value="covers">Cover</option>
+                      <option value="extra">Extra</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label>Gruppo</label>
+                    <input id="ha_group" placeholder="Es: Sala" />
+                  </div>
+                </div>
+                <div class="row3">
+                  <div>
+                    <label>Nome (override)</label>
+                    <input id="ha_name" placeholder="(vuoto = entity_id)" />
+                  </div>
+                  <div>
+                    <label>Icona (mdi override)</label>
+                    <input id="ha_icon" list="usedIcons" placeholder="Es: mdi:lightbulb" />
+                  </div>
+                  <div></div>
+                </div>
+                <div class="flex" style="margin-top:10px">
+                  <button class="btn" id="ha_btnSubmit" type="submit">Aggiungi</button>
+                  <button class="btn secondary" id="ha_btnCancel" type="button" style="display:none">Annulla</button>
+                  <span id="ha_formMsg" class="muted"></span>
+                </div>
+              </form>
+
+              <table id="haTable" aria-label="ha devices" style="margin-top:10px">
+                <thead>
+                  <tr>
+                    <th>entity_id</th>
+                    <th>Pagina</th>
+                    <th>Gruppo</th>
+                    <th>Nome</th>
+                    <th>Icona</th>
+                    <th>Azioni</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </details>
+
           <details class="acc" data-acc="pwa">
             <summary>
               <h2 style="margin:0;font-size:16px">WebApp (PWA) - Home2</h2>
@@ -1245,6 +1309,7 @@
        let editingCoverGroup = null;
        let coverGroups = [];
        let lastDevices = []; 
+      let haDevices = [];
       let calibTicker = null; 
       let userFilter = 'all'; // all|light|cover 
       let groupOrder = [];
@@ -4220,6 +4285,77 @@
         }
       }
 
+      function setHaEditing(item) {
+        const isEdit = !!(item && item.id);
+        qs('ha_id').value = isEdit ? String(item.id || '') : '';
+        qs('ha_entity').value = isEdit ? String(item.entity_id || '') : '';
+        qs('ha_page').value = isEdit ? String(item.page || 'lights') : 'lights';
+        qs('ha_group').value = isEdit ? String(item.group || '') : '';
+        qs('ha_name').value = isEdit ? String(item.name || '') : '';
+        qs('ha_icon').value = isEdit ? String(item.icon || '') : '';
+        qs('ha_btnSubmit').textContent = isEdit ? 'Salva' : 'Aggiungi';
+        qs('ha_btnCancel').style.display = isEdit ? '' : 'none';
+        qs('ha_formMsg').textContent = '';
+      }
+
+      function renderHaDevices() {
+        const table = document.getElementById('haTable');
+        if (!table) return;
+        const body = table.querySelector('tbody');
+        body.innerHTML = '';
+
+        const items = Array.isArray(haDevices) ? haDevices : [];
+        for (const it of items) {
+          const id = String(it.id || '').trim();
+          const entity_id = String(it.entity_id || '').trim();
+          const page = String(it.page || '').trim();
+          const group = String(it.group || '').trim();
+          const name = String(it.name || '').trim();
+          const icon = String(it.icon || '').trim();
+
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><code>${escapeHtml(entity_id)}</code></td>
+            <td>${escapeHtml(page)}</td>
+            <td>${escapeHtml(group)}</td>
+            <td>${escapeHtml(name)}</td>
+            <td>${icon ? `<span class="pill">${escapeHtml(icon)}</span>` : ''}</td>
+            <td>
+              <button class="btn secondary small" data-act="edit">Modifica</button>
+              <button class="btn danger small" data-act="del">Elimina</button>
+            </td>
+          `;
+
+          tr.querySelector('[data-act=\"edit\"]').addEventListener('click', (ev) => {
+            ev.preventDefault();
+            setHaEditing(it);
+          });
+          tr.querySelector('[data-act=\"del\"]').addEventListener('click', async (ev) => {
+            ev.preventDefault();
+            try {
+              if (!confirm(`Eliminare \"${entity_id}\"?`)) return;
+              await getJson(`api/ha_devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
+              await refreshHaDevices();
+              await refreshUsedIcons();
+            } catch (e) {
+              qs('ha_formMsg').textContent = 'Errore';
+            }
+          });
+
+          body.appendChild(tr);
+        }
+      }
+
+      async function refreshHaDevices() {
+        try {
+          const res = await getJson('api/ha_devices');
+          haDevices = Array.isArray(res && res.items) ? res.items : [];
+        } catch (e) {
+          haDevices = [];
+        }
+        renderHaDevices();
+      }
+
       let proxyTargets = [];
       function setProxyEditing(t) {
         const isEdit = !!(t && t.name);
@@ -4309,6 +4445,7 @@
       attachGroupSelect('d_groupSel', 'd_groupCustom');
       refreshHubConfig();
       refreshHubLinks();
+      refreshHaDevices();
       refreshPwaConfig();
       refreshProxyTargets();
       qs('editAddr').addEventListener('change', () => {
@@ -4351,6 +4488,45 @@
         } catch (e) {
           qs('hl_formMsg').textContent = (e && e.message) ? e.message : 'Errore';
         }
+      });
+
+      qs('haForm').addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        qs('ha_formMsg').textContent = '';
+        try {
+          const id = String(qs('ha_id').value || '').trim();
+          const entity_id = String(qs('ha_entity').value || '').trim();
+          const page = String(qs('ha_page').value || '').trim();
+          const group = String(qs('ha_group').value || '').trim();
+          const name = String(qs('ha_name').value || '').trim();
+          const icon = String(qs('ha_icon').value || '').trim();
+          const payload = { entity_id, page, group, name, icon };
+          if (id) {
+            await getJson(`api/ha_devices/${encodeURIComponent(id)}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+          } else {
+            await getJson('api/ha_devices', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+          }
+          setHaEditing(null);
+          await refreshHaDevices();
+          await refreshUsedIcons();
+          qs('ha_formMsg').textContent = 'Salvato';
+          setTimeout(() => { qs('ha_formMsg').textContent = ''; }, 1400);
+        } catch (e) {
+          qs('ha_formMsg').textContent = (e && e.message) ? e.message : 'Errore';
+        }
+      });
+
+      qs('ha_btnCancel').addEventListener('click', (ev) => {
+        ev.preventDefault();
+        setHaEditing(null);
       });
 
       qs('hl_btnCancel').addEventListener('click', () => {

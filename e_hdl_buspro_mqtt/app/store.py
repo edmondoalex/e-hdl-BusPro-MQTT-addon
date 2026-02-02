@@ -53,6 +53,7 @@ class StateStore:
             "light_scenarios": [],
             "light_scenarios_published": [],
             "hub_order": ["lights", "scenarios", "covers", "extra"],
+            "ha_devices": [],
             "hub_links": [],
             "hub_icons": StateStore.default_hub_icons(),
             "hub_show": StateStore.default_hub_show(),
@@ -105,6 +106,7 @@ class StateStore:
         raw["ui"].setdefault("light_scenarios", [])
         raw["ui"].setdefault("light_scenarios_published", [])
         raw["ui"].setdefault("hub_order", self._default_ui().get("hub_order"))
+        raw["ui"].setdefault("ha_devices", [])
         raw["ui"].setdefault("hub_links", [])
         raw["ui"].setdefault("hub_icons", self.default_hub_icons())
         raw["ui"].setdefault("hub_show", self.default_hub_show())
@@ -143,6 +145,8 @@ class StateStore:
             raw["ui"]["light_scenarios_published"] = []
         if not isinstance(raw["ui"].get("hub_order", []), list):
             raw["ui"]["hub_order"] = list(self._default_ui().get("hub_order") or [])
+        if not isinstance(raw["ui"].get("ha_devices", []), list):
+            raw["ui"]["ha_devices"] = []
         if not isinstance(raw["ui"].get("pwa", {}), dict):
             raw["ui"]["pwa"] = self._default_ui().get("pwa")
         return raw
@@ -240,6 +244,8 @@ class StateStore:
         raw["ui"].setdefault("cover_groups_published", [])
         raw["ui"].setdefault("light_scenarios", [])
         raw["ui"].setdefault("light_scenarios_published", [])
+        raw["ui"].setdefault("hub_order", self._default_ui().get("hub_order"))
+        raw["ui"].setdefault("ha_devices", [])
         raw["ui"].setdefault("hub_links", [])
         raw["ui"].setdefault("hub_icons", self.default_hub_icons())
         raw["ui"].setdefault("hub_show", self.default_hub_show())
@@ -275,6 +281,10 @@ class StateStore:
             ui["light_scenarios"] = []
         if not isinstance(ui.get("light_scenarios_published", []), list):
             ui["light_scenarios_published"] = []
+        if not isinstance(ui.get("hub_order", []), list):
+            ui["hub_order"] = list(self._default_ui().get("hub_order") or [])
+        if not isinstance(ui.get("ha_devices", []), list):
+            ui["ha_devices"] = []
         if not isinstance(ui.get("hub_links", []), list):
             ui["hub_links"] = []
         if not isinstance(ui.get("hub_icons", {}), dict):
@@ -284,6 +294,122 @@ class StateStore:
         if not isinstance(ui.get("proxy_targets", []), list):
             ui["proxy_targets"] = []
         self.write_raw({"devices": devices, "states": states, "ui": ui})
+
+    def list_ha_devices(self) -> list[dict[str, Any]]:
+        raw = self.read_raw()
+        ui = raw.get("ui") or {}
+        items = ui.get("ha_devices") or []
+        if not isinstance(items, list):
+            return []
+        out: list[dict[str, Any]] = []
+        for it in items:
+            if isinstance(it, dict):
+                out.append(dict(it))
+        return out
+
+    @staticmethod
+    def _normalize_ha_device(payload: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be an object")
+
+        entity_id = str(payload.get("entity_id") or "").strip().lower()
+        if not entity_id or "." not in entity_id:
+            raise ValueError("entity_id required (e.g. light.kitchen)")
+
+        domain = entity_id.split(".", 1)[0]
+        if domain not in ("light", "switch", "cover"):
+            raise ValueError("only light/switch/cover supported")
+
+        page = str(payload.get("page") or "").strip().lower() or ("covers" if domain == "cover" else "lights")
+        if page not in ("lights", "extra", "covers"):
+            raise ValueError("page must be lights/extra/covers")
+
+        name = str(payload.get("name") or "").strip()
+        group = str(payload.get("group") or "").strip()
+        icon = str(payload.get("icon") or "").strip()
+        if icon and not icon.startswith("mdi:"):
+            raise ValueError("icon must be mdi:<name>")
+
+        return {
+            "entity_id": entity_id,
+            "domain": domain,
+            "page": page,
+            "name": name,
+            "group": group,
+            "icon": icon,
+        }
+
+    def add_ha_device(self, payload: dict[str, Any]) -> dict[str, Any]:
+        cleaned = self._normalize_ha_device(payload)
+        item = {"id": str(uuid.uuid4()), **cleaned}
+        raw = self.read_raw()
+        ui = dict(raw.get("ui") or {})
+        items = ui.get("ha_devices") or []
+        if not isinstance(items, list):
+            items = []
+        items2 = [dict(it) for it in items if isinstance(it, dict)]
+        # de-dupe by entity_id: keep last
+        items2 = [it for it in items2 if str(it.get("entity_id") or "").strip().lower() != cleaned["entity_id"]]
+        items2.append(item)
+        ui["ha_devices"] = items2
+        raw["ui"] = ui
+        self.write_raw(raw)
+        return item
+
+    def update_ha_device(self, *, device_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+        did = str(device_id or "").strip()
+        if not did:
+            return None
+        cleaned = self._normalize_ha_device(payload)
+        raw = self.read_raw()
+        ui = dict(raw.get("ui") or {})
+        items = ui.get("ha_devices") or []
+        if not isinstance(items, list):
+            return None
+        out: list[dict[str, Any]] = []
+        updated: dict[str, Any] | None = None
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            if str(it.get("id") or "").strip() != did:
+                out.append(dict(it))
+                continue
+            updated = {"id": did, **cleaned}
+            out.append(updated)
+        if updated is None:
+            return None
+        # de-dupe by entity_id (keep last)
+        deduped: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for it in reversed(out):
+            eid = str(it.get("entity_id") or "").strip().lower()
+            if not eid or eid in seen:
+                continue
+            seen.add(eid)
+            deduped.append(it)
+        deduped.reverse()
+        ui["ha_devices"] = deduped
+        raw["ui"] = ui
+        self.write_raw(raw)
+        return updated
+
+    def delete_ha_device(self, *, device_id: str) -> bool:
+        did = str(device_id or "").strip()
+        if not did:
+            return False
+        raw = self.read_raw()
+        ui = dict(raw.get("ui") or {})
+        items = ui.get("ha_devices") or []
+        if not isinstance(items, list):
+            return False
+        before = len([it for it in items if isinstance(it, dict)])
+        kept = [dict(it) for it in items if isinstance(it, dict) and str(it.get("id") or "").strip() != did]
+        if len(kept) == before:
+            return False
+        ui["ha_devices"] = kept
+        raw["ui"] = ui
+        self.write_raw(raw)
+        return True
 
     def get_published_light_scenario_ids(self) -> list[str]:
         raw = self.read_raw()

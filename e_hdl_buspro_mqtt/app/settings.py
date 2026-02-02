@@ -46,6 +46,7 @@ class Settings:
     user_auth: AuthConfig
     poll_interval_s: float
     poll_pace_s: float
+    ha_poll_interval_s: float
     light_cmd_interval_s: float
     udp_send_interval_s: float
     debug: bool
@@ -122,6 +123,7 @@ def load_settings(options: dict[str, Any]) -> Settings:
 
     poll_interval_s = max(0.0, _read_float("poll_interval_s", 180.0))
     poll_pace_s = max(0.0, _read_float("poll_pace_s", 0.15))
+    ha_poll_interval_s = max(0.5, _read_float("ha_poll_interval_s", 2.0))
     light_cmd_interval_s = max(0.0, _read_float("light_cmd_interval_s", 0.12))
     udp_send_interval_s = max(0.0, _read_float("udp_send_interval_s", 0.0))
 
@@ -132,6 +134,7 @@ def load_settings(options: dict[str, Any]) -> Settings:
         user_auth=user_auth,
         poll_interval_s=poll_interval_s,
         poll_pace_s=poll_pace_s,
+        ha_poll_interval_s=ha_poll_interval_s,
         light_cmd_interval_s=light_cmd_interval_s,
         udp_send_interval_s=udp_send_interval_s,
         debug=bool(options.get("debug") or False),

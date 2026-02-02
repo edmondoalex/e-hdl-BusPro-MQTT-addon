@@ -276,7 +276,10 @@
           .replace(/\"/g,'&quot;')
           .replace(/'/g,'&#039;');
       }
-      function addrOf(d){ return `${Number(d.subnet_id)}.${Number(d.device_id)}.${Number(d.channel)}`; }
+      function addrOf(d){
+        if (d && String(d.origin || '') === 'ha') return String(d.entity_id || '').trim();
+        return `${Number(d.subnet_id)}.${Number(d.device_id)}.${Number(d.channel)}`;
+      }
       function absUrl(path) { return new URL(path, window.location.href).toString(); }
       function cssEscape(s) {
         const v = String(s || '');
@@ -298,6 +301,10 @@
           await getJson(`api/control/cover_group/${encodeURIComponent(gid)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command}) });
           return;
         }
+        if (String(addr || '').startsWith('cover.')) {
+          await getJson(`api/control/ha/cover/${encodeURIComponent(String(addr||''))}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command}) });
+          return;
+        }
         const [s, d, c] = String(addr||'').split('.').map(Number);
         await getJson(`api/control/cover/${s}/${d}/${c}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command}) });
       }
@@ -305,6 +312,10 @@
         if (String(addr || '').startsWith('group:')) {
           const gid = String(addr || '').slice('group:'.length);
           await getJson(`api/control/cover_group/${encodeURIComponent(gid)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command:'SET_POSITION', position}) });
+          return;
+        }
+        if (String(addr || '').startsWith('cover.')) {
+          await getJson(`api/control/ha/cover/${encodeURIComponent(String(addr||''))}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command:'SET_POSITION', position}) });
           return;
         }
         const [s, d, c] = String(addr||'').split('.').map(Number);
@@ -359,6 +370,12 @@
         return 1e8; 
       } 
 
+      function isCoverListDevice(d) {
+        if (String(d.type || '').toLowerCase() !== 'cover') return false;
+        if (String(d.origin || '') === 'ha') return String(d.page || 'covers') === 'covers';
+        return true;
+      }
+
       function isActiveCover(d) {
         const addr = addrOf(d);
         const st = coverByAddr.get(addr);
@@ -378,7 +395,7 @@
       function refreshDeviceIndex() {
         deviceByAddr.clear();
         for (const d of (lastDevices || [])) {
-          if (String(d.type || '') !== 'cover') continue;
+          if (!isCoverListDevice(d)) continue;
           deviceByAddr.set(addrOf(d), d);
         }
       }
@@ -543,7 +560,7 @@
       }
 
       function updateSectionCounts() {
-        const allCovers = (lastDevices || []).filter(d => String(d.type || '') === 'cover');
+        const allCovers = (lastDevices || []).filter(isCoverListDevice);
         const groupStats = new Map();
         for (const d of allCovers) {
           const k = groupKeyFromGroup(d.group);
@@ -650,7 +667,7 @@
         refreshDeviceIndex();
  
         const allCovers = lastDevices
-          .filter(d => String(d.type || '') === 'cover')
+          .filter(isCoverListDevice)
           .slice();
         const covers = allCovers
           .filter(d => !showActiveOnly || isActiveCover(d))
@@ -890,6 +907,16 @@
                 const position = (st.position === null || st.position === undefined) ? 0 : Number(st.position);
                 coverByAddr.set(addr, { state, position });
               }
+              const ha = msg.data.ha_states || {};
+              if (ha && typeof ha === 'object') {
+                for (const [eid, st] of Object.entries(ha)) {
+                  if (!String(eid || '').startsWith('cover.')) continue;
+                  const s0 = (st && typeof st === 'object') ? st : {};
+                  const state = String(s0.state || '').toUpperCase() || '?';
+                  const position = (s0.position === null || s0.position === undefined) ? 0 : Number(s0.position);
+                  coverByAddr.set(String(eid), { state, position });
+                }
+              }
               queueRender();
               return;
             }
@@ -914,6 +941,26 @@
               const ev = msg.data || {}; 
               const addr = `${ev.subnet_id}.${ev.device_id}.${ev.channel}`; 
               const state = String(ev.state || '').toUpperCase() || '?'; 
+              const position = (ev.position === null || ev.position === undefined) ? 0 : Number(ev.position);
+              coverByAddr.set(addr, { state, position });
+              const nowActive = isActiveState({ state, position });
+              const prevActive = activeByAddr.get(addr);
+              activeByAddr.set(addr, nowActive);
+              applyCoverStateToRow(addr);
+              updateGroupRowsForMember(addr);
+              queueCountsUpdate();
+              if (showActiveOnly && prevActive !== nowActive) queueRender();
+              if (activeAddr && activeAddr === addr) {
+                const pos = Math.max(0, Math.min(100, Number(position)));
+                setModalPos(pos, false);
+              }
+              return;
+            }
+            if (msg.type === 'ha_cover_state') {
+              const ev = msg.data || {};
+              const addr = String(ev.entity_id || '').trim();
+              if (!addr) return;
+              const state = String(ev.state || '').toUpperCase() || '?';
               const position = (ev.position === null || ev.position === undefined) ? 0 : Number(ev.position);
               coverByAddr.set(addr, { state, position });
               const nowActive = isActiveState({ state, position });
@@ -984,7 +1031,7 @@
           if (fb) fb.classList.toggle('on', !!showActiveOnly);
           const meta = await getJson('api/meta'); 
           groupOrder = Array.isArray(meta.group_order) ? meta.group_order.map(normalizeGroup).filter(Boolean) : []; 
-          lastDevices = await getJson('api/devices'); 
+          lastDevices = await getJson('api/user/devices'); 
           await loadCoverGroups();
           refreshDeviceIndex();
           // Default: all groups expanded on first load (no collapsed preference).
@@ -1001,7 +1048,7 @@
       });
 
       qs('collapseBtn').addEventListener('click', () => {
-        const allCovers = lastDevices.filter(d => String(d.type || '') === 'cover').slice();
+        const allCovers = lastDevices.filter(isCoverListDevice).slice();
         const groups = new Set(allCovers.map((d) => groupKeyFromGroup(d.group)));
         const keys = Array.from(groups);
         const allCollapsed = keys.length > 0 && keys.every((k) => collapsedGroups.has(k));

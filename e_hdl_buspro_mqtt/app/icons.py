@@ -106,7 +106,6 @@ def placeholder_svg() -> bytes:
     return (
         b'<?xml version="1.0" encoding="UTF-8"?>'
         b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">'
-        b'<path fill="currentColor" d="M12 2a7 7 0 0 0-4 12.74V17a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-2.26A7 7 0 0 0 12 2zm3 12.06-.5.35V17h-5v-2.59l-.5-.35A5 5 0 1 1 15 14.06zM9 21v-1h6v1H9z"/>'
+        b'<path fill="#000000" d="M12 2a7 7 0 0 0-4 12.74V17a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-2.26A7 7 0 0 0 12 2zm3 12.06-.5.35V17h-5v-2.59l-.5-.35A5 5 0 1 1 15 14.06zM9 21v-1h6v1H9z"/>'
         b"</svg>"
     )
-

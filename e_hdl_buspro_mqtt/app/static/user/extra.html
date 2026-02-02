@@ -157,7 +157,10 @@
           .replace(/\"/g,'&quot;')
           .replace(/'/g,'&#039;');
       }
-      function addrOf(d){ return `${Number(d.subnet_id)}.${Number(d.device_id)}.${Number(d.channel)}`; }
+      function addrOf(d){
+        if (d && String(d.origin || '') === 'ha') return String(d.entity_id || '').trim();
+        return `${Number(d.subnet_id)}.${Number(d.device_id)}.${Number(d.channel)}`;
+      }
       function absUrl(path) { return new URL(path, window.location.href).toString(); }
       function cssEscape(s) {
         const v = String(s || '');
@@ -212,10 +215,19 @@
         return r.text();
       }
 
-      async function sendLight(addr, state) {
+      async function sendLight(d, addr, state) {
+        if (d && String(d.origin || '') === 'ha') {
+          const dom = String(d.domain || (String(d.entity_id||'').split('.',1)[0]||'switch')).toLowerCase();
+          if (dom === 'light') {
+            await getJson(`api/control/ha/light/${encodeURIComponent(String(d.entity_id||addr))}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ state }) });
+            return;
+          }
+          await getJson(`api/control/ha/switch/${encodeURIComponent(String(d.entity_id||addr))}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ state }) });
+          return;
+        }
         const parts = String(addr || '').split('.').map(Number);
-        const s = parts[0], d = parts[1], c = parts[2];
-        await getJson(`api/control/light/${s}/${d}/${c}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ state }) });
+        const s = parts[0], dd = parts[1], c = parts[2];
+        await getJson(`api/control/light/${s}/${dd}/${c}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ state }) });
       }
 
       function mdiName(iconValue) {
@@ -231,6 +243,7 @@
       function isExtraSwitch(d) {
         const t = String(d.type || 'light').toLowerCase();
         if (t !== 'light') return false;
+        if (String(d.origin || '') === 'ha') return String(d.page || 'extra') === 'extra';
         const cat = String(d.category || '').trim().toLowerCase();
         return cat === 'switch' || cat === 'extra';
       }
@@ -376,10 +389,12 @@
             qs('err').textContent = '';
             const addr = el.getAttribute('data-addr');
             if (!addr) return;
+            const dev = deviceByAddr.get(addr);
+            if (!dev) return;
             try {
               const cur = stateByAddr.get(addr) || { state:'OFF' };
               const isOn = String(cur.state||'').toUpperCase() === 'ON';
-              await sendLight(addr, isOn ? 'OFF' : 'ON');
+              await sendLight(dev, addr, isOn ? 'OFF' : 'ON');
             } catch (e) { qs('err').textContent = e.message || String(e); }
           });
         });
@@ -421,6 +436,14 @@
                 const state = String(st.state || '').toUpperCase() || '?';
                 stateByAddr.set(addr, { state });
               }
+              const ha = msg.data.ha_states || {};
+              if (ha && typeof ha === 'object') {
+                for (const [eid, st] of Object.entries(ha)) {
+                  const s0 = (st && typeof st === 'object') ? st : {};
+                  const state = String(s0.state || '').toUpperCase() || '?';
+                  stateByAddr.set(String(eid), { state });
+                }
+              }
               queueRender();
               return;
             }
@@ -438,6 +461,34 @@
             if (msg.type === 'light_state') { 
               const ev = msg.data || {}; 
               const addr = `${ev.subnet_id}.${ev.device_id}.${ev.channel}`; 
+              const next = { state: ev.state };
+              stateByAddr.set(addr, next);
+              const nowActive = isActiveState(next);
+              const prevActive = activeByAddr.get(addr);
+              activeByAddr.set(addr, nowActive);
+              applyExtraStateToRow(addr);
+              queueCountsUpdate();
+              if (showActiveOnly && prevActive !== nowActive) queueRender();
+              return;
+            }
+            if (msg.type === 'ha_light_state') {
+              const ev = msg.data || {};
+              const addr = String(ev.entity_id || '').trim();
+              if (!addr) return;
+              const next = { state: ev.state };
+              stateByAddr.set(addr, next);
+              const nowActive = isActiveState(next);
+              const prevActive = activeByAddr.get(addr);
+              activeByAddr.set(addr, nowActive);
+              applyExtraStateToRow(addr);
+              queueCountsUpdate();
+              if (showActiveOnly && prevActive !== nowActive) queueRender();
+              return;
+            }
+            if (msg.type === 'ha_switch_state') {
+              const ev = msg.data || {};
+              const addr = String(ev.entity_id || '').trim();
+              if (!addr) return;
               const next = { state: ev.state };
               stateByAddr.set(addr, next);
               const nowActive = isActiveState(next);
@@ -466,7 +517,7 @@
           if (fb) fb.classList.toggle('on', !!showActiveOnly);
           const meta = await getJson('api/meta'); 
           groupOrder = Array.isArray(meta.group_order) ? meta.group_order.map(normalizeGroup).filter(Boolean) : []; 
-          lastDevices = await getJson('api/devices'); 
+          lastDevices = await getJson('api/user/devices'); 
           refreshDeviceIndex();
           // Default: all groups expanded on first load (no collapsed preference).
           queueRender(); 

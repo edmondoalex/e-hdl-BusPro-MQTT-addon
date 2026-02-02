@@ -45,7 +45,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.251"
+ADDON_VERSION = "0.1.252"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -232,6 +232,178 @@ def create_app() -> FastAPI:
     )
     api.state.mqtt = mqtt
 
+    # Home Assistant (Core) integration via Supervisor token (no user token required)
+    def _ha_enabled() -> bool:
+        try:
+            tok = str(os.environ.get("SUPERVISOR_TOKEN") or "").strip()
+            return bool(tok)
+        except Exception:
+            return False
+
+    def _ha_base_url() -> str:
+        # Supervisor Core proxy (works inside add-on containers)
+        return "http://supervisor/core"
+
+    def _ha_headers() -> dict[str, str]:
+        tok = str(os.environ.get("SUPERVISOR_TOKEN") or "").strip()
+        if not tok:
+            return {}
+        return {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"}
+
+    def _ha_request(method: str, path: str, *, payload: dict[str, Any] | None = None, timeout_s: int = 8) -> Any:
+        base = _ha_base_url().rstrip("/")
+        url = base + "/" + path.lstrip("/")
+        headers = _ha_headers()
+        data: bytes | None = None
+        if payload is not None:
+            data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(url=url, method=method.upper(), data=data)
+        for k, v in headers.items():
+            req.add_header(k, v)
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+            raw = resp.read()
+            try:
+                return json.loads(raw.decode("utf-8", errors="replace"))
+            except Exception:
+                return raw.decode("utf-8", errors="replace")
+
+    def _ha_state_str(v: Any) -> str:
+        return str(v or "").strip().lower()
+
+    def _ha_friendly_name(st: dict[str, Any]) -> str:
+        try:
+            attrs = st.get("attributes") or {}
+            if isinstance(attrs, dict):
+                return str(attrs.get("friendly_name") or "").strip()
+        except Exception:
+            return ""
+        return ""
+
+    def _ha_light_is_dimmable(st: dict[str, Any]) -> bool:
+        try:
+            attrs = st.get("attributes") or {}
+            if not isinstance(attrs, dict):
+                return False
+            if attrs.get("brightness") is not None:
+                return True
+            scm = attrs.get("supported_color_modes")
+            if isinstance(scm, list):
+                modes = [str(x or "").strip().lower() for x in scm if str(x or "").strip()]
+                return any(m and m != "onoff" for m in modes)
+            if isinstance(scm, str):
+                return scm.strip().lower() != "onoff"
+        except Exception:
+            return False
+        return False
+
+    def _map_ha_state_to_light(st: dict[str, Any]) -> dict[str, Any]:
+        eid = str(st.get("entity_id") or "").strip().lower()
+        s = _ha_state_str(st.get("state"))
+        if s in ("unavailable", "unknown", ""):
+            state = "?"
+        else:
+            state = "ON" if s == "on" else "OFF"
+        attrs = st.get("attributes") or {}
+        br_i: int | None = None
+        if isinstance(attrs, dict) and attrs.get("brightness") is not None:
+            try:
+                br_i = int(attrs.get("brightness"))
+            except Exception:
+                br_i = None
+        brightness = 0
+        if state == "ON":
+            brightness = max(0, min(255, br_i)) if br_i is not None else 255
+        return {"entity_id": eid, "state": state, "brightness": brightness}
+
+    def _map_ha_state_to_switch(st: dict[str, Any]) -> dict[str, Any]:
+        eid = str(st.get("entity_id") or "").strip().lower()
+        s = _ha_state_str(st.get("state"))
+        if s in ("unavailable", "unknown", ""):
+            state = "?"
+        else:
+            state = "ON" if s == "on" else "OFF"
+        return {"entity_id": eid, "state": state}
+
+    def _map_ha_state_to_cover(st: dict[str, Any]) -> dict[str, Any]:
+        eid = str(st.get("entity_id") or "").strip().lower()
+        s = _ha_state_str(st.get("state"))
+        if s in ("unavailable", "unknown", ""):
+            state = "?"
+        elif s == "open":
+            state = "OPEN"
+        elif s == "closed":
+            state = "CLOSED"
+        elif s == "opening":
+            state = "OPENING"
+        elif s == "closing":
+            state = "CLOSING"
+        else:
+            state = "STOP"
+        attrs = st.get("attributes") or {}
+        pos: int | None = None
+        if isinstance(attrs, dict) and attrs.get("current_position") is not None:
+            try:
+                pos = int(attrs.get("current_position"))
+                pos = max(0, min(100, pos))
+            except Exception:
+                pos = None
+        return {"entity_id": eid, "state": state, "position": pos}
+
+    def _list_user_devices() -> list[dict[str, Any]]:
+        devices = list(store.list_devices())
+        caps: dict[str, Any] = getattr(api.state, "ha_caps", {}) or {}
+        ha = store.list_ha_devices()
+        for it in ha:
+            try:
+                eid = str(it.get("entity_id") or "").strip().lower()
+                if not eid or "." not in eid:
+                    continue
+                domain = str(it.get("domain") or eid.split(".", 1)[0]).strip().lower()
+                page = str(it.get("page") or "").strip().lower() or ("covers" if domain == "cover" else "lights")
+                name_override = str(it.get("name") or "").strip()
+                group = str(it.get("group") or "").strip()
+                icon = str(it.get("icon") or "").strip()
+                cap = caps.get(eid) if isinstance(caps, dict) else None
+                cap_name = str((cap or {}).get("name") or "").strip() if isinstance(cap, dict) else ""
+                name = name_override or cap_name or eid
+
+                if domain == "cover":
+                    devices.append(
+                        {
+                            "type": "cover",
+                            "origin": "ha",
+                            "entity_id": eid,
+                            "page": page,
+                            "name": name,
+                            "group": group,
+                            "icon": icon,
+                        }
+                    )
+                else:
+                    is_dimmable = False
+                    if domain == "light":
+                        if isinstance(cap, dict) and cap.get("dimmable") is not None:
+                            is_dimmable = bool(cap.get("dimmable"))
+                        else:
+                            is_dimmable = True
+                    devices.append(
+                        {
+                            "type": "light",
+                            "origin": "ha",
+                            "entity_id": eid,
+                            "domain": domain,
+                            "page": page,
+                            "name": name,
+                            "group": group,
+                            "dimmable": is_dimmable if domain == "light" else False,
+                            "icon": icon,
+                            "category": "switch" if domain == "switch" else "Luci",
+                        }
+                    )
+            except Exception:
+                continue
+        return devices
+
     api.state.loop = None
     api.state.gateway = None
     api.state.sniffer = TelegramSniffer(share_dir="/share", maxlen=5000)
@@ -343,6 +515,8 @@ def create_app() -> FastAPI:
         if path.startswith("/api/control/"):
             return await call_next(request)
         if path.startswith("/api/user/light_scenarios"):
+            return await call_next(request)
+        if path == "/api/user/devices" and request.method.upper() == "GET":
             return await call_next(request)
         if path.startswith("/api/icons/mdi/"):
             return await call_next(request)
@@ -1733,7 +1907,7 @@ self.addEventListener('fetch', (event) => {{
         await hub.broadcast(
             "devices",
             {
-                "devices": store.list_devices(),
+                "devices": _list_user_devices(),
             },
         )
 
@@ -1917,6 +2091,9 @@ self.addEventListener('fetch', (event) => {{
     async def _startup() -> None:
         loop = asyncio.get_running_loop()
         api.state.loop = loop
+        api.state.ha_states = {}
+        api.state.ha_caps = {}
+        api.state.ha_poll_task = None
         api.state._last_light_state = {}
         api.state._last_cover_state = {}
         api.state._last_cover_group_state = {}
@@ -2600,11 +2777,112 @@ self.addEventListener('fetch', (event) => {{
         mqtt.set_connect_handler(_on_mqtt_connect)
         mqtt.connect()
 
+        async def _ha_poll_loop() -> None:
+            if not _ha_enabled():
+                return
+            while True:
+                try:
+                    interval = float(getattr(settings, "ha_poll_interval_s", 2.0) or 2.0)
+                    interval = max(0.5, min(60.0, interval))
+                    ha_devices = store.list_ha_devices()
+                    eids: list[str] = []
+                    domains: dict[str, str] = {}
+                    for it in ha_devices:
+                        eid = str(it.get("entity_id") or "").strip().lower()
+                        if not eid:
+                            continue
+                        dom = str(it.get("domain") or "").strip().lower() or (eid.split(".", 1)[0] if "." in eid else "")
+                        if dom not in ("light", "switch", "cover"):
+                            continue
+                        eids.append(eid)
+                        domains[eid] = dom
+                    if not eids:
+                        await asyncio.sleep(interval)
+                        continue
+
+                    raw = await asyncio.to_thread(_ha_request, "GET", "/api/states", payload=None, timeout_s=10)
+                    if not isinstance(raw, list):
+                        await asyncio.sleep(interval)
+                        continue
+                    by_eid: dict[str, dict[str, Any]] = {}
+                    for st in raw:
+                        if not isinstance(st, dict):
+                            continue
+                        eid = str(st.get("entity_id") or "").strip().lower()
+                        if eid in domains:
+                            by_eid[eid] = st
+
+                    last: dict[str, Any] = getattr(api.state, "ha_states", {}) or {}
+                    last_caps: dict[str, Any] = getattr(api.state, "ha_caps", {}) or {}
+                    next_states: dict[str, Any] = dict(last)
+                    next_caps: dict[str, Any] = dict(last_caps)
+                    caps_changed = False
+
+                    for eid in eids:
+                        st = by_eid.get(eid)
+                        if not st:
+                            continue
+                        dom = domains.get(eid) or "light"
+
+                        fn = _ha_friendly_name(st)
+                        if fn:
+                            prevn = ""
+                            if isinstance(last_caps.get(eid), dict):
+                                prevn = str((last_caps.get(eid) or {}).get("name") or "")
+                            if prevn != fn:
+                                next_caps[eid] = dict(next_caps.get(eid) or {})
+                                next_caps[eid]["name"] = fn
+                                caps_changed = True
+
+                        if dom == "light":
+                            dim = _ha_light_is_dimmable(st)
+                            prevd = None
+                            if isinstance(last_caps.get(eid), dict):
+                                prevd = (last_caps.get(eid) or {}).get("dimmable")
+                            if prevd is None or bool(prevd) != bool(dim):
+                                next_caps[eid] = dict(next_caps.get(eid) or {})
+                                next_caps[eid]["dimmable"] = bool(dim)
+                                caps_changed = True
+                        if dom == "cover":
+                            mapped = _map_ha_state_to_cover(st)
+                            prev = last.get(eid)
+                            if prev != mapped:
+                                next_states[eid] = mapped
+                                await hub.broadcast("ha_cover_state", mapped)
+                        elif dom == "switch":
+                            mapped = _map_ha_state_to_switch(st)
+                            prev = last.get(eid)
+                            if prev != mapped:
+                                next_states[eid] = mapped
+                                await hub.broadcast("ha_switch_state", mapped)
+                        else:
+                            mapped = _map_ha_state_to_light(st)
+                            prev = last.get(eid)
+                            if prev != mapped:
+                                next_states[eid] = mapped
+                                await hub.broadcast("ha_light_state", mapped)
+
+                    api.state.ha_states = next_states
+                    api.state.ha_caps = next_caps
+                    if caps_changed:
+                        await _broadcast_devices()
+                    await asyncio.sleep(interval)
+                except asyncio.CancelledError:
+                    return
+                except Exception:
+                    continue
+
+        try:
+            api.state.ha_poll_task = asyncio.create_task(_ha_poll_loop())
+        except Exception:
+            api.state.ha_poll_task = None
+
         # Best-effort icon sync on boot (non-blocking)
         asyncio.create_task(_sync_icons_for_devices(store.list_devices()))
         asyncio.create_task(_sync_icons_for_cover_groups(store.list_cover_groups()))
         asyncio.create_task(_sync_icons_for_hub_links(store.list_hub_links()))
         asyncio.create_task(_sync_icons_for_hub_config({"hub_icons": store.get_hub_icons()}))
+        asyncio.create_task(_sync_icons_for_ha_devices(store.list_ha_devices()))
 
         # publish stored retained states (so HA/UI have last-known values after reboot)
         for k, v in store.get_states().items():
@@ -2772,6 +3050,9 @@ self.addEventListener('fetch', (event) => {{
         poll = getattr(api.state, "poll_task", None)
         if poll is not None:
             poll.cancel()
+        ha_poll = getattr(api.state, "ha_poll_task", None)
+        if ha_poll is not None:
+            ha_poll.cancel()
 
         gw: BusproGateway | None = api.state.gateway
         if gw is not None:
@@ -2885,6 +3166,10 @@ self.addEventListener('fetch', (event) => {{
             "hub_order": store.get_hub_order(),
         } 
 
+    @api.get("/api/user/devices")
+    async def api_user_devices():
+        return _list_user_devices()
+
     @api.get("/api/ui") 
     async def api_ui(): 
         return {"group_order": store.get_group_order()} 
@@ -2972,6 +3257,45 @@ self.addEventListener('fetch', (event) => {{
         await hub.broadcast("hub_config", {"hub_icons": cleaned, "hub_show": cleaned_show, "hub_order": cleaned_order})
         return {"hub_icons": cleaned, "hub_show": cleaned_show, "hub_order": cleaned_order}
 
+    @api.get("/api/ha_devices")
+    async def api_ha_devices_list():
+        # Admin-only via port gate
+        return {"items": store.list_ha_devices()}
+
+    @api.post("/api/ha_devices")
+    async def api_ha_devices_add(payload: dict[str, Any]):
+        # Admin-only via port gate
+        try:
+            item = store.add_ha_device(payload)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        asyncio.create_task(_sync_icons_for_ha_devices(store.list_ha_devices()))
+        await _broadcast_devices()
+        return item
+
+    @api.put("/api/ha_devices/{device_id}")
+    async def api_ha_devices_update(device_id: str, payload: dict[str, Any]):
+        # Admin-only via port gate
+        try:
+            item = store.update_ha_device(device_id=device_id, payload=payload)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        if item is None:
+            raise HTTPException(status_code=404, detail="Not Found")
+        asyncio.create_task(_sync_icons_for_ha_devices(store.list_ha_devices()))
+        await _broadcast_devices()
+        return item
+
+    @api.delete("/api/ha_devices/{device_id}")
+    async def api_ha_devices_delete(device_id: str):
+        # Admin-only via port gate
+        ok = store.delete_ha_device(device_id=device_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Not Found")
+        asyncio.create_task(_sync_icons_for_ha_devices(store.list_ha_devices()))
+        await _broadcast_devices()
+        return {"ok": True}
+
     @api.post("/api/hub_links")
     async def api_hub_links_upsert(payload: dict[str, Any]):
         try:
@@ -3058,6 +3382,14 @@ self.addEventListener('fetch', (event) => {{
                 names.append(mdi)
         return names
 
+    def _mdi_names_from_ha_devices(items: list[dict[str, Any]]) -> list[str]:
+        names: list[str] = []
+        for it in items or []:
+            mdi = parse_mdi_icon(str(it.get("icon") or ""))
+            if mdi:
+                names.append(mdi)
+        return names
+
     async def _sync_icons_for_devices(devices: list[dict[str, Any]]) -> None:
         names = _mdi_names_from_devices(devices)
         if not names:
@@ -3106,6 +3438,18 @@ self.addEventListener('fetch', (event) => {{
             except Exception:
                 return
 
+    async def _sync_icons_for_ha_devices(items: list[dict[str, Any]]) -> None:
+        names = _mdi_names_from_ha_devices(items)
+        if not names:
+            return
+        lock: asyncio.Lock = api.state.icon_lock
+        icons_dir: str = api.state.icons_dir
+        async with lock:
+            try:
+                await asyncio.to_thread(ensure_mdi_icons, icons_dir, names)
+            except Exception:
+                return
+
     @api.get("/api/icons/mdi/{name}.svg") 
     async def mdi_icon(name: str): 
         # Always return something (placeholder if missing/offline)
@@ -3142,6 +3486,10 @@ self.addEventListener('fetch', (event) => {{
                 icons.add(f"mdi:{mdi}")
         for v in store.get_hub_icons().values():
             mdi = parse_mdi_icon(str(v or ""))
+            if mdi:
+                icons.add(f"mdi:{mdi}")
+        for it in store.list_ha_devices():
+            mdi = parse_mdi_icon(str(it.get("icon") or ""))
             if mdi:
                 icons.add(f"mdi:{mdi}")
         return {"icons": sorted(icons)}
@@ -4915,6 +5263,66 @@ self.addEventListener('fetch', (event) => {{
             pass
         return {"ok": True}
 
+    @api.post("/api/control/ha/light/{entity_id}")
+    async def control_ha_light(entity_id: str, payload: dict[str, Any]):
+        if not _ha_enabled():
+            raise HTTPException(status_code=503, detail="Home Assistant API not available (SUPERVISOR_TOKEN missing)")
+        eid = str(entity_id or "").strip().lower()
+        if not eid.startswith("light."):
+            raise HTTPException(status_code=400, detail="entity_id must start with light.")
+        state = str(payload.get("state") or "").upper()
+        if state not in ("ON", "OFF"):
+            raise HTTPException(status_code=400, detail="state must be ON/OFF")
+        if state == "OFF":
+            await asyncio.to_thread(_ha_request, "POST", "/api/services/light/turn_off", payload={"entity_id": eid}, timeout_s=10)
+            return {"ok": True}
+        data: dict[str, Any] = {"entity_id": eid}
+        br = payload.get("brightness")
+        if br is not None:
+            try:
+                data["brightness"] = int(br)
+            except Exception:
+                pass
+        await asyncio.to_thread(_ha_request, "POST", "/api/services/light/turn_on", payload=data, timeout_s=10)
+        return {"ok": True}
+
+    @api.post("/api/control/ha/switch/{entity_id}")
+    async def control_ha_switch(entity_id: str, payload: dict[str, Any]):
+        if not _ha_enabled():
+            raise HTTPException(status_code=503, detail="Home Assistant API not available (SUPERVISOR_TOKEN missing)")
+        eid = str(entity_id or "").strip().lower()
+        if not eid.startswith("switch."):
+            raise HTTPException(status_code=400, detail="entity_id must start with switch.")
+        state = str(payload.get("state") or "").upper()
+        if state not in ("ON", "OFF"):
+            raise HTTPException(status_code=400, detail="state must be ON/OFF")
+        svc = "turn_on" if state == "ON" else "turn_off"
+        await asyncio.to_thread(_ha_request, "POST", f"/api/services/switch/{svc}", payload={"entity_id": eid}, timeout_s=10)
+        return {"ok": True}
+
+    @api.post("/api/control/ha/cover/{entity_id}")
+    async def control_ha_cover(entity_id: str, payload: dict[str, Any]):
+        if not _ha_enabled():
+            raise HTTPException(status_code=503, detail="Home Assistant API not available (SUPERVISOR_TOKEN missing)")
+        eid = str(entity_id or "").strip().lower()
+        if not eid.startswith("cover."):
+            raise HTTPException(status_code=400, detail="entity_id must start with cover.")
+        cmd = str(payload.get("command") or "").strip().upper()
+        if cmd in ("OPEN", "CLOSE", "STOP"):
+            svc = "open_cover" if cmd == "OPEN" else ("close_cover" if cmd == "CLOSE" else "stop_cover")
+            await asyncio.to_thread(_ha_request, "POST", f"/api/services/cover/{svc}", payload={"entity_id": eid}, timeout_s=10)
+            return {"ok": True}
+        if cmd == "SET_POSITION":
+            pos = payload.get("position")
+            try:
+                pos_i = int(pos)
+            except Exception:
+                raise HTTPException(status_code=400, detail="position required")
+            pos_i = max(0, min(100, pos_i))
+            await asyncio.to_thread(_ha_request, "POST", "/api/services/cover/set_cover_position", payload={"entity_id": eid, "position": pos_i}, timeout_s=10)
+            return {"ok": True}
+        raise HTTPException(status_code=400, detail="unsupported command")
+
     @api.websocket("/ws")
     async def ws_endpoint(ws: WebSocket):
         # websocket auth: allow if ingress, or auth_mode none, or token provided
@@ -4944,7 +5352,7 @@ self.addEventListener('fetch', (event) => {{
                     {
                         "type": "snapshot",
                         "data": {
-                            "devices": store.list_devices(),
+                            "devices": _list_user_devices(),
                             "cover_groups": store.list_cover_groups(),
                             "states": {
                                 k.split(":", 1)[1]: v
@@ -4996,6 +5404,7 @@ self.addEventListener('fetch', (event) => {{
 	                                for k, v in store.get_states().items()
 	                                if isinstance(k, str) and k.startswith("ultrasonic:")
 	                            },
+                                "ha_states": getattr(api.state, "ha_states", {}) or {},
 	                            "mqtt": api.state.mqtt.status().__dict__,
 	                        },
 	                    },

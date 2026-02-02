@@ -157,6 +157,7 @@
         border:1px solid rgba(255,255,255,.14);
         background:rgba(255,255,255,.06);
         color:rgba(242,245,255,.86);
+        border-radius:12px;
         cursor:pointer;
         -webkit-tap-highlight-color: transparent;
       }
@@ -372,7 +373,10 @@
           .replace(/\"/g,'&quot;')
           .replace(/'/g,'&#039;');
       }
-      function addrOf(d){ return `${Number(d.subnet_id)}.${Number(d.device_id)}.${Number(d.channel)}`; } 
+      function addrOf(d){
+        if (d && String(d.origin || '') === 'ha') return String(d.entity_id || '').trim();
+        return `${Number(d.subnet_id)}.${Number(d.device_id)}.${Number(d.channel)}`;
+      } 
  
       function absUrl(path) { return new URL(path, window.location.href).toString(); } 
       function cssEscape(s) {
@@ -389,12 +393,21 @@
         return r.text();
       }
 
-      async function sendLight(addr, state, brightness) {
-        const parts = String(addr || '').split('.').map(Number);
-        const s = parts[0], d = parts[1], c = parts[2];
+      async function sendLight(d, addr, state, brightness) {
         const payload = { state: state };
         if (brightness !== undefined) payload.brightness = brightness;
-        await getJson(`api/control/light/${s}/${d}/${c}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        if (d && String(d.origin || '') === 'ha') {
+          const dom = String(d.domain || (String(d.entity_id||'').split('.',1)[0]||'light')).toLowerCase();
+          if (dom === 'switch') {
+            await getJson(`api/control/ha/switch/${encodeURIComponent(String(d.entity_id||addr))}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ state: state }) });
+            return;
+          }
+          await getJson(`api/control/ha/light/${encodeURIComponent(String(d.entity_id||addr))}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+          return;
+        }
+        const parts = String(addr || '').split('.').map(Number);
+        const s = parts[0], dd = parts[1], c = parts[2];
+        await getJson(`api/control/light/${s}/${dd}/${c}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
       }
 
       async function loadLightScenarios() {
@@ -424,7 +437,7 @@
       }
 
       function groupsFromDevices() {
-        const allLights = (lastDevices || []).filter(d => String(d.type || 'light') === 'light' && !isExtraSwitch(d));
+        const allLights = (lastDevices || []).filter(isLightListDevice);
         const groups = new Map(); // key -> label
         for (const d of allLights) {
           const key = groupKeyFromGroup(d.group);
@@ -843,6 +856,12 @@
         return cat === 'switch' || cat === 'extra';
       }
 
+      function isLightListDevice(d) {
+        if (String(d.type || 'light').toLowerCase() !== 'light') return false;
+        if (String(d.origin || '') === 'ha') return String(d.page || 'lights') === 'lights';
+        return !isExtraSwitch(d);
+      }
+
       function isActiveLight(d) {
         const addr = addrOf(d);
         const st = stateByAddr.get(addr);
@@ -856,8 +875,7 @@
       function refreshDeviceIndex() {
         deviceByAddr.clear();
         for (const d of (lastDevices || [])) {
-          if (String(d.type || '') !== 'light') continue;
-          if (isExtraSwitch(d)) continue;
+          if (!isLightListDevice(d)) continue;
           deviceByAddr.set(addrOf(d), d);
         }
       }
@@ -1030,15 +1048,17 @@
             qs('err').textContent = '';
             const addr = el.getAttribute('data-addr');
             if (!addr) return;
+            const dev = deviceByAddr.get(addr);
+            if (!dev) return;
             try {
               const cur = stateByAddr.get(addr) || { state:'OFF', brightness:255 };
               const isOn = String(cur.state||'').toUpperCase() === 'ON';
               if (!isOn) {
                 const remembered = Number(lastBrightness.get(addr) || 255);
                 const use = Number.isFinite(remembered) && remembered > 1 ? remembered : 255;
-                await sendLight(addr, 'ON', use);
+                await sendLight(dev, addr, 'ON', use);
               } else {
-                await sendLight(addr, 'OFF');
+                await sendLight(dev, addr, 'OFF');
               }
             } catch (e) { qs('err').textContent = e.message || String(e); }
           });
@@ -1056,7 +1076,9 @@
           el.addEventListener('change', async () => {
             qs('err').textContent = '';
             const addr = el.getAttribute('data-addr');
-            try { await sendLight(addr, 'ON', Number(el.value || 1)); } catch (e) { qs('err').textContent = e.message || String(e); }
+            const dev = deviceByAddr.get(addr);
+            if (!dev) return;
+            try { await sendLight(dev, addr, 'ON', Number(el.value || 1)); } catch (e) { qs('err').textContent = e.message || String(e); }
           });
         });
 
@@ -1099,6 +1121,15 @@
                 const brightness = (st.brightness === null || st.brightness === undefined) ? 0 : Number(st.brightness);
                 stateByAddr.set(addr, { state, brightness });
               }
+              const ha = msg.data.ha_states || {};
+              if (ha && typeof ha === 'object') {
+                for (const [eid, st] of Object.entries(ha)) {
+                  const s0 = (st && typeof st === 'object') ? st : {};
+                  const state = String(s0.state || '').toUpperCase() || '?';
+                  const brightness = (s0.brightness === null || s0.brightness === undefined) ? 0 : Number(s0.brightness);
+                  stateByAddr.set(String(eid), { state, brightness });
+                }
+              }
               queueRender();
               return;
             }
@@ -1126,6 +1157,34 @@
               if (showActiveOnly && prevActive !== nowActive) queueRender();
               return;
             }
+            if (msg.type === 'ha_light_state') {
+              const ev = msg.data || {};
+              const addr = String(ev.entity_id || '').trim();
+              if (!addr) return;
+              const next = { state: ev.state, brightness: ev.brightness };
+              stateByAddr.set(addr, next);
+              const nowActive = isActiveState(next);
+              const prevActive = activeByAddr.get(addr);
+              activeByAddr.set(addr, nowActive);
+              applyLightStateToRow(addr);
+              queueCountsUpdate();
+              if (showActiveOnly && prevActive !== nowActive) queueRender();
+              return;
+            }
+            if (msg.type === 'ha_switch_state') {
+              const ev = msg.data || {};
+              const addr = String(ev.entity_id || '').trim();
+              if (!addr) return;
+              const next = { state: ev.state, brightness: 0 };
+              stateByAddr.set(addr, next);
+              const nowActive = isActiveState(next);
+              const prevActive = activeByAddr.get(addr);
+              activeByAddr.set(addr, nowActive);
+              applyLightStateToRow(addr);
+              queueCountsUpdate();
+              if (showActiveOnly && prevActive !== nowActive) queueRender();
+              return;
+            }
           } catch (e) {}
         };
       }
@@ -1144,7 +1203,7 @@
           if (fb) fb.classList.toggle('on', !!showActiveOnly);
           const meta = await getJson('api/meta'); 
           groupOrder = Array.isArray(meta.group_order) ? meta.group_order.map(normalizeGroup).filter(Boolean) : []; 
-          lastDevices = await getJson('api/devices'); 
+          lastDevices = await getJson('api/user/devices'); 
           refreshDeviceIndex();
           // Default: all groups expanded on first load (no collapsed preference).
           queueRender(); 
@@ -1161,7 +1220,7 @@
 
       qs('collapseBtn').addEventListener('click', () => {
         const allLights = lastDevices
-          .filter(d => String(d.type || 'light') === 'light' && !isExtraSwitch(d))
+          .filter(isLightListDevice)
           .slice();
         const groups = new Set(allLights.map((d) => groupKeyFromGroup(d.group)));
         const keys = Array.from(groups);
