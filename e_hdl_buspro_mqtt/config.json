@@ -1,0 +1,104 @@
+{
+    "name":  "e-hdl BusPro MQTT",
+    "slug":  "e_hdl_buspro_mqtt",
+    "description":  "BusPro UDP bridge with MQTT Discovery + Web UI.",
+    "version":  "0.1.239",
+    "startup":  "services",
+    "boot":  "auto",
+    "host_network":  true,
+    "arch":  [
+                 "amd64",
+                 "aarch64",
+                 "armv7"
+             ],
+    "init":  false,
+    "map":  [
+                "config:rw",
+                "share:rw"
+            ],
+    "options":  {
+                    "gateway_host":  "192.168.1.10",
+                    "gateway_port":  6000,
+                    "gateway_local_ip":  "",
+                    "poll_interval_s":  180,
+                    "poll_pace_s":  0.15,
+                    "light_cmd_interval_s":  0.12,
+                    "udp_send_interval_s":  0.0,
+                    "debug":  false,
+                    "debug_telegram":  false,
+                    "auth":  {
+                                 "mode":  "none",
+                                 "token":  "",
+                                 "username":  "",
+                                 "password":  ""
+                             },
+                    "user_auth":  {
+                                     "mode":  "none",
+                                     "token":  "",
+                                     "username":  "",
+                                     "password":  ""
+                                 },
+                    "mqtt":  {
+                                 "host":  "core-mosquitto",
+                                 "port":  1883,
+                                 "username":  "",
+                                 "password":  "",
+                                 "base_topic":  "buspro",
+                                 "discovery_prefix":  "homeassistant",
+                                 "client_id":  "buspro-addon"
+                             }
+                },
+    "schema":  {
+                   "gateway_host":  "str",
+                   "gateway_port":  "port",
+                   "gateway_local_ip":  "str?",
+                   "poll_interval_s":  "float?",
+                   "poll_pace_s":  "float?",
+                   "light_cmd_interval_s":  "float?",
+                   "udp_send_interval_s":  "float?",
+                   "debug":  "bool?",
+                   "debug_telegram":  "bool?",
+                   "auth":  {
+                                "mode":  "list(none|token|basic)",
+                                "token":  "str?",
+                                "username":  "str?",
+                                "password":  "password?"
+                            },
+                   "user_auth":  {
+                                     "mode":  "list(none|token|basic)",
+                                     "token":  "str?",
+                                     "username":  "str?",
+                                     "password":  "password?"
+                                 },
+                   "mqtt":  {
+                                "host":  "str",
+                                "port":  "port",
+                                "username":  "str?",
+                                "password":  "password?",
+                                "base_topic":  "str",
+                                "discovery_prefix":  "str",
+                                "client_id":  "str"
+                            }
+               },
+    "webui":  "http://[HOST]:[PORT:8124]",
+    "build_from":  {
+                       "amd64":  "ghcr.io/home-assistant/amd64-base:3.19",
+                       "aarch64":  "ghcr.io/home-assistant/aarch64-base:3.19",
+                       "armv7":  "ghcr.io/home-assistant/armv7-base:3.19"
+                   },
+    "ports":  {
+                  "8124/tcp":  8124,
+                  "8125/tcp":  8125,
+                  "6000/udp":  6000
+              },
+    "ports_description":  {
+                              "8124/tcp":  "Web UI",
+                              "8125/tcp":  "Admin UI",
+                              "6000/udp":  "BusPro UDP (default)"
+                          },
+    "ingress":  true,
+    "ingress_port":  8124,
+    "ingress_entry":  "index.html",
+    "panel_title":  "BusPro",
+    "panel_icon":  "mdi:lan-connect"
+}

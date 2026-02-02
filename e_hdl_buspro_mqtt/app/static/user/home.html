@@ -1,0 +1,233 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BusPro - Home</title>
+    <style>
+      :root{
+        --bg0:#05070b;
+        --text:#f2f5ff;
+        --muted:rgba(255,255,255,.60);
+        --line:rgba(255,255,255,.08);
+        --danger:#ff6b6b;
+      }
+      body{
+        margin:0;
+        font-family:system-ui,Segoe UI,Roboto,Arial;
+        color:var(--text);
+        -webkit-font-smoothing:antialiased;
+        text-rendering:optimizeLegibility;
+        min-height:100vh;
+      }
+      body::before{
+        content:'';
+        position:fixed;
+        inset:0;
+        z-index:-2;
+        background: radial-gradient(1200px 800px at 50% 50%, rgba(26,34,48,.65) 0%, var(--bg0) 52%, #000 100%);
+        background-position:center center;
+        background-repeat:no-repeat;
+      }
+      main{max-width:820px;margin:0 auto;padding:18px 16px 26px;min-height:100vh;display:flex;flex-direction:column;justify-content:center;gap:18px}
+      .logoWrap{display:flex;justify-content:center}
+      .logo{
+        width:min(340px, 62vw);
+        height:auto;
+        opacity:.92;
+        filter:drop-shadow(0 10px 30px rgba(0,0,0,.55));
+      }
+      .muted{color:var(--muted);font-size:13px;text-align:center}
+      .grid{display:grid;grid-template-columns:1fr;gap:12px}
+      @media(min-width:640px){.grid{grid-template-columns:1fr 1fr}}
+      .tile{
+        display:flex;align-items:center;gap:14px;
+        text-decoration:none;color:var(--text);
+        border:1px solid var(--line);
+        background:rgba(0,0,0,.18);
+        backdrop-filter: blur(10px);
+        border-radius:18px;
+        padding:16px 16px;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .tile:active{transform:scale(.99)}
+      .ico{
+        width:34px;height:34px;flex:0 0 34px;
+        background:rgba(242,245,255,.78);
+        -webkit-mask-repeat:no-repeat;
+        -webkit-mask-position:center;
+        -webkit-mask-size:contain;
+        mask-repeat:no-repeat;
+        mask-position:center;
+        mask-size:contain;
+        box-shadow:0 0 10px rgba(255,255,255,.04);
+        opacity:.92;
+      }
+      .label{font-size:18px;line-height:1.2;font-weight:520;opacity:.92}
+      .sub{margin-top:4px;font-size:12px;color:rgba(255,255,255,.55);opacity:.9}
+      .err{color:var(--danger);font-size:13px;text-align:center}
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="logoWrap">
+        <img class="logo" src="static/logo.png" alt="Logo" />
+      </div>
+      <div class="muted">Home · Luci · Cover · Extra</div>
+      <div id="err" class="err"></div>
+      <div id="grid" class="grid" aria-label="home links"></div>
+    </main>
+    <script>
+      function absUrl(path) { return new URL(path, window.location.href).toString(); }
+      async function getJson(path, opts) {
+        const r = await fetch(absUrl(path), opts);
+        if (!r.ok) throw new Error(await r.text());
+        const ct = (r.headers.get('content-type')||'').toLowerCase();
+        if (ct.includes('application/json')) return r.json();
+        return r.text();
+      }
+      function mdiName(iconValue, fallback) {
+        const v = (iconValue === null || iconValue === undefined) ? '' : String(iconValue).trim();
+        const m = /^mdi:([a-z0-9_-]+)$/i.exec(v);
+        return (m ? m[1].toLowerCase() : (fallback || 'link-variant'));
+      }
+      function iconUrl(iconValue, fallback) {
+        const name = mdiName(iconValue, fallback);
+        return absUrl(`api/icons/mdi/${name}.svg`);
+      }
+      function makeTile({ title, subtitle, href, icon, targetBlank }) {
+        const a = document.createElement('a');
+        a.className = 'tile';
+        a.href = href;
+        if (targetBlank) {
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+        }
+        const ico = document.createElement('div');
+        ico.className = 'ico';
+        ico.style.webkitMaskImage = `url("${icon}")`;
+        ico.style.maskImage = `url("${icon}")`;
+        const content = document.createElement('div');
+        content.style.minWidth = '0';
+        content.innerHTML = `<div class="label">${title}</div>` + (subtitle ? `<div class="sub">${subtitle}</div>` : '');
+        a.appendChild(ico);
+        a.appendChild(content);
+        return a;
+      }
+
+      async function init() {
+        const grid = document.getElementById('grid');
+        const err = document.getElementById('err');
+        grid.innerHTML = '';
+        err.textContent = '';
+
+        let meta = null;
+        try {
+          meta = await getJson('api/meta');
+        } catch (e) {
+          meta = null;
+        }
+
+        const icons = (meta && meta.hub_icons && typeof meta.hub_icons === 'object') ? meta.hub_icons : {};
+        const show = (meta && meta.hub_show && typeof meta.hub_show === 'object') ? meta.hub_show : {};
+        const iconLights = String(icons.lights || 'mdi:lightbulb-group');
+        const iconCovers = String(icons.covers || 'mdi:window-shutter');
+        const iconExtra = String(icons.extra || 'mdi:shape');
+
+        if (show.lights !== false) {
+          grid.appendChild(makeTile({
+            title: 'Luci',
+            subtitle: 'Controllo luci e dimmer',
+            href: absUrl('lights'),
+            icon: iconUrl(iconLights, 'lightbulb-group'),
+            targetBlank: false
+          }));
+        }
+        if (show.covers !== false) {
+          grid.appendChild(makeTile({
+            title: 'Cover',
+            subtitle: 'Tapparelle / curtain',
+            href: absUrl('covers'),
+            icon: iconUrl(iconCovers, 'window-shutter'),
+            targetBlank: false
+          }));
+        }
+        if (show.extra !== false) {
+          grid.appendChild(makeTile({
+            title: 'Extra',
+            subtitle: 'Switch e comandi extra',
+            href: absUrl('extra'),
+            icon: iconUrl(iconExtra, 'shape'),
+            targetBlank: false
+          }));
+        }
+
+        if (!meta) {
+          err.textContent = 'Impossibile leggere meta (api/meta)';
+          return;
+        }
+
+        const links = (meta && Array.isArray(meta.hub_links)) ? meta.hub_links : [];
+        for (const it of links) {
+          const title = String(it.title || '').trim();
+          const url = String(it.url || '').trim();
+          if (!title || !url) continue;
+          grid.appendChild(makeTile({
+            title,
+            subtitle: '',
+            href: url,
+            icon: iconUrl(it.icon || 'mdi:link-variant', 'link-variant'),
+            targetBlank: !!it.new_tab
+          }));
+        }
+      }
+
+      init();
+    </script>
+    <script>
+      // Hidden back gesture: long-press top-left corner.
+      (function () {
+        const CORNER = 60;
+        const HOLD_MS = 450;
+        let timer = null;
+        function inCorner(e) {
+          return !!e && Number(e.clientX) <= CORNER && Number(e.clientY) <= CORNER;
+        }
+        function goHome() {
+          try {
+            window.location.href = new URL('home2', window.location.href).toString();
+          } catch (e) {}
+        }
+        function doBack() {
+          try {
+            if (window.history && window.history.length > 1) {
+              window.history.back();
+              return;
+            }
+          } catch (e) {}
+          goHome();
+        }
+        function clear() {
+          if (timer) {
+            clearTimeout(timer);
+            timer = null;
+          }
+        }
+        document.addEventListener('pointerdown', (e) => {
+          if (timer) return;
+          if (!inCorner(e)) return;
+          timer = setTimeout(() => {
+            timer = null;
+            doBack();
+          }, HOLD_MS);
+        }, { passive: true });
+        document.addEventListener('pointerup', clear, { passive: true });
+        document.addEventListener('pointercancel', clear, { passive: true });
+        document.addEventListener('pointermove', (e) => {
+          if (!timer) return;
+          if (!inCorner(e)) clear();
+        }, { passive: true });
+      })();
+    </script>
+  </body>
+</html>

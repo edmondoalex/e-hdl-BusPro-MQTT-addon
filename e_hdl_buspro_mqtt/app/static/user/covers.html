@@ -1,0 +1,1078 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BusPro - Cover</title>
+    <style>
+      :root{
+        --bg0:#05070b;
+        --text:rgba(242,245,255,.88);
+        --muted:rgba(255,255,255,.55);
+        --line:rgba(255,255,255,.08);
+        --danger:#ff6b6b;
+      }
+      body{
+        margin:0;
+        font-family:system-ui,Segoe UI,Roboto,Arial;
+        color:var(--text);
+        -webkit-font-smoothing:antialiased;
+        text-rendering:optimizeLegibility;
+        min-height:100vh;
+      }
+      body::before{
+        content:'';
+        position:fixed;
+        inset:0;
+        z-index:-2;
+        background: radial-gradient(1200px 800px at 50% 50%, rgba(26,34,48,.65) 0%, var(--bg0) 52%, #000 100%);
+        background-position:center center;
+        background-repeat:no-repeat;
+      }
+      body::after{
+        content:'';
+        position:fixed;
+        inset:0;
+        z-index:-1;
+        pointer-events:none;
+        background-image:url('static/user/e-cover-addon.png');
+        background-repeat:no-repeat;
+        background-position:50% 50%;
+        background-size:min(380px, 41vmin);
+        opacity:1;
+        filter:brightness(1.05);
+      }
+      main{max-width:820px;margin:0 auto;padding:10px 14px 24px;min-height:100vh;display:flex;flex-direction:column}
+      main.centerY{justify-content:center}
+      .list{border-radius:18px;overflow:hidden;border:1px solid var(--line);background:rgba(0,0,0,.05);backdrop-filter: blur(10px)}
+      .topBtns{
+        position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:20;
+        display:flex;gap:10px;align-items:center;justify-content:center;
+      }
+      .filterBtn{
+        position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:20;
+        width:42px;height:42px;border-radius:999px;
+        border:1px solid rgba(255,255,255,.10);
+        background:rgba(0,0,0,.28);
+        backdrop-filter: blur(10px);
+        display:flex;align-items:center;justify-content:center;
+        cursor:pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .filterBtn{position:static;transform:none}
+      .filterBtn:active{transform:scale(.98)}
+      .filterBtn svg{width:20px;height:20px}
+      .filterBtn path{stroke:rgba(242,245,255,.78);stroke-width:2.2;stroke-linecap:round}
+      .filterBtn.on path{stroke:rgba(255,215,0,.95)}
+      .section{
+        padding:12px 16px;
+        font-size:12px;
+        letter-spacing:.12em;
+        text-transform:uppercase;
+        color:rgba(255,255,255,.55);
+        border-top:1px solid rgba(255,255,255,.06);
+        background:rgba(0,0,0,.03);
+        display:flex;align-items:center;justify-content:space-between;
+        cursor:pointer;
+        user-select:none;
+      }
+      .section:active{background:rgba(0,0,0,.06)}
+      .section .count{font-size:11px;letter-spacing:.08em;color:rgba(255,255,255,.40)}
+      .row{
+        display:flex;gap:14px;align-items:center;
+        padding:14px 16px;
+        border-top:1px solid rgba(255,255,255,.06);
+        background:rgba(0,0,0,.05);
+        cursor:pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .row:active{background:rgba(0,0,0,.08)}
+      .row.moving{
+        box-shadow:0 0 22px rgba(255,215,0,.12) inset;
+      }
+      .content{flex:1;min-width:0}
+      .name{
+        font-size:19px;line-height:1.15;font-weight:420;
+        opacity:.88;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+      }
+      .sub{
+        margin-top:6px;
+        font-size:12px;
+        color:var(--muted);
+      }
+      .actions{display:flex;gap:12px;align-items:center}
+      .iconBtn{
+        width:40px;height:40px;border-radius:999px;
+        border:1px solid rgba(255,255,255,.10);
+        background:rgba(0,0,0,.22);
+        display:flex;align-items:center;justify-content:center;
+        cursor:pointer;
+      }
+      .iconBtn:active{transform:scale(.98)}
+      .iconBtn svg{width:22px;height:22px;stroke:rgba(242,245,255,.72);stroke-width:2.2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+      .iconBtn.stop svg{stroke:rgba(242,245,255,.65)}
+      .coverIco{
+        width:34px;height:34px;flex:0 0 34px;
+        background:rgba(242,245,255,.65);
+        -webkit-mask-repeat:no-repeat;
+        -webkit-mask-position:center;
+        -webkit-mask-size:contain;
+        mask-repeat:no-repeat;
+        mask-position:center;
+        mask-size:contain;
+        box-shadow:0 0 10px rgba(255,255,255,.04);
+        opacity:.85;
+      }
+      .row.moving .coverIco{
+        background:rgba(255,215,0,.55);
+        box-shadow:0 0 14px rgba(255,215,0,.18);
+        opacity:1;
+      }
+      .error{color:var(--danger);font-size:13px;margin-top:10px}
+
+      /* Modal */
+      .modalBack{
+        position:fixed;inset:0;
+        background:rgba(0,0,0,.55);
+        display:none;
+        align-items:center;
+        justify-content:center;
+        padding:18px;
+      }
+      .modal{
+        width:min(420px, 100%);
+        border-radius:22px;
+        border:1px solid rgba(255,255,255,.10);
+        background:rgba(0,0,0,.55);
+        backdrop-filter: blur(14px);
+        overflow:hidden;
+      }
+      .mHead{
+        padding:14px 16px;
+        display:flex;gap:12px;align-items:center;
+        border-bottom:1px solid rgba(255,255,255,.08);
+      }
+      .mHeadCol{flex:1;min-width:0}
+      .mPctTop{font-size:32px;line-height:1;font-weight:480;letter-spacing:.01em;opacity:.92}
+      .mTitle{margin-top:6px;font-weight:450;opacity:.78;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .closeBtn{
+        width:36px;height:36px;border-radius:999px;
+        border:1px solid rgba(255,255,255,.10);
+        background:rgba(0,0,0,.25);
+        color:rgba(242,245,255,.75);
+        cursor:pointer;
+      }
+      .mBody{padding:16px}
+      .pillWrap{display:flex;justify-content:center;padding:6px 0 16px}
+      .pill{
+        width:170px;height:360px;border-radius:34px;
+        border:1px solid rgba(255,255,255,.14);
+        background:rgba(255,255,255,.07);
+        position:relative;overflow:hidden;
+        touch-action:none;
+      }
+      .fill{
+        position:absolute;left:0;right:0;bottom:0;
+        background:rgba(255,215,0,.18);
+        height:0%;
+      }
+      .handle{
+        position:absolute;left:50%;transform:translateX(-50%);
+        bottom:10px;width:52px;height:5px;border-radius:999px;
+        background:rgba(242,245,255,.40);
+      }
+      .mControls{display:flex;gap:12px;justify-content:center;margin-top:2px}
+      .mControls .iconBtn{width:46px;height:46px}
+      .mControls .iconBtn svg{width:24px;height:24px}
+      input[type="range"]{width:100%;accent-color:rgba(242,245,255,.78)}
+    </style>
+  </head>
+  <body>
+    <div class="topBtns">
+      <button id="filterBtn" class="filterBtn" type="button" aria-label="Mostra solo attivi">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M6 7h12"/><path d="M6 12h12"/><path d="M6 17h12"/>
+        </svg>
+      </button>
+      <button id="collapseBtn" class="filterBtn" type="button" aria-label="Collassa/espandi gruppi">
+        <svg id="collapseIcon" viewBox="0 0 24 24" aria-hidden="true"></svg>
+      </button>
+    </div>
+    <main>
+      <div id="list" class="list"></div>
+      <div id="err" class="error"></div>
+    </main>
+
+    <div id="modalBack" class="modalBack" role="dialog" aria-modal="true">
+      <div class="modal">
+        <div class="mHead">
+          <div class="mHeadCol">
+            <div id="mPctTop" class="mPctTop">0%</div>
+            <div id="mTitle" class="mTitle">Cover</div>
+          </div>
+          <button id="mClose" class="closeBtn" aria-label="Chiudi">✕</button>
+        </div>
+        <div class="mBody">
+          <div class="pillWrap">
+            <div class="pill">
+              <div id="mFill" class="fill"></div>
+              <div id="mHandle" class="handle"></div>
+            </div>
+          </div>
+          <div class="mControls">
+            <button class="iconBtn" id="mOpen" aria-label="Apri">
+              <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M6 11l6-6 6 6"/></svg>
+            </button>
+            <button class="iconBtn stop" id="mStop" aria-label="Stop">
+              <svg viewBox="0 0 24 24"><path d="M8 7v10"/><path d="M16 7v10"/></svg>
+            </button>
+            <button class="iconBtn" id="mCloseBtn" aria-label="Chiudi">
+              <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M6 13l6 6 6-6"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const qs = (id) => document.getElementById(id); 
+      const coverByAddr = new Map(); 
+      const deviceByAddr = new Map();
+      const rowByAddr = new Map();
+      const groupRowByGid = new Map();
+      const groupMembership = new Map(); // addr -> Set(gid)
+      const sectionByGroup = new Map();
+      const activeByAddr = new Map();
+      let lastDevices = []; 
+      let coverGroups = [];
+      let groupOrder = [];
+      let activeAddr = null; 
+      let activeReverse = false; 
+      let showActiveOnly = false;
+      let collapsedGroups = new Set();
+      let renderQueued = false;
+      let countsQueued = false;
+
+      const GROUP_NONE = '__none__';
+      const LS_COLLAPSED = 'buspro_collapsed_groups_covers';
+
+      function clamp01(x){ return Math.max(0, Math.min(1, Number(x))); }
+      function easeOpen(r){ return Math.pow(clamp01(r), 1.35); }
+      function lerp(a,b,t){ return a + (b-a)*t; }
+      function mixRgb(c1,c2,t){
+        return [
+          Math.round(lerp(c1[0], c2[0], t)),
+          Math.round(lerp(c1[1], c2[1], t)),
+          Math.round(lerp(c1[2], c2[2], t)),
+        ];
+      }
+
+      function escapeHtml(s){
+        const v = (s === null || s === undefined) ? '' : String(s);
+        return v
+          .replace(/&/g,'&amp;')
+          .replace(/</g,'&lt;')
+          .replace(/>/g,'&gt;')
+          .replace(/\"/g,'&quot;')
+          .replace(/'/g,'&#039;');
+      }
+      function addrOf(d){ return `${Number(d.subnet_id)}.${Number(d.device_id)}.${Number(d.channel)}`; }
+      function absUrl(path) { return new URL(path, window.location.href).toString(); }
+      function cssEscape(s) {
+        const v = String(s || '');
+        try { return CSS.escape(v); } catch (e) {}
+        return v.replace(/[^a-zA-Z0-9_.-]/g, (ch) => `\\${ch.charCodeAt(0).toString(16)} `);
+      }
+
+      async function getJson(path, opts) {
+        const r = await fetch(absUrl(path), opts);
+        if (!r.ok) throw new Error(await r.text());
+        const ct = (r.headers.get('content-type')||'').toLowerCase();
+        if (ct.includes('application/json')) return r.json();
+        return r.text();
+      }
+
+      async function sendCoverCmd(addr, command) {
+        if (String(addr || '').startsWith('group:')) {
+          const gid = String(addr || '').slice('group:'.length);
+          await getJson(`api/control/cover_group/${encodeURIComponent(gid)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command}) });
+          return;
+        }
+        const [s, d, c] = String(addr||'').split('.').map(Number);
+        await getJson(`api/control/cover/${s}/${d}/${c}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command}) });
+      }
+      async function sendCoverPos(addr, position) {
+        if (String(addr || '').startsWith('group:')) {
+          const gid = String(addr || '').slice('group:'.length);
+          await getJson(`api/control/cover_group/${encodeURIComponent(gid)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command:'SET_POSITION', position}) });
+          return;
+        }
+        const [s, d, c] = String(addr||'').split('.').map(Number);
+        await getJson(`api/control/cover/${s}/${d}/${c}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command:'SET_POSITION', position}) });
+      }
+
+      function mdiName(iconValue) {
+        const v = (iconValue === null || iconValue === undefined) ? '' : String(iconValue).trim();
+        const m = /^mdi:([a-z0-9_-]+)$/i.exec(v);
+        return m ? m[1].toLowerCase() : 'blinds';
+      }
+      function iconUrl(iconValue) { 
+        const name = mdiName(iconValue); 
+        return absUrl(`api/icons/mdi/${name}.svg`); 
+      } 
+      function normalizeGroup(v) { 
+        const s = (v === null || v === undefined) ? '' : String(v).trim(); 
+        if (!s) return ''; 
+        return s.startsWith('#') ? s.slice(1).trim() : s; 
+      } 
+      function groupKeyFromGroup(groupValue) {
+        const g = normalizeGroup(groupValue);
+        return g ? g.toLowerCase() : GROUP_NONE;
+      }
+      function groupLabelFromKey(groupKey) {
+        if (!groupKey || groupKey === GROUP_NONE) return 'ALTRO';
+        return String(groupKey).toUpperCase();
+      }
+      function setCollapseIcon(allCollapsed) {
+        const svg = qs('collapseIcon');
+        if (!svg) return;
+        svg.innerHTML = allCollapsed
+          ? '<path d="M10 8L6 12l4 4"/><path d="M14 8l4 4-4 4"/>'
+          : '<path d="M8 8l4 4-4 4"/><path d="M16 8l-4 4 4 4"/>';
+      }
+      function queueRender() {
+        if (renderQueued) return;
+        renderQueued = true;
+        try {
+          requestAnimationFrame(() => { renderQueued = false; render(); });
+        } catch (e) {
+          renderQueued = false;
+          render();
+        }
+      }
+      function groupIndex(groupName) { 
+        const key = normalizeGroup(groupName).toLowerCase(); 
+        if (!key) return 1e9; 
+        for (let i = 0; i < groupOrder.length; i++) { 
+          if (String(groupOrder[i] || '').toLowerCase() === key) return i; 
+        } 
+        return 1e8; 
+      } 
+
+      function isActiveCover(d) {
+        const addr = addrOf(d);
+        const st = coverByAddr.get(addr);
+        if (!st) return false;
+        const state = String(st.state || '').toUpperCase();
+        const pos = Number(st.position ?? 0);
+        return state === 'OPENING' || state === 'CLOSING' || pos > 0;
+      }
+
+      function isActiveState(st) {
+        if (!st) return false;
+        const state = String(st.state || '').toUpperCase();
+        const pos = Number(st.position ?? 0);
+        return state === 'OPENING' || state === 'CLOSING' || pos > 0;
+      }
+
+      function refreshDeviceIndex() {
+        deviceByAddr.clear();
+        for (const d of (lastDevices || [])) {
+          if (String(d.type || '') !== 'cover') continue;
+          deviceByAddr.set(addrOf(d), d);
+        }
+      }
+
+      function groupIdFromName(name) {
+        const s = String(name || '').trim().toLowerCase();
+        if (!s) return 'group';
+        return s
+          .replace(/[^a-z0-9_\- ]+/g, '')
+          .replace(/[\s\-]+/g, '_')
+          .replace(/^_+|_+$/g, '') || 'group';
+      }
+
+      function groupIdFromGroup(g) {
+        const id = g && (g.id !== null && g.id !== undefined) ? String(g.id).trim() : '';
+        return id || groupIdFromName(g && g.name);
+      }
+
+      function isActiveCoverGroup(g) {
+        const members = Array.isArray(g.members) ? g.members : [];
+        for (const addr of members) {
+          const a = String(addr || '').trim();
+          if (!a) continue;
+          if (isActiveState(coverByAddr.get(a))) return true;
+        }
+        return false;
+      }
+
+      function aggregateGroupState(group) {
+        const members = Array.isArray(group.members) ? group.members : [];
+        const states = [];
+        const positions = [];
+        for (const m of members) {
+          const addr = String(m || '').trim();
+          if (!addr) continue;
+          const st = coverByAddr.get(addr);
+          if (!st) continue;
+          const s = String(st.state || '').toUpperCase() || 'STOP';
+          states.push(s);
+          if (st.position !== null && st.position !== undefined) {
+            const p = Number(st.position);
+            if (Number.isFinite(p)) positions.push(Math.max(0, Math.min(100, Math.round(p))));
+          }
+        }
+        if (states.length === 0) return { state: '?', position: 0 };
+
+        const anyOpen = states.some(s => s === 'OPENING');
+        const anyClose = states.some(s => s === 'CLOSING');
+        let aggState = 'STOP';
+        if (anyOpen && !anyClose) aggState = 'OPENING';
+        else if (anyClose && !anyOpen) aggState = 'CLOSING';
+        else if (positions.length && positions.every(p => p === 0)) aggState = 'CLOSED';
+        else if (positions.length && positions.every(p => p === 100)) aggState = 'OPEN';
+        else aggState = 'STOP';
+
+        let aggPos = 0;
+        if (positions.length) aggPos = Math.max(0, Math.min(100, Math.round(positions.reduce((a,b)=>a+b,0) / positions.length)));
+        return { state: aggState, position: aggPos };
+      }
+
+      function applyCoverGroupStateToRow(gid) {
+        const row = groupRowByGid.get(gid);
+        if (!row) return;
+        const group = (coverGroups || []).find(g => groupIdFromGroup(g) === gid);
+        if (!group) return;
+
+        const agg = aggregateGroupState(group);
+        const pos = Math.max(0, Math.min(100, Number(agg.position ?? 0)));
+        const state = String(agg.state || '?').toUpperCase();
+        const moving = (state === 'OPENING' || state === 'CLOSING');
+        const openRatio = Math.max(0, Math.min(1, pos / 100));
+        const t = easeOpen(openRatio);
+
+        row.classList.toggle('moving', moving);
+        try {
+          const sub = row.querySelector('.sub');
+          if (sub) sub.textContent = `${state} \u00B7 ${Math.round(pos)}%`;
+        } catch (e) {}
+        try {
+          const ico = row.querySelector('.coverIco');
+          if (ico) {
+            const off = [242,245,255];
+            const deep = [110,168,254];
+            const rgb = mixRgb(off, deep, t);
+            const alpha = 0.62 + t * 0.38;
+            ico.style.backgroundColor = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha.toFixed(3)})`;
+            ico.style.boxShadow = `0 0 12px rgba(110,168,254,${(0.06 + t * 0.18).toFixed(3)})`;
+            ico.style.opacity = String(0.80 + t * 0.20);
+          }
+        } catch (e) {}
+      }
+
+      function buildCoverGroupMembership() {
+        groupMembership.clear();
+        for (const g of (coverGroups || [])) {
+          const gid = groupIdFromGroup(g);
+          const members = Array.isArray(g.members) ? g.members : [];
+          for (const m of members) {
+            const addr = String(m || '').trim();
+            if (!addr) continue;
+            if (!groupMembership.has(addr)) groupMembership.set(addr, new Set());
+            groupMembership.get(addr).add(gid);
+          }
+        }
+      }
+
+      function updateGroupRowsForMember(addr) {
+        const gids = groupMembership.get(addr);
+        if (!gids) return;
+        for (const gid of gids.values()) applyCoverGroupStateToRow(gid);
+      }
+
+      async function loadCoverGroups() {
+        try {
+          const res = await getJson('api/cover_groups');
+          coverGroups = Array.isArray(res.groups) ? res.groups : [];
+        } catch (e) {
+          coverGroups = [];
+        }
+        buildCoverGroupMembership();
+      }
+
+      function applyCoverStateToRow(addr) {
+        const row = rowByAddr.get(addr) || document.querySelector(`.row[data-addr="${cssEscape(addr)}"]`);
+        if (!row) return;
+        const d = deviceByAddr.get(addr);
+        const st = coverByAddr.get(addr) || { state: '?', position: 0 };
+        const pos = Math.max(0, Math.min(100, Number((st.position === null || st.position === undefined) ? 0 : st.position)));
+        const state = String(st.state || '?').toUpperCase();
+        const moving = (state === 'OPENING' || state === 'CLOSING');
+        const openRatio = Math.max(0, Math.min(1, pos / 100));
+        const visualRatio = d && d.reverse_icon ? (1 - openRatio) : openRatio;
+        const t = easeOpen(visualRatio);
+
+        row.classList.toggle('moving', moving);
+        row.style.setProperty('--open', String(openRatio));
+        try {
+          const sub = row.querySelector('.sub');
+          if (sub) sub.textContent = `${state} \u00B7 ${Math.round(pos)}%`;
+        } catch (e) {}
+        try {
+          const ico = row.querySelector('.coverIco');
+          if (ico) {
+            const off = [242,245,255];
+            const deep = [110,168,254];
+            const rgb = mixRgb(off, deep, t);
+            const alpha = 0.62 + t * 0.38;
+            ico.style.backgroundColor = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha.toFixed(3)})`;
+            ico.style.boxShadow = `0 0 12px rgba(110,168,254,${(0.06 + t * 0.18).toFixed(3)})`;
+            ico.style.opacity = String(0.80 + t * 0.20);
+          }
+        } catch (e) {}
+      }
+
+      function queueCountsUpdate() {
+        if (countsQueued) return;
+        countsQueued = true;
+        setTimeout(() => {
+          countsQueued = false;
+          try { updateSectionCounts(); } catch (e) {}
+        }, 400);
+      }
+
+      function updateSectionCounts() {
+        const allCovers = (lastDevices || []).filter(d => String(d.type || '') === 'cover');
+        const groupStats = new Map();
+        for (const d of allCovers) {
+          const k = groupKeyFromGroup(d.group);
+          const cur = groupStats.get(k) || { total: 0, active: 0 };
+          cur.total += 1;
+          const addr = addrOf(d);
+          if (isActiveState(coverByAddr.get(addr))) cur.active += 1;
+          groupStats.set(k, cur);
+        }
+        for (const [k, el] of sectionByGroup.entries()) {
+          if (k === '__cover_groups__') continue;
+          const st = groupStats.get(k) || { total: 0, active: 0 };
+          const count = el.querySelector('.count');
+          if (count) count.textContent = `${st.active}/${st.total}`;
+        }
+        try {
+          const sec = sectionByGroup.get('__cover_groups__');
+          if (sec) {
+            const total = (coverGroups || []).length;
+            const active = (coverGroups || []).filter(isActiveCoverGroup).length;
+            const count = sec.querySelector('.count');
+            if (count) count.textContent = `${active}/${total}`;
+          }
+        } catch (e) {}
+      }
+
+      function openModal(addr, name) {
+        activeAddr = addr;
+        activeReverse = false;
+        if (!String(addr || '').startsWith('group:')) {
+          try {
+            const d = (lastDevices || []).find(x => String(x.type || '') === 'cover' && addrOf(x) === addr);
+            activeReverse = !!(d && d.reverse_icon);
+          } catch(e) { activeReverse = false; }
+        }
+        qs('mTitle').textContent = name || 'Cover';
+        let pos = 0;
+        if (String(addr || '').startsWith('group:')) {
+          const gid = String(addr || '').slice('group:'.length);
+          const g = (coverGroups || []).find(x => groupIdFromGroup(x) === gid);
+          const agg = g ? aggregateGroupState(g) : { position: 0 };
+          pos = Math.max(0, Math.min(100, Number(agg.position ?? 0)));
+        } else {
+          const st = coverByAddr.get(addr) || { state:'?', position:0 };
+          pos = Math.max(0, Math.min(100, Number((st.position === null || st.position === undefined) ? 0 : st.position)));
+        }
+        setModalPos(pos, false);
+        qs('modalBack').style.display = 'flex';
+        // Ensure handle is placed after the modal is actually laid out
+        try { requestAnimationFrame(() => setModalPos(pos, false)); } catch (e) {}
+      }
+      function closeModal() {
+        qs('modalBack').style.display = 'none';
+        activeAddr = null;
+        activeReverse = false;
+      }
+
+      function setModalPos(pos, send) { 
+        const p = Math.max(0, Math.min(100, Number(pos))); 
+        const ratio = p / 100; 
+        const visual = activeReverse ? (1 - ratio) : ratio; 
+        const visualPos = activeReverse ? (100 - p) : p;
+        const t = easeOpen(visual); 
+        qs('mPctTop').textContent = `${Math.round(p)}%`; 
+        qs('mFill').style.height = `${visualPos}%`; 
+        // "Cielo azzurro": intensita' cresce con la % (stessa curva/tonalita' dell'icona) 
+        try { 
+          const a1 = (0.03 + t * 0.22).toFixed(3); // white highlight 
+          const a2 = (0.05 + t * 0.52).toFixed(3); // sky blue 
+          const a3 = (0.03 + t * 0.34).toFixed(3); // deeper blue 
+          qs('mFill').style.background = `linear-gradient(180deg, rgba(242,245,255,${a1}) 0%, rgba(167,214,255,${a2}) 42%, rgba(110,168,254,${a3}) 100%)`; 
+        } catch(e) {} 
+        // Handle follows position (needs layout; update also after next paint)
+        const pill = document.querySelector('.pill'); 
+        const h = qs('mHandle');
+        function _placeHandle() {
+          if (!pill || !h) return;
+          const rect = pill.getBoundingClientRect();
+          const height = Number(rect.height || pill.offsetHeight || 0);
+          if (!Number.isFinite(height) || height <= 0) return;
+          const y = (visualPos / 100) * height;
+          const bottomPx = Math.max(10, Math.min(height - 10, y));
+          h.style.bottom = `${bottomPx}px`;
+        }
+        _placeHandle();
+        try { requestAnimationFrame(_placeHandle); } catch (e) {}
+        if (send && activeAddr) { 
+          try {
+            clearTimeout(window.__coverPosTimer);
+          } catch(e) {}
+          window.__coverPosTimer = setTimeout(() => {
+            if (!activeAddr) return;
+            sendCoverPos(activeAddr, p).catch((e) => { qs('err').textContent = e.message || String(e); });
+          }, 200);
+        }
+      }
+
+      function render() { 
+        const root = qs('list'); 
+        root.replaceChildren();
+        rowByAddr.clear();
+        groupRowByGid.clear();
+        sectionByGroup.clear();
+        refreshDeviceIndex();
+ 
+        const allCovers = lastDevices
+          .filter(d => String(d.type || '') === 'cover')
+          .slice();
+        const covers = allCovers
+          .filter(d => !showActiveOnly || isActiveCover(d))
+          .slice()
+          .sort((a,b) => { 
+            const ga = normalizeGroup(a.group); 
+            const gb = normalizeGroup(b.group); 
+            const ia = groupIndex(ga); 
+            const ib = groupIndex(gb); 
+            if (ia !== ib) return ia - ib; 
+            const gcmp = String(ga || '').localeCompare(String(gb || ''), undefined, {sensitivity:'base'}); 
+            if (gcmp !== 0) return gcmp; 
+            return String(a.name || '').localeCompare(String(b.name || ''), undefined, {sensitivity:'base'}); 
+          }); 
+ 
+        const groupStats = new Map();
+        for (const d of allCovers) {
+          const k = groupKeyFromGroup(d.group);
+          const cur = groupStats.get(k) || { total: 0, active: 0 };
+          cur.total += 1;
+          if (isActiveCover(d)) cur.active += 1;
+          groupStats.set(k, cur);
+        }
+        const knownGroups = Array.from(groupStats.keys());
+        const allCollapsed = knownGroups.length > 0 && knownGroups.every((k) => collapsedGroups.has(k));
+        qs('collapseBtn').classList.toggle('on', allCollapsed);
+        setCollapseIcon(allCollapsed);
+
+        // Cover groups (group blind) on top
+        if (Array.isArray(coverGroups) && coverGroups.length) {
+          const gKey = '__cover_groups__';
+          const sec = document.createElement('div');
+          sec.className = 'section';
+          sec.setAttribute('data-act', 'toggle-group');
+          sec.setAttribute('data-group', gKey);
+          sec.innerHTML = `<span>GRUPPI</span><span class="count">0/${escapeHtml(String(coverGroups.length))}</span>`;
+          root.appendChild(sec);
+          sectionByGroup.set(gKey, sec);
+
+          if (!collapsedGroups.has(gKey)) {
+            const groupsSorted = coverGroups.slice().sort((a,b) => String(a.name||'').localeCompare(String(b.name||''), undefined, { sensitivity:'base' }));
+            for (const g of groupsSorted) {
+              if (showActiveOnly && !isActiveCoverGroup(g)) continue;
+              const gid = groupIdFromGroup(g);
+              const name = String(g.name || '').trim() || 'Gruppo';
+
+              const agg = aggregateGroupState(g);
+              const pos = Math.max(0, Math.min(100, Number(agg.position ?? 0)));
+              const state = String(agg.state || '?').toUpperCase();
+              const moving = (state === 'OPENING' || state === 'CLOSING');
+
+              const row = document.createElement('div');
+              row.className = `row ${moving ? 'moving' : ''}`;
+              row.setAttribute('data-addr', `group:${gid}`);
+              row.setAttribute('data-name', name);
+
+              const gIcon = escapeHtml(iconUrl(g.icon || 'mdi:blinds-group'));
+              row.innerHTML = `
+                <div class="content">
+                  <div class="name">${escapeHtml(name)}</div>
+                  <div class="sub">${escapeHtml(String(state))} &#183; ${Math.round(pos)}%</div>
+                </div>
+                <div class="actions">
+                  <button class="iconBtn" data-act="open" aria-label="Apri">
+                    <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M6 11l6-6 6 6"/></svg>
+                  </button>
+                  <button class="iconBtn stop" data-act="stop" aria-label="Stop">
+                    <svg viewBox="0 0 24 24"><path d="M8 7v10"/><path d="M16 7v10"/></svg>
+                  </button>
+                  <button class="iconBtn" data-act="close" aria-label="Chiudi">
+                    <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M6 13l6 6 6-6"/></svg>
+                  </button>
+                  <span class="coverIco" aria-hidden="true"
+                    style="-webkit-mask-image:url('${gIcon}');mask-image:url('${gIcon}')"></span>
+                </div>
+              `;
+
+              row.addEventListener('click', () => {
+                openModal(`group:${gid}`, name);
+              });
+
+              row.querySelectorAll('[data-act]').forEach((btn) => {
+                btn.addEventListener('click', async (evt) => {
+                  try { evt.stopPropagation(); } catch(e){}
+                  qs('err').textContent = '';
+                  const act = btn.getAttribute('data-act');
+                  try {
+                    if (act === 'open') await sendCoverCmd(`group:${gid}`, 'OPEN');
+                    if (act === 'stop') await sendCoverCmd(`group:${gid}`, 'STOP');
+                    if (act === 'close') await sendCoverCmd(`group:${gid}`, 'CLOSE');
+                  } catch (e) { qs('err').textContent = e.message || String(e); }
+                });
+              });
+
+              root.appendChild(row);
+              groupRowByGid.set(gid, row);
+              applyCoverGroupStateToRow(gid);
+            }
+          }
+        }
+
+        let lastGroupKey = null; 
+        for (const d of covers) { 
+          const groupKey = groupKeyFromGroup(d.group);
+          const label = groupLabelFromKey(groupKey);
+          if (groupKey !== lastGroupKey) { 
+            const sec = document.createElement('div'); 
+            sec.className = 'section'; 
+            sec.setAttribute('data-act', 'toggle-group');
+            sec.setAttribute('data-group', groupKey);
+            const st0 = groupStats.get(groupKey) || { total: 0, active: 0 };
+            sec.innerHTML = `<span>${escapeHtml(label)}</span><span class="count">${escapeHtml(String(st0.active))}/${escapeHtml(String(st0.total))}</span>`;
+            root.appendChild(sec); 
+            sectionByGroup.set(groupKey, sec);
+            lastGroupKey = groupKey; 
+          } 
+          if (collapsedGroups.has(groupKey)) continue;
+
+          const addr = addrOf(d);
+          const st = coverByAddr.get(addr) || { state:'?', position:0 };
+          const pos = Math.max(0, Math.min(100, Number((st.position === null || st.position === undefined) ? 0 : st.position)));
+          const state = String(st.state || '?').toUpperCase();
+          const moving = (state === 'OPENING' || state === 'CLOSING');
+          const openRatio = Math.max(0, Math.min(1, pos / 100));
+          const visualRatio = d.reverse_icon ? (1 - openRatio) : openRatio;
+          const t = easeOpen(visualRatio);
+
+          const row = document.createElement('div');
+          row.className = `row ${moving ? 'moving' : ''}`;
+          row.setAttribute('data-addr', addr);
+          row.setAttribute('data-name', d.name || '');
+          row.style.setProperty('--open', String(openRatio));
+
+          row.innerHTML = `
+            <div class="content">
+              <div class="name">${escapeHtml(d.name || '')}</div>
+              <div class="sub">${escapeHtml(String(state))} &#183; ${Math.round(pos)}%</div>
+            </div>
+            <div class="actions">
+              <button class="iconBtn" data-act="open" aria-label="Apri">
+                <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M6 11l6-6 6 6"/></svg>
+              </button>
+              <button class="iconBtn stop" data-act="stop" aria-label="Stop">
+                <svg viewBox="0 0 24 24"><path d="M8 7v10"/><path d="M16 7v10"/></svg>
+              </button>
+              <button class="iconBtn" data-act="close" aria-label="Chiudi">
+                <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M6 13l6 6 6-6"/></svg>
+              </button>
+              <span class="coverIco" aria-hidden="true"
+                style="-webkit-mask-image:url('${escapeHtml(iconUrl(d.icon))}');mask-image:url('${escapeHtml(iconUrl(d.icon))}')"></span>
+            </div>
+          `;
+
+          // Icon color: white (closed) -> blue (open) with same curve as popup fill
+          try {
+            const ico = row.querySelector('.coverIco');
+            if (ico) {
+              const off = [242,245,255];
+              const deep = [110,168,254];
+              const rgb = mixRgb(off, deep, t);
+              const alpha = 0.62 + t * 0.38;
+              ico.style.backgroundColor = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha.toFixed(3)})`;
+              ico.style.boxShadow = `0 0 12px rgba(110,168,254,${(0.06 + t * 0.18).toFixed(3)})`;
+              ico.style.opacity = String(0.80 + t * 0.20);
+            }
+          } catch(e) {}
+
+          row.addEventListener('click', () => {
+            openModal(addr, d.name || '');
+          });
+
+          row.querySelectorAll('[data-act]').forEach((btn) => {
+            btn.addEventListener('click', async (evt) => {
+              try { evt.stopPropagation(); } catch(e){}
+              qs('err').textContent = '';
+              const act = btn.getAttribute('data-act');
+              try {
+                if (act === 'open') await sendCoverCmd(addr, 'OPEN');
+                if (act === 'stop') await sendCoverCmd(addr, 'STOP');
+                if (act === 'close') await sendCoverCmd(addr, 'CLOSE');
+              } catch (e) { qs('err').textContent = e.message || String(e); }
+            });
+          });
+
+          root.appendChild(row);
+          rowByAddr.set(addr, row);
+          activeByAddr.set(addr, isActiveCover(d));
+        }
+
+        root.querySelectorAll('.section[data-act="toggle-group"]').forEach((el) => {
+          el.addEventListener('click', () => {
+            const g = el.getAttribute('data-group') || GROUP_NONE;
+            if (collapsedGroups.has(g)) collapsedGroups.delete(g);
+            else collapsedGroups.add(g);
+            try { localStorage.setItem(LS_COLLAPSED, JSON.stringify(Array.from(collapsedGroups))); } catch (e) {}
+            queueRender();
+          });
+        });
+        queueCenter();
+      }
+
+      function queueCenter() {
+        try { requestAnimationFrame(applyCenter); } catch(e) { applyCenter(); }
+      }
+      function applyCenter() {
+        const main = document.querySelector('main');
+        const list = qs('list');
+        if (!main || !list) return;
+        const padT = parseFloat(getComputedStyle(main).paddingTop || '0') || 0;
+        const padB = parseFloat(getComputedStyle(main).paddingBottom || '0') || 0;
+        const listH = list.getBoundingClientRect().height || 0;
+        const avail = Math.max(0, window.innerHeight - padT - padB);
+        main.classList.toggle('centerY', listH > 0 && listH < (avail - 40));
+      }
+
+      function wsUrl() {
+        const u = new URL('ws', window.location.href);
+        u.protocol = (location.protocol === 'https:') ? 'wss:' : 'ws:';
+        return u.toString();
+      }
+
+      function connectWs() {
+        const ws = new WebSocket(wsUrl());
+        ws.onopen = () => {};
+        ws.onclose = () => { setTimeout(connectWs, 1500); };
+        ws.onmessage = (evt) => {
+          try {
+            const msg = JSON.parse(evt.data);
+            if (msg.type === 'snapshot') {
+              lastDevices = msg.data.devices || [];
+              coverGroups = Array.isArray(msg.data.cover_groups) ? msg.data.cover_groups : [];
+              buildCoverGroupMembership();
+              refreshDeviceIndex();
+              const cstates = msg.data.cover_states || {};
+              for (const [addr, st] of Object.entries(cstates)) {
+                const state = String(st.state || '').toUpperCase() || '?';
+                const position = (st.position === null || st.position === undefined) ? 0 : Number(st.position);
+                coverByAddr.set(addr, { state, position });
+              }
+              queueRender();
+              return;
+            }
+            if (msg.type === 'cover_groups') {
+              coverGroups = Array.isArray(msg.data && msg.data.groups) ? msg.data.groups : [];
+              buildCoverGroupMembership();
+              queueRender();
+              return;
+            }
+            if (msg.type === 'devices') { 
+              lastDevices = msg.data.devices || []; 
+              refreshDeviceIndex();
+              queueRender(); 
+              return; 
+            } 
+            if (msg.type === 'ui') { 
+              groupOrder = Array.isArray(msg.data && msg.data.group_order) ? msg.data.group_order.map(normalizeGroup).filter(Boolean) : groupOrder; 
+              queueRender(); 
+              return; 
+            } 
+            if (msg.type === 'cover_state') { 
+              const ev = msg.data || {}; 
+              const addr = `${ev.subnet_id}.${ev.device_id}.${ev.channel}`; 
+              const state = String(ev.state || '').toUpperCase() || '?'; 
+              const position = (ev.position === null || ev.position === undefined) ? 0 : Number(ev.position);
+              coverByAddr.set(addr, { state, position });
+              const nowActive = isActiveState({ state, position });
+              const prevActive = activeByAddr.get(addr);
+              activeByAddr.set(addr, nowActive);
+              applyCoverStateToRow(addr);
+              updateGroupRowsForMember(addr);
+              queueCountsUpdate();
+              if (showActiveOnly && prevActive !== nowActive) queueRender();
+              if (activeAddr && activeAddr === addr) {
+                const pos = Math.max(0, Math.min(100, Number(position)));
+                setModalPos(pos, false);
+              }
+              return;
+            }
+          } catch (e) {}
+        };
+      }
+
+      qs('mClose').addEventListener('click', closeModal);
+      qs('modalBack').addEventListener('click', (evt) => { if (evt.target === qs('modalBack')) closeModal(); });
+      qs('mOpen').addEventListener('click', async () => { if (!activeAddr) return; try { await sendCoverCmd(activeAddr,'OPEN'); } catch(e){ qs('err').textContent = e.message || String(e); } });
+      qs('mStop').addEventListener('click', async () => { if (!activeAddr) return; try { await sendCoverCmd(activeAddr,'STOP'); } catch(e){ qs('err').textContent = e.message || String(e); } });
+      qs('mCloseBtn').addEventListener('click', async () => { if (!activeAddr) return; try { await sendCoverCmd(activeAddr,'CLOSE'); } catch(e){ qs('err').textContent = e.message || String(e); } });
+
+      // Drag inside the pill to set position
+      (function() {
+        const pill = document.querySelector('.pill');
+        if (!pill) return;
+        let dragging = false;
+
+        function posFromEvent(evt) { 
+          const rect = pill.getBoundingClientRect(); 
+          const y = (evt.touches && evt.touches[0]) ? evt.touches[0].clientY : evt.clientY; 
+          const rel = Math.max(0, Math.min(rect.height, rect.bottom - y)); 
+          const visualPos = (rel / rect.height) * 100;
+          return activeReverse ? (100 - visualPos) : visualPos; 
+        } 
+
+        pill.addEventListener('pointerdown', (evt) => {
+          dragging = true;
+          try { pill.setPointerCapture(evt.pointerId); } catch(e) {}
+          setModalPos(posFromEvent(evt), false);
+        });
+        pill.addEventListener('pointermove', (evt) => {
+          if (!dragging) return;
+          setModalPos(posFromEvent(evt), false);
+        });
+        pill.addEventListener('pointerup', (evt) => {
+          if (!dragging) return;
+          dragging = false;
+          setModalPos(posFromEvent(evt), true);
+        });
+        pill.addEventListener('pointercancel', () => { dragging = false; });
+      })();
+
+      (async () => { 
+        try { 
+          const hasCollapsedPref = (localStorage.getItem(LS_COLLAPSED) !== null);
+          try {
+            showActiveOnly = JSON.parse(localStorage.getItem('buspro_show_active_only_covers') || 'false') === true;
+          } catch (e) { showActiveOnly = false; }
+          try {
+            const raw = JSON.parse(localStorage.getItem(LS_COLLAPSED) || '[]');
+            if (Array.isArray(raw)) collapsedGroups = new Set(raw.map((x) => String(x || '').trim()).filter(Boolean));
+          } catch (e) { collapsedGroups = new Set(); }
+          const fb = qs('filterBtn');
+          if (fb) fb.classList.toggle('on', !!showActiveOnly);
+          const meta = await getJson('api/meta'); 
+          groupOrder = Array.isArray(meta.group_order) ? meta.group_order.map(normalizeGroup).filter(Boolean) : []; 
+          lastDevices = await getJson('api/devices'); 
+          await loadCoverGroups();
+          refreshDeviceIndex();
+          // Default: all groups expanded on first load (no collapsed preference).
+          queueRender();
+        } catch (e) {} 
+        connectWs(); 
+      })(); 
+
+      qs('filterBtn').addEventListener('click', () => {
+        showActiveOnly = !showActiveOnly;
+        try { localStorage.setItem('buspro_show_active_only_covers', JSON.stringify(showActiveOnly)); } catch (e) {}
+        qs('filterBtn').classList.toggle('on', !!showActiveOnly);
+        queueRender();
+      });
+
+      qs('collapseBtn').addEventListener('click', () => {
+        const allCovers = lastDevices.filter(d => String(d.type || '') === 'cover').slice();
+        const groups = new Set(allCovers.map((d) => groupKeyFromGroup(d.group)));
+        const keys = Array.from(groups);
+        const allCollapsed = keys.length > 0 && keys.every((k) => collapsedGroups.has(k));
+        // Partenza totale: include anche la sezione GRUPPI
+        const keysAll = Array.from(new Set([...keys, '__cover_groups__']));
+        const allCollapsed2 = keysAll.length > 0 && keysAll.every((k) => collapsedGroups.has(k));
+        collapsedGroups = new Set(allCollapsed2 ? [] : keysAll);
+        try { localStorage.setItem(LS_COLLAPSED, JSON.stringify(Array.from(collapsedGroups))); } catch (e) {}
+        queueRender();
+      });
+
+      window.addEventListener('resize', () => queueCenter());
+      window.addEventListener('resize', () => { 
+        try { 
+          if (!activeAddr) return;
+          if (String(activeAddr).startsWith('group:')) {
+            const gid = String(activeAddr).slice('group:'.length);
+            const g = (coverGroups || []).find(x => groupIdFromGroup(x) === gid);
+            const agg = g ? aggregateGroupState(g) : { position: 0 };
+            setModalPos(Number(agg.position || 0), false);
+            return;
+          }
+          const st = coverByAddr.get(activeAddr) || { position: 0 }; 
+          setModalPos(Number(st.position || 0), false); 
+        } catch(e){} 
+      });
+    </script>
+    <script>
+      // Hidden back gesture: long-press top-left corner.
+      (function () {
+        const CORNER = 60;
+        const HOLD_MS = 450;
+        let timer = null;
+        function inCorner(e) {
+          return !!e && Number(e.clientX) <= CORNER && Number(e.clientY) <= CORNER;
+        }
+        function goHome() {
+          try {
+            window.location.href = new URL('home2', window.location.href).toString();
+          } catch (e) {}
+        }
+        function doBack() {
+          try {
+            if (window.history && window.history.length > 1) {
+              window.history.back();
+              return;
+            }
+          } catch (e) {}
+          goHome();
+        }
+        function clear() {
+          if (timer) {
+            clearTimeout(timer);
+            timer = null;
+          }
+        }
+        document.addEventListener('pointerdown', (e) => {
+          if (timer) return;
+          if (!inCorner(e)) return;
+          timer = setTimeout(() => {
+            timer = null;
+            doBack();
+          }, HOLD_MS);
+        }, { passive: true });
+        document.addEventListener('pointerup', clear, { passive: true });
+        document.addEventListener('pointercancel', clear, { passive: true });
+        document.addEventListener('pointermove', (e) => {
+          if (!timer) return;
+          if (!inCorner(e)) clear();
+        }, { passive: true });
+      })();
+    </script>
+  </body>
+</html>

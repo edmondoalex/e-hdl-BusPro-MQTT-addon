@@ -1,0 +1,634 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BusPro - Luci</title>
+    <style>
+      :root{
+        --bg0:#05070b;
+        --text:#f2f5ff;
+        --muted:rgba(255,255,255,.60);
+        --line:rgba(255,255,255,.08);
+        --danger:#ff6b6b;
+      }
+      body{
+        margin:0;
+        font-family:system-ui,Segoe UI,Roboto,Arial;
+        color:var(--text);
+        -webkit-font-smoothing:antialiased;
+        text-rendering:optimizeLegibility;
+        min-height:100vh;
+      }
+      body::before{
+        content:'';
+        position:fixed;
+        inset:0;
+        z-index:-2;
+        background: radial-gradient(1200px 800px at 50% 50%, rgba(26,34,48,.65) 0%, var(--bg0) 52%, #000 100%);
+        background-position:center center;
+        background-repeat:no-repeat;
+      }
+      body::after{
+        content:'';
+        position:fixed;
+        inset:0;
+        z-index:-1;
+        pointer-events:none;
+        background-image:url('static/user/e-light-addon2.png');
+        background-repeat:no-repeat;
+        background-position:50% 50%;
+        background-size:min(380px, 41vmin);
+        opacity:1;
+        filter:brightness(1.05);
+      }
+      main{max-width:820px;margin:0 auto;padding:10px 14px 24px;min-height:100vh;display:flex;flex-direction:column}
+      main.centerY{justify-content:center}
+      .list{border-radius:18px;overflow:hidden;border:1px solid var(--line);background:rgba(0,0,0,.05);backdrop-filter: blur(10px)}
+      .topBtns{
+        position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:20;
+        display:flex;gap:10px;align-items:center;justify-content:center;
+      }
+      .filterBtn{
+        width:42px;height:42px;border-radius:999px;
+        border:1px solid rgba(255,255,255,.10);
+        background:rgba(0,0,0,.28);
+        backdrop-filter: blur(10px);
+        display:flex;align-items:center;justify-content:center;
+        cursor:pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .filterBtn:active{transform:scale(.98)}
+      .filterBtn svg{width:20px;height:20px}
+      .filterBtn path{stroke:rgba(242,245,255,.78);stroke-width:2.2;stroke-linecap:round}
+      .filterBtn.on path{stroke:rgba(255,215,0,.95)}
+      .section{
+        padding:12px 16px;
+        font-size:12px;
+        letter-spacing:.12em;
+        text-transform:uppercase;
+        color:rgba(255,255,255,.55);
+        border-top:1px solid rgba(255,255,255,.06);
+        background:rgba(0,0,0,.03);
+        display:flex;align-items:center;justify-content:space-between;
+        cursor:pointer;
+        user-select:none;
+      }
+      .section:active{background:rgba(0,0,0,.14)}
+      .section .count{font-size:11px;letter-spacing:.08em;color:rgba(255,255,255,.40)}
+      .row{
+        display:flex;gap:14px;align-items:center;
+        padding:14px 16px;
+        border-top:1px solid rgba(255,255,255,.06);
+        background:rgba(0,0,0,.05);
+        cursor:pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .row:active{background:rgba(0,0,0,.08)}
+      .row.on{
+        background:linear-gradient(180deg, rgba(255,215,0, calc(.04 + var(--int,1)*.10)) 0%, rgba(0,0,0,.20) 100%);
+        box-shadow:0 0 22px rgba(255,215,0, calc(.02 + var(--int,1)*.18)) inset;
+      }
+      .ico{
+        width:34px;height:34px;flex:0 0 34px;
+        background:rgba(242,245,255,.70);
+        -webkit-mask-repeat:no-repeat;
+        -webkit-mask-position:center;
+        -webkit-mask-size:contain;
+        mask-repeat:no-repeat;
+        mask-position:center;
+        mask-size:contain;
+        box-shadow:0 0 10px rgba(255,255,255,.04);
+        opacity:.92;
+      }
+      .row .ico{opacity:.70}
+      .row.on .ico{
+        background:rgba(255,215,0, calc(.35 + var(--int,1) * .65));
+        box-shadow:0 0 14px rgba(255,215,0, calc(.10 + var(--int,1) * .22));
+        opacity:1;
+      }
+      .content{flex:1;min-width:0}
+      .name{
+        font-size:19px;line-height:1.15;font-weight:420;
+        opacity:.88;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+        cursor:pointer;
+      }
+      .ctrl{margin-top:10px;display:flex;align-items:center;gap:12px}
+      .bubble{
+        min-width:44px;height:30px;padding:0 10px;
+        border-radius:999px;
+        border:1px solid rgba(255,255,255,.16);
+        background:rgba(0,0,0,.25);
+        display:flex;align-items:center;justify-content:center;
+        color:rgba(255,255,255,.68);
+        font-weight:520;font-size:13px;
+        user-select:none;
+      }
+      input[type="range"]{width:100%;accent-color:rgba(242,245,255,.85)}
+      .error{color:var(--danger);font-size:13px;margin-top:10px}
+    </style>
+  </head>
+  <body>
+    <div class="topBtns">
+      <button id="filterBtn" class="filterBtn" type="button" aria-label="Mostra solo attivi">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M6 7h12"/><path d="M6 12h12"/><path d="M6 17h12"/>
+        </svg>
+      </button>
+      <button id="collapseBtn" class="filterBtn" type="button" aria-label="Collassa/espandi gruppi">
+        <svg id="collapseIcon" viewBox="0 0 24 24" aria-hidden="true"></svg>
+      </button>
+    </div>
+    <main>
+      <div id="list" class="list"></div>
+      <div id="err" class="error"></div>
+    </main>
+
+    <script>
+      const qs = (id) => document.getElementById(id); 
+      const stateByAddr = new Map(); 
+      const lastBrightness = new Map(); // addr -> 1..255 
+      const deviceByAddr = new Map();
+      const rowByAddr = new Map();
+      const sectionByGroup = new Map();
+      const activeByAddr = new Map();
+      let lastDevices = []; 
+      let groupOrder = [];
+      let showActiveOnly = false;
+      let collapsedGroups = new Set(); // groupKey
+      let renderQueued = false;
+      let countsQueued = false;
+
+      const GROUP_NONE = '__none__';
+      const LS_COLLAPSED = 'buspro_collapsed_groups_lights';
+
+      function groupKeyFromGroup(groupValue) {
+        const g = normalizeGroup(groupValue);
+        return g ? g.toLowerCase() : GROUP_NONE;
+      }
+      function groupLabelFromKey(groupKey) {
+        if (!groupKey || groupKey === GROUP_NONE) return 'ALTRO';
+        return String(groupKey).toUpperCase();
+      }
+
+      function setCollapseIcon(allCollapsed) {
+        const svg = qs('collapseIcon');
+        if (!svg) return;
+        // When all collapsed, show "expand" (<>). Otherwise show "collapse" (><).
+        svg.innerHTML = allCollapsed
+          ? '<path d="M10 8L6 12l4 4"/><path d="M14 8l4 4-4 4"/>'
+          : '<path d="M8 8l4 4-4 4"/><path d="M16 8l-4 4 4 4"/>';
+      }
+
+      function queueRender() {
+        if (renderQueued) return;
+        renderQueued = true;
+        try {
+          requestAnimationFrame(() => { renderQueued = false; render(); });
+        } catch (e) {
+          renderQueued = false;
+          render();
+        }
+      }
+
+      function escapeHtml(s){
+        const v = (s === null || s === undefined) ? '' : String(s);
+        return v
+          .replace(/&/g,'&amp;')
+          .replace(/</g,'&lt;')
+          .replace(/>/g,'&gt;')
+          .replace(/\"/g,'&quot;')
+          .replace(/'/g,'&#039;');
+      }
+      function addrOf(d){ return `${Number(d.subnet_id)}.${Number(d.device_id)}.${Number(d.channel)}`; } 
+ 
+      function absUrl(path) { return new URL(path, window.location.href).toString(); } 
+      function cssEscape(s) {
+        const v = String(s || '');
+        try { return CSS.escape(v); } catch (e) {}
+        return v.replace(/[^a-zA-Z0-9_.-]/g, (ch) => `\\${ch.charCodeAt(0).toString(16)} `);
+      }
+
+      async function getJson(path, opts) {
+        const r = await fetch(absUrl(path), opts);
+        if (!r.ok) throw new Error(await r.text());
+        const ct = (r.headers.get('content-type')||'').toLowerCase();
+        if (ct.includes('application/json')) return r.json();
+        return r.text();
+      }
+
+      async function sendLight(addr, state, brightness) {
+        const parts = String(addr || '').split('.').map(Number);
+        const s = parts[0], d = parts[1], c = parts[2];
+        const payload = { state: state };
+        if (brightness !== undefined) payload.brightness = brightness;
+        await getJson(`api/control/light/${s}/${d}/${c}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      }
+
+      function mdiName(iconValue) {
+        const v = (iconValue === null || iconValue === undefined) ? '' : String(iconValue).trim();
+        const m = /^mdi:([a-z0-9_-]+)$/i.exec(v);
+        return m ? m[1].toLowerCase() : 'lightbulb';
+      }
+      function iconUrl(iconValue) {
+        const name = mdiName(iconValue);
+        return absUrl(`api/icons/mdi/${name}.svg`);
+      }
+      function normalizeGroup(v) { 
+        const s = (v === null || v === undefined) ? '' : String(v).trim(); 
+        if (!s) return ''; 
+        return s.startsWith('#') ? s.slice(1).trim() : s; 
+      } 
+      function groupIndex(groupName) { 
+        const key = normalizeGroup(groupName).toLowerCase(); 
+        if (!key) return 1e9; 
+        for (let i = 0; i < groupOrder.length; i++) { 
+          if (String(groupOrder[i] || '').toLowerCase() === key) return i; 
+        } 
+        return 1e8; 
+      } 
+
+      function isExtraSwitch(d) {
+        const t = String(d.type || 'light').toLowerCase();
+        if (t !== 'light') return false;
+        const cat = String(d.category || '').trim().toLowerCase();
+        return cat === 'switch' || cat === 'extra';
+      }
+
+      function isActiveLight(d) {
+        const addr = addrOf(d);
+        const st = stateByAddr.get(addr);
+        return st && String(st.state || '').toUpperCase() === 'ON';
+      }
+
+      function isActiveState(st) {
+        return !!(st && String(st.state || '').toUpperCase() === 'ON');
+      }
+
+      function refreshDeviceIndex() {
+        deviceByAddr.clear();
+        for (const d of (lastDevices || [])) {
+          if (String(d.type || '') !== 'light') continue;
+          if (isExtraSwitch(d)) continue;
+          deviceByAddr.set(addrOf(d), d);
+        }
+      }
+
+      function applyLightStateToRow(addr) {
+        const row = rowByAddr.get(addr) || document.querySelector(`.row[data-addr="${cssEscape(addr)}"]`);
+        if (!row) return;
+        const d = deviceByAddr.get(addr);
+        const st = stateByAddr.get(addr) || { state: '?', brightness: 0 };
+        const on = String(st.state || '').toUpperCase() === 'ON';
+        const b = Number(st.brightness ?? 0);
+        const b255 = Math.max(0, Math.min(255, Number.isFinite(b) ? b : 0));
+        if (on && b255 > 0) lastBrightness.set(addr, Math.max(1, b255));
+        const pct = on ? Math.round((Math.max(0, Math.min(255, b255)) * 100) / 255) : 0;
+
+        row.classList.toggle('on', !!on);
+        if (on) {
+          const intensity = (d && d.dimmable) ? (Math.max(0, Math.min(100, pct)) / 100) : 1;
+          row.style.setProperty('--int', String(intensity));
+        } else {
+          row.style.removeProperty('--int');
+        }
+        try {
+          const bubble = row.querySelector('.bubble');
+          if (bubble && bubble.style.display !== 'none') bubble.textContent = String(pct);
+        } catch (e) {}
+        try {
+          const range = row.querySelector('input[type=\"range\"]');
+          if (range) range.value = String(on ? Math.max(1, b255 || 255) : 1);
+        } catch (e) {}
+      }
+
+      function queueCountsUpdate() {
+        if (countsQueued) return;
+        countsQueued = true;
+        setTimeout(() => {
+          countsQueued = false;
+          try { updateSectionCounts(); } catch (e) {}
+        }, 400);
+      }
+
+      function updateSectionCounts() {
+        const allLights = (lastDevices || []).filter(d => String(d.type || 'light') === 'light' && !isExtraSwitch(d));
+        const groupStats = new Map();
+        for (const d of allLights) {
+          const k = groupKeyFromGroup(d.group);
+          const cur = groupStats.get(k) || { total: 0, active: 0 };
+          cur.total += 1;
+          const addr = addrOf(d);
+          if (isActiveState(stateByAddr.get(addr))) cur.active += 1;
+          groupStats.set(k, cur);
+        }
+        for (const [k, el] of sectionByGroup.entries()) {
+          const st = groupStats.get(k) || { total: 0, active: 0 };
+          const count = el.querySelector('.count');
+          if (count) count.textContent = `${st.active}/${st.total}`;
+        }
+      }
+ 
+      function render() { 
+        const root = qs('list'); 
+        root.replaceChildren();
+        rowByAddr.clear();
+        sectionByGroup.clear();
+        refreshDeviceIndex();
+ 
+        const allLights = lastDevices
+          .filter(d => String(d.type || 'light') === 'light' && !isExtraSwitch(d))
+          .slice();
+        const lights = allLights
+          .filter(d => !showActiveOnly || isActiveLight(d))
+          .slice()
+          .sort((a,b) => { 
+            const ga = normalizeGroup(a.group); 
+            const gb = normalizeGroup(b.group); 
+            const ia = groupIndex(ga); 
+            const ib = groupIndex(gb); 
+            if (ia !== ib) return ia - ib; 
+            const gcmp = String(ga || '').localeCompare(String(gb || ''), undefined, {sensitivity:'base'}); 
+            if (gcmp !== 0) return gcmp; 
+            return String(a.name || '').localeCompare(String(b.name || ''), undefined, {sensitivity:'base'}); 
+          }); 
+
+        // Stats per group (active/total) computed on ALL lights (not filtered by showActiveOnly).
+        const groupStats = new Map();
+        for (const d of allLights) {
+          const k = groupKeyFromGroup(d.group);
+          const cur = groupStats.get(k) || { total: 0, active: 0 };
+          cur.total += 1;
+          if (isActiveLight(d)) cur.active += 1;
+          groupStats.set(k, cur);
+        }
+        const knownGroups = Array.from(groupStats.keys());
+        const allCollapsed = knownGroups.length > 0 && knownGroups.every((k) => collapsedGroups.has(k));
+        qs('collapseBtn').classList.toggle('on', allCollapsed);
+        setCollapseIcon(allCollapsed);
+ 
+        let lastGroupKey = null; 
+        for (const d of lights) { 
+          const groupKey = groupKeyFromGroup(d.group);
+          const label = groupLabelFromKey(groupKey);
+          if (groupKey !== lastGroupKey) { 
+            const sec = document.createElement('div'); 
+            sec.className = 'section'; 
+            sec.setAttribute('data-act', 'toggle-group');
+            sec.setAttribute('data-group', groupKey);
+            const st = groupStats.get(groupKey) || { total: 0, active: 0 };
+            sec.innerHTML = `<span>${escapeHtml(label)}</span><span class="count">${escapeHtml(String(st.active))}/${escapeHtml(String(st.total))}</span>`;
+            root.appendChild(sec); 
+            sectionByGroup.set(groupKey, sec);
+            lastGroupKey = groupKey; 
+          } 
+          if (collapsedGroups.has(groupKey)) continue;
+
+          const addr = addrOf(d);
+          const st = stateByAddr.get(addr) || { state:'?', brightness:0 };
+          const on = String(st.state || '').toUpperCase() === 'ON';
+          const b = Number(st.brightness ?? 0);
+          if (on && Number.isFinite(b) && b > 0) lastBrightness.set(addr, Math.max(1, Math.min(255, b)));
+          const pct = on ? Math.round((Math.max(0,Math.min(255,b)) * 100) / 255) : 0;
+
+          const row = document.createElement('div');
+          row.className = `row ${on ? 'on' : ''}`;
+          if (on) {
+            const intensity = d.dimmable ? (Math.max(0, Math.min(100, pct)) / 100) : 1;
+            row.style.setProperty('--int', String(intensity));
+          }
+
+          row.setAttribute('data-act', 'toggle');
+          row.setAttribute('data-addr', addr);
+
+          row.innerHTML = `
+            <span class="ico" aria-hidden="true"
+              style="-webkit-mask-image:url('${escapeHtml(iconUrl(d.icon))}');mask-image:url('${escapeHtml(iconUrl(d.icon))}')"></span>
+            <div class="content">
+              <div class="name" data-act="toggle" data-addr="${escapeHtml(addr)}">${escapeHtml(d.name || '')}</div>
+              ${d.dimmable ? `
+                <div class="ctrl">
+                  <span class="bubble">${escapeHtml(String(pct))}</span>
+                  <input type="range" min="1" max="255" value="${on ? String(Math.max(1,Math.min(255,b||255))) : '1'}" data-act="br" data-addr="${escapeHtml(addr)}" />
+                </div>
+              ` : `
+                <div class="ctrl">
+                  <span class="bubble" style="display:none"></span>
+                </div>
+              `}
+            </div>
+          `;
+          root.appendChild(row);
+          rowByAddr.set(addr, row);
+          activeByAddr.set(addr, isActiveLight(d));
+        }
+
+        // Group collapse toggle
+        root.querySelectorAll('.section[data-act="toggle-group"]').forEach((el) => {
+          el.addEventListener('click', () => {
+            const g = el.getAttribute('data-group') || GROUP_NONE;
+            if (collapsedGroups.has(g)) collapsedGroups.delete(g);
+            else collapsedGroups.add(g);
+            try { localStorage.setItem(LS_COLLAPSED, JSON.stringify(Array.from(collapsedGroups))); } catch (e) {}
+            queueRender();
+          });
+        });
+
+        // Toggle on whole row tap (not on slider)
+        root.querySelectorAll('.row[data-act="toggle"]').forEach((el) => {
+          el.addEventListener('click', async (evt) => {
+            const t = evt && evt.target;
+            if (t && t.tagName && String(t.tagName).toLowerCase() === 'input') return;
+            qs('err').textContent = '';
+            const addr = el.getAttribute('data-addr');
+            if (!addr) return;
+            try {
+              const cur = stateByAddr.get(addr) || { state:'OFF', brightness:255 };
+              const isOn = String(cur.state||'').toUpperCase() === 'ON';
+              if (!isOn) {
+                const remembered = Number(lastBrightness.get(addr) || 255);
+                const use = Number.isFinite(remembered) && remembered > 1 ? remembered : 255;
+                await sendLight(addr, 'ON', use);
+              } else {
+                await sendLight(addr, 'OFF');
+              }
+            } catch (e) { qs('err').textContent = e.message || String(e); }
+          });
+        });
+
+        root.querySelectorAll('[data-act="br"]').forEach((el) => {
+          el.addEventListener('click', (evt) => { try { evt.stopPropagation(); } catch(e){} });
+          el.addEventListener('input', () => {
+            const addr = el.getAttribute('data-addr');
+            const v = Number(el.value || 1);
+            lastBrightness.set(addr, v);
+            const bubble = (el.parentElement && el.parentElement.querySelector) ? el.parentElement.querySelector('.bubble') : null;
+            if (bubble) bubble.textContent = String(Math.round((Math.max(0, Math.min(255, v)) * 100) / 255));
+          });
+          el.addEventListener('change', async () => {
+            qs('err').textContent = '';
+            const addr = el.getAttribute('data-addr');
+            try { await sendLight(addr, 'ON', Number(el.value || 1)); } catch (e) { qs('err').textContent = e.message || String(e); }
+          });
+        });
+
+        queueCenter();
+      }
+
+      function queueCenter() {
+        try { requestAnimationFrame(applyCenter); } catch(e) { applyCenter(); }
+      }
+      function applyCenter() {
+        const main = document.querySelector('main');
+        const list = qs('list');
+        if (!main || !list) return;
+        const padT = parseFloat(getComputedStyle(main).paddingTop || '0') || 0;
+        const padB = parseFloat(getComputedStyle(main).paddingBottom || '0') || 0;
+        const listH = list.getBoundingClientRect().height || 0;
+        const avail = Math.max(0, window.innerHeight - padT - padB);
+        main.classList.toggle('centerY', listH > 0 && listH < (avail - 40));
+      }
+
+      function wsUrl() {
+        const u = new URL('ws', window.location.href);
+        u.protocol = (location.protocol === 'https:') ? 'wss:' : 'ws:';
+        return u.toString();
+      }
+
+      function connectWs() {
+        const ws = new WebSocket(wsUrl());
+        ws.onopen = () => {};
+        ws.onclose = () => { setTimeout(connectWs, 1500); };
+        ws.onmessage = (evt) => {
+          try {
+            const msg = JSON.parse(evt.data);
+            if (msg.type === 'snapshot') {
+              lastDevices = msg.data.devices || [];
+              refreshDeviceIndex();
+              const states = msg.data.states || {};
+              for (const [addr, st] of Object.entries(states)) {
+                const state = String(st.state || '').toUpperCase() || '?';
+                const brightness = (st.brightness === null || st.brightness === undefined) ? 0 : Number(st.brightness);
+                stateByAddr.set(addr, { state, brightness });
+              }
+              queueRender();
+              return;
+            }
+            if (msg.type === 'devices') { 
+              lastDevices = msg.data.devices || []; 
+              refreshDeviceIndex();
+              queueRender(); 
+              return; 
+            } 
+            if (msg.type === 'ui') { 
+              groupOrder = Array.isArray(msg.data && msg.data.group_order) ? msg.data.group_order.map(normalizeGroup).filter(Boolean) : groupOrder; 
+              queueRender(); 
+              return; 
+            } 
+            if (msg.type === 'light_state') { 
+              const ev = msg.data || {}; 
+              const addr = `${ev.subnet_id}.${ev.device_id}.${ev.channel}`; 
+              const next = { state: ev.state, brightness: ev.brightness };
+              stateByAddr.set(addr, next);
+              const nowActive = isActiveState(next);
+              const prevActive = activeByAddr.get(addr);
+              activeByAddr.set(addr, nowActive);
+              applyLightStateToRow(addr);
+              queueCountsUpdate();
+              if (showActiveOnly && prevActive !== nowActive) queueRender();
+              return;
+            }
+          } catch (e) {}
+        };
+      }
+
+      (async () => { 
+        try { 
+          const hasCollapsedPref = (localStorage.getItem(LS_COLLAPSED) !== null);
+          try {
+            showActiveOnly = JSON.parse(localStorage.getItem('buspro_show_active_only_lights') || 'false') === true;
+          } catch (e) { showActiveOnly = false; }
+          try {
+            const raw = JSON.parse(localStorage.getItem(LS_COLLAPSED) || '[]');
+            if (Array.isArray(raw)) collapsedGroups = new Set(raw.map((x) => String(x || '').trim()).filter(Boolean));
+          } catch (e) { collapsedGroups = new Set(); }
+          const fb = qs('filterBtn');
+          if (fb) fb.classList.toggle('on', !!showActiveOnly);
+          const meta = await getJson('api/meta'); 
+          groupOrder = Array.isArray(meta.group_order) ? meta.group_order.map(normalizeGroup).filter(Boolean) : []; 
+          lastDevices = await getJson('api/devices'); 
+          refreshDeviceIndex();
+          // Default: all groups expanded on first load (no collapsed preference).
+          queueRender(); 
+        } catch (e) {} 
+        connectWs(); 
+      })(); 
+
+      qs('filterBtn').addEventListener('click', () => {
+        showActiveOnly = !showActiveOnly;
+        try { localStorage.setItem('buspro_show_active_only_lights', JSON.stringify(showActiveOnly)); } catch (e) {}
+        qs('filterBtn').classList.toggle('on', !!showActiveOnly);
+        queueRender();
+      });
+
+      qs('collapseBtn').addEventListener('click', () => {
+        const allLights = lastDevices
+          .filter(d => String(d.type || 'light') === 'light' && !isExtraSwitch(d))
+          .slice();
+        const groups = new Set(allLights.map((d) => groupKeyFromGroup(d.group)));
+        const keys = Array.from(groups);
+        const allCollapsed = keys.length > 0 && keys.every((k) => collapsedGroups.has(k));
+        collapsedGroups = new Set(allCollapsed ? [] : keys);
+        try { localStorage.setItem(LS_COLLAPSED, JSON.stringify(Array.from(collapsedGroups))); } catch (e) {}
+        queueRender();
+      });
+
+      window.addEventListener('resize', () => queueCenter());
+    </script>
+    <script>
+      // Hidden back gesture: long-press top-left corner.
+      (function () {
+        const CORNER = 60;
+        const HOLD_MS = 450;
+        let timer = null;
+        function inCorner(e) {
+          return !!e && Number(e.clientX) <= CORNER && Number(e.clientY) <= CORNER;
+        }
+        function goHome() {
+          try {
+            window.location.href = new URL('home2', window.location.href).toString();
+          } catch (e) {}
+        }
+        function doBack() {
+          try {
+            if (window.history && window.history.length > 1) {
+              window.history.back();
+              return;
+            }
+          } catch (e) {}
+          goHome();
+        }
+        function clear() {
+          if (timer) {
+            clearTimeout(timer);
+            timer = null;
+          }
+        }
+        document.addEventListener('pointerdown', (e) => {
+          if (timer) return;
+          if (!inCorner(e)) return;
+          timer = setTimeout(() => {
+            timer = null;
+            doBack();
+          }, HOLD_MS);
+        }, { passive: true });
+        document.addEventListener('pointerup', clear, { passive: true });
+        document.addEventListener('pointercancel', clear, { passive: true });
+        document.addEventListener('pointermove', (e) => {
+          if (!timer) return;
+          if (!inCorner(e)) clear();
+        }, { passive: true });
+      })();
+    </script>
+  </body>
+</html>

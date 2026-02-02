@@ -1,0 +1,4325 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>e-hdl BusPro MQTT Add-on</title>
+    <style>
+      :root{--bg:#0b1220;--card:#111a2e;--muted:#9aa4b2;--text:#eef2ff;--line:#223055;--accent:#6ea8fe;--danger:#ff6b6b}
+      body{margin:0;font-family:system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#070b14, #0b1220);color:var(--text)}
+      header{padding:18px 22px;border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(11,18,32,.9);backdrop-filter: blur(6px)}
+      h1{margin:0;font-size:18px;display:flex;align-items:center;gap:10px}
+      .addonLogo{width:78px;height:78px;object-fit:contain;opacity:.95;filter:drop-shadow(0 2px 10px rgba(0,0,0,.35))}
+      main{max-width:1100px;margin:0 auto;padding:18px 22px}
+      .grid{display:grid;grid-template-columns:1fr;gap:14px}
+      @media(min-width:920px){.grid{grid-template-columns:1.2fr .8fr}}
+      .card{background:rgba(17,26,46,.9);border:1px solid var(--line);border-radius:14px;padding:14px}
+      .muted{color:var(--muted);font-size:13px}
+      label{display:block;font-size:13px;color:var(--muted);margin:10px 0 6px}
+      input,select,textarea{width:100%;box-sizing:border-box;background:#0b1220;border:1px solid var(--line);color:var(--text);padding:10px 10px;border-radius:10px}
+      input[type="checkbox"]{width:auto;padding:0}
+      input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
+      .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+      .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+      .btn{background:var(--accent);border:0;color:#081022;padding:10px 12px;border-radius:10px;cursor:pointer;font-weight:520}
+      .btn.secondary{background:transparent;border:1px solid var(--line);color:var(--text)}
+      .btn.danger{background:transparent;border:1px solid var(--danger);color:var(--danger)}
+      .btn.small{padding:6px 10px;border-radius:9px;font-weight:560}
+      table{width:100%;border-collapse:collapse;margin-top:10px}
+      th,td{border-bottom:1px solid var(--line);padding:10px 8px;font-size:14px;text-align:left;vertical-align:middle}
+      th{color:var(--muted);font-weight:520}
+      code{background:#0b1220;border:1px solid var(--line);padding:2px 6px;border-radius:8px}
+      .pill{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted);font-size:12px}
+      tr.on{background:linear-gradient(90deg, rgba(255,215,0,.18), rgba(17,26,46,.9) 55%)}
+      tr.on.dim{background:linear-gradient(90deg, rgba(255,215,0,.28), rgba(17,26,46,.9) 55%)}
+      .onText{color:#ffd54a}
+      .levelBadge{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;border:1px solid rgba(255,215,0,.35);color:#ffd54a;font-size:12px}
+      .flex{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+      .spacer{flex:1}
+      .error{color:var(--danger);font-size:13px}
+      .ok{color:#7CFFB2;font-size:13px}
+      .state{font-weight:600}
+      .slider{width:160px}
+      .nav{display:flex;gap:8px;align-items:center}
+      .nav a{display:inline-block;text-decoration:none;color:var(--text);border:1px solid var(--line);padding:6px 10px;border-radius:999px;font-weight:560;font-size:13px}
+      .nav a.active{border-color:rgba(110,168,254,.7);background:rgba(110,168,254,.14)}
+      .tabs{display:flex;gap:8px;flex-wrap:wrap}
+      .tabs button{background:transparent;border:1px solid var(--line);color:var(--text);padding:8px 10px;border-radius:999px;cursor:pointer;font-weight:560}
+      .tabs button.active{border-color:rgba(110,168,254,.7);background:rgba(110,168,254,.14)}
+      .cards{display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px}
+      @media(min-width:740px){.cards{grid-template-columns:1fr 1fr}}
+      .devCard{background:rgba(17,26,46,.9);border:1px solid var(--line);border-radius:16px;padding:14px}
+      .devCard.on{border-color:rgba(255,215,0,.32);box-shadow:0 0 0 1px rgba(255,215,0,.06) inset}
+      .devTitle{display:flex;gap:10px;align-items:center}
+      .devTitle h3{margin:0;font-size:15px}
+      .devMeta{color:var(--muted);font-size:12px;margin-top:4px}
+      .bigState{font-weight:760}
+      .bar{height:8px;border-radius:999px;border:1px solid var(--line);background:#0b1220;overflow:hidden}
+      .bar > div{height:100%;background:linear-gradient(90deg, rgba(255,215,0,.75), rgba(110,168,254,.75))}
+      .chip{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid var(--line);font-size:12px;color:var(--muted)}
+      .gList{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+      .gItem{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:rgba(11,18,32,.55);cursor:grab;user-select:none}
+      .gItem:active{cursor:grabbing}
+      .gItem.dragging{opacity:.55}
+      .gHandle{width:14px;height:14px;opacity:.75}
+      .gName{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .gCount{font-size:12px;color:var(--muted)}
+
+      details.acc{border:1px solid var(--line);border-radius:14px;background:rgba(11,18,32,.35);overflow:hidden}
+      details.acc + details.acc{margin-top:12px}
+      details.acc > summary{cursor:pointer;list-style:none;padding:12px 12px;display:flex;align-items:center}
+      details.acc > summary::-webkit-details-marker{display:none}
+      details.acc > summary::after{content:'▸';margin-left:auto;color:var(--muted);font-size:14px;transform:rotate(0deg);transition:transform .15s ease}
+      details.acc[open] > summary::after{transform:rotate(90deg)}
+      details.acc .accBody{padding:0 12px 12px}
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="flex">
+        <h1><img class="addonLogo" src="static/logo.png" alt="e-hdl BusPro MQTT" /> e-hdl BusPro MQTT <span class="pill" id="verPill">v?</span></h1>
+        <div class="nav" style="margin-left:8px">
+          <a href="#" id="navUserHome">Home</a>
+          <a href="#" id="navUserHome2">Home2</a>
+          <a href="#" id="navUserLights">Luci</a>
+          <a href="#" id="navUserCovers">Cover</a>
+          <a href="#" id="navUserExtra">EXTRA</a>
+          <a href="#" id="navAdmin" class="active">Admin</a>
+        </div>
+        <span class="pill" id="mqttPill">MQTT: ?</span>
+        <span class="pill" id="gwPill">Gateway: ?</span>
+        <span class="pill" id="busPill">UDP: ?</span>
+        <span class="pill" id="rtPill">Realtime: ?</span>
+        <span class="spacer"></span>
+        <button class="btn secondary" id="btnRepublish">Ripubblica discovery</button>
+      </div>
+      <div class="muted" style="margin-top:6px">Crea dispositivi, controllali dalla UI e pubblica discovery/stati su MQTT.</div>
+      <div class="muted" style="margin-top:6px">Conferme: <code>SVUOTA</code> (Svuota) · <code>DEDUPE</code> (Rimuovi duplicati)</div>
+    </header>
+
+    <main>
+      <div class="grid" id="adminView">
+        <section class="card">
+          <div id="err" class="error" style="margin-top:0"></div>
+
+          <details class="acc" data-acc="devices" open>
+            <summary>
+          <div class="flex"> 
+            <h2 style="margin:0;font-size:16px">Dispositivi</h2> 
+            <span class="spacer"></span> 
+            <button class="btn danger noToggle" id="btnClear" title="Conferma scrivendo: SVUOTA">Svuota</button> 
+            <button class="btn secondary noToggle" id="btnDedupe" type="button" title="Conferma scrivendo: DEDUPE">Rimuovi duplicati</button>
+          </div> 
+          <div class="muted" style="margin-top:6px">Luci (HDL BusPro): nome + subnet/device/channel + dimmer sì/no. I controlli funzionano anche in tempo reale.</div>
+            </summary>
+            <div class="accBody">
+
+          <form id="deviceForm" style="margin-top:10px"> 
+            <label>Nome</label> 
+            <input id="name" required placeholder="Es: Luce Cucina" /> 
+            <label>Gruppo (User UI) opzionale</label>
+            <select id="groupSel">
+              <option value="">(nessuno)</option>
+              <option value="__custom__">Altro (custom)</option>
+            </select>
+            <input id="groupCustom" placeholder="Es: SALA oppure #SALA" style="margin-top:10px;display:none" />
+
+            <div class="row3"> 
+              <div> 
+                <label>Subnet ID</label> 
+                <input id="subnet" type="number" min="0" max="255" required /> 
+              </div> 
+              <div> 
+                <label>Device ID</label> 
+                <input id="device" type="number" min="0" max="255" required /> 
+              </div> 
+              <div> 
+                <label>Channel</label> 
+                <input id="channel" type="number" min="0" max="255" required /> 
+              </div> 
+            </div> 
+            <div class="muted" style="margin-top:6px">
+              <label style="margin:0;color:var(--muted);display:flex;gap:10px;align-items:center">
+                <input id="editAddr" type="checkbox" style="width:auto" />
+                <span>Modifica indirizzo (Subnet/Device/Channel)</span>
+              </label>
+            </div>
+
+            <div class="row">
+              <div>
+                <label>Categoria (gruppo in Home Assistant)</label>
+                <select id="category">
+                  <option value="Luci">Light (Luci)</option>
+                  <option value="Switch">Switch</option>
+                  <option value="Curtain">Curtain</option>
+                  <option value="Cover">Cover</option>
+                  <option value="Sensori">Sensor (Sensori)</option>
+                  <option value="BinarySensor">Binary Sensor</option>
+                  <option value="Climate">Climate</option>
+                  <option value="Fan">Fan</option>
+                  <option value="Scene">Scene</option>
+                  <option value="Altro">Altro (custom)</option>
+                </select>
+                <input id="categoryCustom" placeholder="Nome categoria custom" style="margin-top:10px;display:none" />
+              </div>
+              <div></div>
+            </div>
+
+            <div class="row"> 
+              <div> 
+                <label>Icona (mdi) opzionale</label> 
+                <input id="icon" list="usedIcons" placeholder="Es: mdi:ceiling-light" /> 
+              </div> 
+              <div></div> 
+            </div> 
+
+            <div class="row">
+              <div>
+                <label>Dimmable</label>
+                <select id="dimmable">
+                  <option value="true">Sì</option>
+                  <option value="false">No</option>
+                </select>
+              </div>
+              <div style="display:flex;align-items:end;gap:10px">
+                <button class="btn" id="btnSubmit" type="submit">Aggiungi</button>
+                <button class="btn secondary" id="btnCancel" type="button" style="display:none">Annulla</button>
+                <span id="formMsg" class="muted"></span>
+              </div>
+            </div>
+          </form>
+
+          <table id="devicesTable" aria-label="devices">
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>Addr</th>
+                <th>Stato</th>
+                <th>Controlli</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+            </div>
+          </details>
+
+          <details class="acc" data-acc="covers" open>
+            <summary>
+              <h2 style="margin:0;font-size:16px">Cover</h2>
+            </summary>
+            <div class="accBody">
+              <div class="muted" style="margin-top:6px">Tapparelle/curtain: comandi Apri/Chiudi/Stop e posizione (0-100%).</div>
+
+          <form id="coverForm" style="margin-top:10px"> 
+            <label>Nome</label> 
+            <input id="c_name" required placeholder="Es: Tapparella Salone" /> 
+            <label>Gruppo (User UI) opzionale</label>
+            <select id="c_groupSel">
+              <option value="">(nessuno)</option>
+              <option value="__custom__">Altro (custom)</option>
+            </select>
+            <input id="c_groupCustom" placeholder="Es: SALA oppure #SALA" style="margin-top:10px;display:none" />
+
+            <div class="row3"> 
+              <div> 
+                <label>Subnet ID</label> 
+                <input id="c_subnet" type="number" min="0" max="255" required /> 
+              </div> 
+              <div> 
+                <label>Device ID</label> 
+                <input id="c_device" type="number" min="0" max="255" required /> 
+              </div> 
+              <div> 
+                <label>Channel</label> 
+                <input id="c_channel" type="number" min="0" max="255" required /> 
+              </div> 
+            </div> 
+            <div class="muted" style="margin-top:6px">
+              <label style="margin:0;color:var(--muted);display:flex;gap:10px;align-items:center">
+                <input id="c_editAddr" type="checkbox" style="width:auto" />
+                <span>Modifica indirizzo (Subnet/Device/Channel)</span>
+              </label>
+            </div>
+
+            <div class="row3">
+              <div>
+                <label>Tempo salita (s)</label>
+                <input id="c_up" type="number" min="1" max="300" value="20" />
+              </div>
+              <div>
+                <label>Tempo discesa (s)</label>
+                <input id="c_down" type="number" min="1" max="300" value="20" />
+              </div>
+              <div>
+                <label>Categoria</label>
+                <select id="c_category">
+                  <option value="Cover">Cover</option>
+                  <option value="Curtain">Curtain</option>
+                  <option value="Luci">Luci</option>
+                  <option value="Switch">Switch</option>
+                  <option value="Altro">Altro (custom)</option>
+                </select>
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <label>Ritardo avvio (s)</label>
+                <input id="c_start_delay" type="number" min="0" max="10" step="0.1" value="0" />
+                <div class="muted" style="margin-top:6px">Se il motore parte 1-3s dopo il comando, imposta qui il ritardo per riallineare % e STOP.</div>
+              </div>
+            </div>
+            <div class="row"> 
+              <div> 
+                <label>Icona (mdi) opzionale</label> 
+                <input id="c_icon" list="usedIcons" placeholder="Es: mdi:blinds" /> 
+              </div> 
+              <div> 
+                <label>Reverse icon</label> 
+                <div style="display:flex;gap:10px;align-items:center;height:42px"> 
+                  <input id="c_reverse" type="checkbox" /> 
+                  <span class="muted">Inverti colore/indicatore (es. oscurante)</span> 
+                </div> 
+              </div> 
+            </div> 
+
+            <datalist id="usedIcons"></datalist>
+
+            <div class="row">
+              <div style="display:flex;align-items:end;gap:10px">
+                <button class="btn" id="c_btnSubmit" type="submit">Aggiungi Cover</button>
+                <button class="btn secondary" id="c_btnCancel" type="button" style="display:none">Annulla</button>
+                <span id="c_formMsg" class="muted"></span>
+              </div>
+              <div></div>
+            </div>
+          </form>
+
+          <table id="coversTable" aria-label="covers" style="margin-top:10px">
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>Addr</th>
+                <th>Stato</th>
+                <th>Pos</th>
+                <th>Tempi</th>
+                <th>Controlli</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <div id="c_calibStatus" class="muted" style="margin-top:10px"></div>
+            </div>
+          </details>
+
+          <details class="acc" data-acc="cover_groups">
+            <summary>
+              <h2 style="margin:0;font-size:16px">Gruppi Cover</h2>
+            </summary>
+            <div class="accBody">
+          <div class="muted" style="margin-top:6px">Crea gruppi di cover per comandi multipli (UP/STOP/DOWN/posizione) e discovery MQTT in Home Assistant.</div>
+
+          <form id="coverGroupForm" style="margin-top:10px">
+            <input id="cg_id" type="hidden" />
+            <label>Nome gruppo</label>
+            <input id="cg_name" placeholder="Es: ZONA GIORNO" required />
+
+            <label>Icona gruppo (mdi) opzionale</label>
+            <input id="cg_icon" list="usedIcons" placeholder="Es: mdi:blinds-group" />
+
+            <label>Membri (cover)</label>
+            <div id="cg_members" class="gList" style="max-height:220px;overflow:auto;padding:8px"></div>
+
+            <div class="flex" style="margin-top:10px;align-items:center">
+              <button class="btn" id="cg_save" type="submit">Salva gruppo</button>
+              <button class="btn danger" id="cg_delete" type="button" style="display:none">Elimina</button>
+              <button class="btn secondary" id="cg_cancel" type="button" style="display:none">Annulla</button>
+              <span class="muted" id="cg_msg"></span>
+            </div>
+          </form>
+
+	          <table id="coverGroupsTable" aria-label="cover groups" style="margin-top:10px">
+	            <thead>
+	              <tr>
+	                <th>Nome</th>
+	                <th>Membri</th>
+	                <th>Azioni</th>
+	              </tr>
+	            </thead>
+	            <tbody></tbody>
+	          </table>
+            </div>
+          </details>
+
+          <details class="acc" data-acc="temperature">
+            <summary>
+              <h2 style="margin:0;font-size:16px">Temperature</h2>
+            </summary>
+            <div class="accBody">
+	          <div class="muted" style="margin-top:6px">Sensori temperatura (manuali): ascolta <code>BroadcastTemperatureResponse</code> e pubblica MQTT + discovery.</div>
+	
+	          <form id="tempForm" style="margin-top:10px">
+	            <input id="t_id" type="hidden" />
+	            <label>Nome</label>
+	            <input id="t_name" required placeholder="Es: Temp Ufficio" />
+	
+	            <label>Gruppo (User UI) opzionale</label>
+	            <select id="t_groupSel">
+	              <option value="">(nessuno)</option>
+	              <option value="__custom__">Altro (custom)</option>
+	            </select>
+	            <input id="t_groupCustom" placeholder="Es: UFFICIO oppure #UFFICIO" style="margin-top:10px;display:none" />
+	
+	            <div class="row3">
+	              <div>
+	                <label>Subnet ID</label>
+	                <input id="t_subnet" type="number" min="0" max="255" required />
+	              </div>
+	              <div>
+	                <label>Device ID</label>
+	                <input id="t_device" type="number" min="0" max="255" required />
+	              </div>
+	              <div>
+	                <label>Sensor ID</label>
+	                <input id="t_sensor" type="number" min="0" max="255" required />
+	              </div>
+	            </div>
+	
+	            <div class="row3">
+	              <div>
+	                <label>Decimali (0-3)</label>
+	                <input id="t_decimals" type="number" min="0" max="3" value="1" />
+	              </div>
+	              <div>
+	                <label>Min (opzionale)</label>
+	                <input id="t_min" type="number" step="0.1" placeholder="Es: -10" />
+	              </div>
+	              <div>
+	                <label>Max (opzionale)</label>
+	                <input id="t_max" type="number" step="0.1" placeholder="Es: 60" />
+	              </div>
+	            </div>
+	
+	            <div class="row3">
+	              <div>
+	                <label>Formato telegramma</label>
+	                <select id="t_format">
+	                  <option value="auto">Auto</option>
+	                  <option value="float32">Float32 (6 byte)</option>
+	                  <option value="short_half">Short x0.5 (2 byte)</option>
+	                  <option value="short_tenths">Short x0.1 (2 byte)</option>
+	                  <option value="short_int">Short x1 (2 byte)</option>
+	                </select>
+	              </div>
+	              <div>
+	                <label>Scale (override, opzionale)</label>
+	                <input id="t_scale" type="number" step="0.01" placeholder="Es: 0.5" />
+	              </div>
+	              <div>
+	                <label>Offset (override, opzionale)</label>
+	                <input id="t_offset" type="number" step="0.1" placeholder="Es: 0" />
+	              </div>
+	            </div>
+	
+	            <div class="row3">
+	              <div>
+	                <label>Categoria</label>
+	                <input id="t_category" placeholder="Es: Temperature" value="Temperature" />
+	              </div>
+	              <div>
+	                <label>Icona (mdi)</label>
+	                <input id="t_icon" list="usedIcons" placeholder="Es: mdi:thermometer" />
+	              </div>
+	              <div style="display:flex;align-items:end;gap:10px">
+	                <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
+	                  <input id="t_editAddr" type="checkbox" />
+	                  Modifica ID (addr)
+	                </label>
+	              </div>
+	            </div>
+	
+	            <div class="flex" style="margin-top:10px">
+	              <button class="btn" id="t_btnSubmit" type="submit">Aggiungi Temperatura</button>
+	              <button class="btn secondary" id="t_btnCancel" type="button" style="display:none">Annulla</button>
+	              <span id="t_formMsg" class="muted"></span>
+	            </div>
+	          </form>
+	
+	          <table id="tempsTable" aria-label="temperatures" style="margin-top:10px">
+	            <thead>
+	              <tr>
+	                <th>Nome</th>
+	                <th>Addr</th>
+	                <th>Valore</th>
+	                <th>Azioni</th>
+	              </tr>
+	            </thead>
+	            <tbody></tbody>
+	          </table>
+            </div>
+          </details>
+
+          <details class="acc" data-acc="humidity">
+            <summary>
+              <h2 style="margin:0;font-size:16px">Umidità</h2>
+            </summary>
+            <div class="accBody">
+	          <div class="muted" style="margin-top:6px">Sensori umidità (manuali): ascolta <code>ReadSensorsInOneStatusResponse</code> (12-in-1) e pubblica MQTT + discovery.</div>
+
+	          <form id="humForm" style="margin-top:10px">
+	            <input id="h_id" type="hidden" />
+	            <label>Nome</label>
+	            <input id="h_name" required placeholder="Es: Umidità Bagno" />
+
+	            <label>Gruppo (User UI) opzionale</label>
+	            <select id="h_groupSel">
+	              <option value="">(nessuno)</option>
+	              <option value="__custom__">Altro (custom)</option>
+	            </select>
+	            <input id="h_groupCustom" placeholder="Es: BAGNO oppure #BAGNO" style="margin-top:10px;display:none" />
+
+	            <div class="row3">
+	              <div>
+	                <label>Subnet ID</label>
+	                <input id="h_subnet" type="number" min="0" max="255" required />
+	              </div>
+	              <div>
+	                <label>Device ID</label>
+	                <input id="h_device" type="number" min="0" max="255" required />
+	              </div>
+	              <div>
+	                <label>Sensor ID</label>
+	                <input id="h_sensor" type="number" min="0" max="255" value="0" required />
+	              </div>
+	            </div>
+
+	            <div class="row3">
+	              <div>
+	                <label>Decimali (0-2)</label>
+	                <input id="h_decimals" type="number" min="0" max="2" value="0" />
+	              </div>
+	              <div>
+	                <label>Min (opzionale)</label>
+	                <input id="h_min" type="number" step="0.1" placeholder="Es: 0" />
+	              </div>
+	              <div>
+	                <label>Max (opzionale)</label>
+	                <input id="h_max" type="number" step="0.1" placeholder="Es: 100" />
+	              </div>
+	            </div>
+
+	            <div class="row3">
+	              <div>
+	                <label>Categoria</label>
+	                <input id="h_category" placeholder="Es: Humidity" value="Humidity" />
+	              </div>
+	              <div>
+	                <label>Icona (mdi)</label>
+	                <input id="h_icon" list="usedIcons" placeholder="Es: mdi:water-percent" />
+	              </div>
+	              <div style="display:flex;align-items:end;gap:10px">
+	                <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
+	                  <input id="h_editAddr" type="checkbox" />
+	                  Modifica ID (addr)
+	                </label>
+	              </div>
+	            </div>
+
+	            <div class="flex" style="margin-top:10px">
+	              <button class="btn" id="h_btnSubmit" type="submit">Aggiungi Umidità</button>
+	              <button class="btn secondary" id="h_btnCancel" type="button" style="display:none">Annulla</button>
+	              <span id="h_formMsg" class="muted"></span>
+	            </div>
+	          </form>
+
+	          <table id="humsTable" aria-label="humidity" style="margin-top:10px">
+	            <thead>
+	              <tr>
+	                <th>Nome</th>
+	                <th>Addr</th>
+	                <th>Valore</th>
+	                <th>Azioni</th>
+	              </tr>
+	            </thead>
+	            <tbody></tbody>
+	          </table>
+            </div>
+          </details>
+
+          <details class="acc" data-acc="illuminance">
+            <summary>
+              <h2 style="margin:0;font-size:16px">Luminosit&#224;</h2>
+            </summary>
+            <div class="accBody">
+	          <div class="muted" style="margin-top:6px">Sensori luminosit&#224; (manuali): ascolta <code>ReadSensorsInOneStatusResponse</code> (12-in-1) e pubblica MQTT + discovery.</div>
+ 
+	          <form id="illumForm" style="margin-top:10px">
+	            <input id="i_id" type="hidden" />
+	            <label>Nome</label>
+	            <input id="i_name" required placeholder="Es: Luce Ambiente Bagno" />
+
+	            <label>Gruppo (User UI) opzionale</label>
+	            <select id="i_groupSel">
+	              <option value="">(nessuno)</option>
+	              <option value="__custom__">Altro (custom)</option>
+	            </select>
+	            <input id="i_groupCustom" placeholder="Es: BAGNO oppure #BAGNO" style="margin-top:10px;display:none" />
+
+	            <div class="row3">
+	              <div>
+	                <label>Subnet ID</label>
+	                <input id="i_subnet" type="number" min="0" max="255" required />
+	              </div>
+	              <div>
+	                <label>Device ID</label>
+	                <input id="i_device" type="number" min="0" max="255" required />
+	              </div>
+	              <div>
+	                <label>Sensor ID</label>
+	                <input id="i_sensor" type="number" min="0" max="255" value="0" required />
+	              </div>
+	            </div>
+
+	            <div class="row3">
+	              <div>
+	                <label>Decimali (0-2)</label>
+	                <input id="i_decimals" type="number" min="0" max="2" value="0" />
+	              </div>
+	              <div>
+	                <label>Min (opzionale)</label>
+	                <input id="i_min" type="number" step="0.1" placeholder="Es: 0" />
+	              </div>
+	              <div>
+	                <label>Max (opzionale)</label>
+	                <input id="i_max" type="number" step="0.1" placeholder="Es: 1000" />
+	              </div>
+	            </div>
+
+	            <div class="row3">
+	              <div>
+	                <label>Scala (opzionale)</label>
+	                <input id="i_scale" type="number" step="0.001" placeholder="Es: 1" />
+	              </div>
+	              <div>
+	                <label>Offset (opzionale)</label>
+	                <input id="i_offset" type="number" step="0.1" placeholder="Es: 0" />
+	              </div>
+	              <div></div>
+	            </div>
+
+	            <div class="row3">
+	              <div>
+	                <label>Categoria</label>
+	                <input id="i_category" placeholder="Es: Illuminance" value="Illuminance" />
+	              </div>
+	              <div>
+	                <label>Icona (mdi)</label>
+	                <input id="i_icon" list="usedIcons" placeholder="Es: mdi:brightness-5" />
+	              </div>
+	              <div style="display:flex;align-items:end;gap:10px">
+	                <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
+	                  <input id="i_editAddr" type="checkbox" />
+	                  Modifica ID (addr)
+	                </label>
+	              </div>
+	            </div>
+
+	            <div class="flex" style="margin-top:10px">
+	              <button class="btn" id="i_btnSubmit" type="submit">Aggiungi Luminosit&#224;</button>
+	              <button class="btn secondary" id="i_btnCancel" type="button" style="display:none">Annulla</button>
+	              <span id="i_formMsg" class="muted"></span>
+	            </div>
+	          </form>
+
+	          <table id="illumsTable" aria-label="illuminance" style="margin-top:10px">
+	            <thead>
+	              <tr>
+	                <th>Nome</th>
+	                <th>Addr</th>
+	                <th>Valore</th>
+	                <th>Azioni</th>
+	              </tr>
+	            </thead>
+	            <tbody></tbody>
+	          </table>
+            </div>
+          </details>
+
+          <details class="acc" data-acc="air">
+            <summary>
+              <h2 style="margin:0;font-size:16px">Qualit&#224; aria</h2>
+            </summary>
+            <div class="accBody">
+	          <div class="muted" style="margin-top:6px">
+                Sensori qualit&#224; aria (es. HDL-MASLA.2C / 12-in-1): ascolta <code>ReadSensorsInOneStatusResponse</code> (0x1605) (e alcuni firmware inviano anche opcode raw <code>0x1630</code>).<br/>
+                <b>Come trovare il Sensor ID:</b><br/>
+                - Se arriva <code>0x1605</code>: spesso il payload inizia con <code>248</code> (o <code>245</code>) &rarr; <code>SENSOR_ID = payload[0]</code><br/>
+                - Se arriva <code>0x1630</code>: non c&#8217;&#232; il byte iniziale &rarr; usa <code>Sensor ID = 248</code> (default)<br/>
+                <b>Valori:</b> tipicamente <code>AIR = payload[5]</code> e <code>GAS% = payload[6]</code> (su 0x1605 con leading 248). Se un valore &#232; <code>255</code> significa "non valido".<br/>
+                Mapping AIR (testo): <code>0=clean</code>, <code>1=mild</code>, <code>2=moderate</code>, <code>3=severe</code>.<br/>
+                Esempio: <code>[248, 56, 0, 0, 255, 0, 10, ...]</code> &rarr; Sensor ID=248, AIR=clean, Gas%=10.
+              </div>
+
+	          <form id="airForm" style="margin-top:10px">
+	            <input id="a_id" type="hidden" />
+	            <label>Nome</label>
+	            <input id="a_name" required placeholder="Es: Aria Sala" />
+
+	            <label>Gruppo (User UI) opzionale</label>
+	            <select id="a_groupSel">
+	              <option value="">(nessuno)</option>
+	              <option value="__custom__">Altro (custom)</option>
+	            </select>
+	            <input id="a_groupCustom" placeholder="Es: SALA oppure #SALA" style="margin-top:10px;display:none" />
+
+	            <div class="row3">
+	              <div>
+	                <label>Subnet ID</label>
+	                <input id="a_subnet" type="number" min="0" max="255" required />
+	              </div>
+	              <div>
+	                <label>Device ID</label>
+	                <input id="a_device" type="number" min="0" max="255" required />
+	              </div>
+	              <div>
+	                <label>Sensor ID</label>
+	                <input id="a_sensor" type="number" min="0" max="255" value="248" required />
+	              </div>
+	            </div>
+
+	            <div class="row3">
+	              <div>
+	                <label>Categoria</label>
+	                <input id="a_category" placeholder="Es: Air" value="Air" />
+	              </div>
+	              <div>
+	                <label>Icona AIR (mdi)</label>
+	                <input id="a_icon" list="usedIcons" placeholder="Es: mdi:air-filter" />
+	              </div>
+	              <div>
+	                <label>Icona Gas (mdi)</label>
+	                <input id="a_gas_icon" list="usedIcons" placeholder="Es: mdi:molecule" />
+	              </div>
+	            </div>
+
+	            <div class="row3">
+	              <div style="display:flex;align-items:end;gap:10px">
+	                <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
+	                  <input id="a_editAddr" type="checkbox" />
+	                  Modifica ID (addr)
+	                </label>
+	              </div>
+	              <div></div>
+	              <div></div>
+	            </div>
+
+	            <div class="flex" style="margin-top:10px">
+	              <button class="btn" id="a_btnSubmit" type="submit">Aggiungi Aria</button>
+	              <button class="btn secondary" id="a_btnCancel" type="button" style="display:none">Annulla</button>
+	              <span id="a_formMsg" class="muted"></span>
+	            </div>
+	          </form>
+
+	          <table id="airTable" aria-label="air" style="margin-top:10px">
+	            <thead>
+	              <tr>
+	                <th>Nome</th>
+	                <th>Addr</th>
+	                <th>AIR</th>
+	                <th>Gas%</th>
+	                <th>Azioni</th>
+	              </tr>
+	            </thead>
+	            <tbody></tbody>
+	          </table>
+            </div>
+          </details>
+
+          <details class="acc" data-acc="presence">
+            <summary>
+              <h2 style="margin:0;font-size:16px">Presenza (PIR / Ultrasonic)</h2>
+            </summary>
+            <div class="accBody">
+              <div class="muted" style="margin-top:6px">
+                Sensori presenza (es. HDL-MS12.2C / 12-in-1): ascolta <code>ReadSensorStatusResponse</code> (0x1646) e <code>BroadcastSensorStatusAutoResponse</code> (0x1647).<br/>
+                <b>Come trovare il Sensor ID:</b><br/>
+                - Se arriva <code>0x1646</code>: payload <code>[248, SENSOR_ID, 0, 0, PIR, ULTRASONIC, ...]</code> &rarr; <code>SENSOR_ID = payload[1]</code><br/>
+                - Se arriva <code>0x1647</code>: payload <code>[SENSOR_ID, 0, 0, 0, PIR, ULTRASONIC, ...]</code> &rarr; <code>SENSOR_ID = payload[0]</code><br/>
+                <b>Stati:</b> <code>PIR = payload[4]</code>, <code>ULTRASONIC = payload[5]</code> (1=ON, 0=OFF).<br/>
+                Esempio: <code>[248, 51, 0, 0, 1, 0, ...]</code> &rarr; Sensor ID=51, PIR=ON, Ultrasonic=OFF.
+              </div>
+
+              <form id="presenceForm" style="margin-top:10px">
+                <input id="p_editKey" type="hidden" />
+
+                <label>Nome</label>
+                <input id="p_name" required placeholder="Es: Sala" />
+
+                <div class="row3">
+                  <div>
+                    <label>Tipo</label>
+                    <select id="p_kind">
+                      <option value="pir">PIR</option>
+                      <option value="ultrasonic">Ultrasonic</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label>Categoria</label>
+                    <input id="p_category" placeholder="Es: Presence" value="Presence" />
+                  </div>
+                  <div>
+                    <label>Icona (mdi) opzionale</label>
+                    <input id="p_icon" list="usedIcons" placeholder="Es: mdi:motion-sensor" />
+                  </div>
+                </div>
+
+                <label>Gruppo (User UI) opzionale</label>
+                <select id="p_groupSel">
+                  <option value="">(nessuno)</option>
+                  <option value="__custom__">Altro (custom)</option>
+                </select>
+                <input id="p_groupCustom" placeholder="Es: SALA oppure #SALA" style="margin-top:10px;display:none" />
+
+                <div class="row3">
+                  <div>
+                    <label>Subnet ID</label>
+                    <input id="p_subnet" type="number" min="0" max="255" required />
+                  </div>
+                  <div>
+                    <label>Device ID</label>
+                    <input id="p_device" type="number" min="0" max="255" required />
+                  </div>
+                  <div>
+                    <label>Sensor ID</label>
+                    <input id="p_sensor" type="number" min="0" max="255" required />
+                  </div>
+                </div>
+
+                <div class="row3">
+                  <div style="display:flex;align-items:end;gap:10px">
+                    <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
+                      <input id="p_editAddr" type="checkbox" />
+                      Modifica ID (addr)
+                    </label>
+                  </div>
+                  <div></div>
+                  <div></div>
+                </div>
+
+                <div class="flex" style="margin-top:10px">
+                  <button class="btn" id="p_btnSubmit" type="submit">Aggiungi Presenza</button>
+                  <button class="btn secondary" id="p_btnCancel" type="button" style="display:none">Annulla</button>
+                  <span id="p_formMsg" class="muted"></span>
+                </div>
+              </form>
+
+              <table id="presenceTable" aria-label="presence" style="margin-top:10px">
+                <thead>
+                  <tr>
+                    <th>Nome</th>
+                    <th>Tipo</th>
+                    <th>Addr</th>
+                    <th>Stato</th>
+                    <th>Azioni</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </details>
+
+          <details class="acc" data-acc="dry_contact">
+            <summary>
+              <h2 style="margin:0;font-size:16px">Dry contact</h2>
+            </summary>
+            <div class="accBody">
+              <div class="muted" style="margin-top:6px">
+                Ingressi digitali (dry contact): pubblica <code>binary_sensor</code> via MQTT Discovery per automazioni Home Assistant.<br/>
+                UDP ascoltato: <code>OperateCode.ControlPanelACResponse</code> (opcode raw <code>0xE3D9</code>) con payload <code>[x, input_id, state]</code> dove <code>state</code> è <code>1</code>=ON e <code>0</code>=OFF (es: <code>[18,1,1]</code>). L’ID device viene preso da <code>source_address</code>.
+              </div>
+
+              <form id="dryForm" style="margin-top:10px">
+                <label>Nome</label>
+                <input id="d_name" required placeholder="Es: Pulsante Ingresso" />
+
+                <label>Gruppo (User UI) opzionale</label>
+                <select id="d_groupSel">
+                  <option value="">(nessuno)</option>
+                  <option value="__custom__">Altro (custom)</option>
+                </select>
+                <input id="d_groupCustom" placeholder="Es: INGRESSO oppure #INGRESSO" style="margin-top:10px;display:none" />
+
+                <div class="row3">
+                  <div>
+                    <label>Subnet ID</label>
+                    <input id="d_subnet" type="number" min="0" max="255" required />
+                  </div>
+                  <div>
+                    <label>Device ID</label>
+                    <input id="d_device" type="number" min="0" max="255" required />
+                  </div>
+                  <div>
+                    <label>Input ID</label>
+                    <input id="d_input" type="number" min="0" max="255" required />
+                  </div>
+                </div>
+
+                <div class="row3">
+                  <div>
+                    <label>Device class (opzionale)</label>
+                    <select id="d_deviceClass">
+                      <option value="">(nessuna)</option>
+                      <option value="door">door</option>
+                      <option value="window">window</option>
+                      <option value="opening">opening</option>
+                      <option value="garage_door">garage_door</option>
+                      <option value="motion">motion</option>
+                      <option value="presence">presence</option>
+                      <option value="smoke">smoke</option>
+                      <option value="moisture">moisture</option>
+                      <option value="vibration">vibration</option>
+                      <option value="power">power</option>
+                      <option value="plug">plug</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label>Categoria</label>
+                    <input id="d_category" placeholder="Es: Dry contact" value="Dry contact" />
+                  </div>
+                  <div>
+                    <label>Icona (mdi) opzionale</label>
+                    <input id="d_icon" list="usedIcons" placeholder="Es: mdi:toggle-switch" />
+                  </div>
+                </div>
+
+                <div class="row3">
+                  <div style="display:flex;align-items:end;gap:10px">
+                    <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
+                      <input id="d_invert" type="checkbox" />
+                      Inverti stato (NC)
+                    </label>
+                  </div>
+                  <div style="display:flex;align-items:end;gap:10px">
+                    <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
+                      <input id="d_editAddr" type="checkbox" />
+                      Modifica ID (addr)
+                    </label>
+                  </div>
+                  <div></div>
+                </div>
+
+                <div class="flex" style="margin-top:10px">
+                  <button class="btn" id="d_btnSubmit" type="submit">Aggiungi Dry contact</button>
+                  <button class="btn secondary" id="d_btnCancel" type="button" style="display:none">Annulla</button>
+                  <span id="d_formMsg" class="muted"></span>
+                </div>
+              </form>
+
+              <table id="dryTable" aria-label="dry contact" style="margin-top:10px">
+                <thead>
+                  <tr>
+                    <th>Nome</th>
+                    <th>Addr</th>
+                    <th>Stato</th>
+                    <th>Azioni</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </details>
+
+          <details class="acc" data-acc="hub_links">
+            <summary>
+              <h2 style="margin:0;font-size:16px">Home (hub) links</h2>
+            </summary>
+            <div class="accBody">
+              <div class="muted" style="margin-top:6px">
+                Pulsanti extra nella pagina <code>/home</code> (User UI). Puoi aggiungere link manuali con titolo + icona (mdi) e scegliere se mostrarli e se aprirli in una nuova scheda.
+              </div>
+
+              <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
+                <h3 style="margin:0;font-size:14px">Icone pulsanti fissi</h3>
+                <div class="muted" style="margin-top:6px">Modifica le icone dei pulsanti Luci/Cover/Extra mostrati nella Home.</div>
+                <div class="row3" style="margin-top:10px">
+                  <div>
+                    <label>Luci (mdi)</label>
+                    <input id="hubIconLights" list="usedIcons" placeholder="Es: mdi:lightbulb-group" />
+                  </div>
+                  <div>
+                    <label>Cover (mdi)</label>
+                    <input id="hubIconCovers" list="usedIcons" placeholder="Es: mdi:window-shutter" />
+                  </div>
+                  <div>
+                    <label>Extra (mdi)</label>
+                    <input id="hubIconExtra" list="usedIcons" placeholder="Es: mdi:shape" />
+                  </div>
+                </div>
+                <div class="row3" style="margin-top:10px">
+                  <div style="display:flex;align-items:end;gap:10px">
+                    <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
+                      <input id="hubShowLights" type="checkbox" checked />
+                      Mostra Luci
+                    </label>
+                  </div>
+                  <div style="display:flex;align-items:end;gap:10px">
+                    <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
+                      <input id="hubShowCovers" type="checkbox" checked />
+                      Mostra Cover
+                    </label>
+                  </div>
+                  <div style="display:flex;align-items:end;gap:10px">
+                    <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
+                      <input id="hubShowExtra" type="checkbox" checked />
+                      Mostra Extra
+                    </label>
+                  </div>
+                </div>
+                <div class="flex" style="margin-top:10px">
+                  <button class="btn secondary small" id="btnSaveHubIcons" type="button">Salva icone</button>
+                  <span class="muted" id="hubIconsMsg"></span>
+                </div>
+              </div>
+
+              <form id="hubLinkForm" style="margin-top:10px">
+                <input id="hl_id" type="hidden" />
+                <div class="row">
+                  <div>
+                    <label>Titolo</label>
+                    <input id="hl_title" required placeholder="Es: Allarme" />
+                  </div>
+                  <div>
+                    <label>URL</label>
+                    <input id="hl_url" required placeholder="Es: https://... oppure /lovelace" />
+                  </div>
+                </div>
+                <div class="row3">
+                  <div>
+                    <label>Icona (mdi)</label>
+                    <input id="hl_icon" list="usedIcons" placeholder="Es: mdi:shield-home" />
+                  </div>
+                  <div style="display:flex;align-items:end;gap:10px">
+                    <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
+                      <input id="hl_show" type="checkbox" checked />
+                      Mostra
+                    </label>
+                  </div>
+                  <div style="display:flex;align-items:end;gap:10px">
+                    <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
+                      <input id="hl_newtab" type="checkbox" checked />
+                      Nuova scheda
+                    </label>
+                  </div>
+                </div>
+                <div class="flex" style="margin-top:10px">
+                  <button class="btn" id="hl_btnSubmit" type="submit">Aggiungi link</button>
+                  <button class="btn secondary" id="hl_btnCancel" type="button" style="display:none">Annulla</button>
+                  <span id="hl_formMsg" class="muted"></span>
+                </div>
+              </form>
+
+              <table id="hubLinksTable" aria-label="hub links" style="margin-top:10px">
+                <thead>
+                  <tr>
+                    <th>Titolo</th>
+                    <th>URL</th>
+                    <th>Opzioni</th>
+                    <th>Ordine</th>
+                    <th>Azioni</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </details>
+
+          <details class="acc" data-acc="pwa">
+            <summary>
+              <h2 style="margin:0;font-size:16px">WebApp (PWA) - Home2</h2>
+            </summary>
+            <div class="accBody">
+              <div class="muted" style="margin-top:6px">
+                Configura nome e icona per installare <code>/home2</code> come webapp (Aggiungi a schermata home / Installa app).<br/>
+                Nota: l'installazione "PWA" completa di solito richiede HTTPS.
+              </div>
+
+              <div class="row3" style="margin-top:10px">
+                <div>
+                  <label>Nome app</label>
+                  <input id="pwa_name" placeholder="Es: Ekonex" />
+                </div>
+                <div>
+                  <label>Nome breve</label>
+                  <input id="pwa_short" placeholder="Es: Ekonex" />
+                </div>
+                <div>
+                  <label>Icon URL (PNG)</label>
+                  <input id="pwa_icon" placeholder="/static/e-face-nobg.png" />
+                </div>
+              </div>
+              <div class="row3" style="margin-top:10px">
+                <div>
+                  <label>Theme color</label>
+                  <input id="pwa_theme" placeholder="#05070b" />
+                </div>
+                <div>
+                  <label>Background color</label>
+                  <input id="pwa_bg" placeholder="#05070b" />
+                </div>
+                <div>
+                  <label>Start URL</label>
+                  <input id="pwa_start" placeholder="/home2" />
+                </div>
+              </div>
+              <div class="flex" style="margin-top:10px">
+                <button class="btn secondary small" id="btnSavePwa" type="button">Salva WebApp</button>
+                <span class="muted" id="pwaMsg"></span>
+              </div>
+            </div>
+          </details>
+
+          <details class="acc" data-acc="proxy_targets">
+            <summary>
+              <h2 style="margin:0;font-size:16px">Proxy (link esterni con back)</h2>
+            </summary>
+            <div class="accBody">
+              <div class="muted" style="margin-top:6px">
+                Crea un target proxy e poi usa URL <code>/ext/&lt;name&gt;/</code> nei link della Home per navigare senza uscire dall’add-on (così il back/gesture resta disponibile).
+              </div>
+
+              <form id="proxyForm" style="margin-top:10px">
+                <div class="row">
+                  <div>
+                    <label>Name</label>
+                    <input id="px_name" required placeholder="Es: nvr" />
+                  </div>
+                  <div>
+                    <label>Base URL</label>
+                    <input id="px_base" required placeholder="Es: http://192.168.3.50/" />
+                  </div>
+                </div>
+                <div class="row3">
+                  <div>
+                    <label>Icona (mdi) opzionale</label>
+                    <input id="px_icon" list="usedIcons" placeholder="Es: mdi:cctv" />
+                  </div>
+                  <div style="display:flex;align-items:end;gap:10px">
+                    <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
+                      <input id="px_show" type="checkbox" checked />
+                      Mostra
+                    </label>
+                  </div>
+                  <div style="display:flex;align-items:end;gap:10px">
+                    <button class="btn" id="px_btnSubmit" type="submit">Aggiungi target</button>
+                    <button class="btn secondary" id="px_btnCancel" type="button" style="display:none">Annulla</button>
+                  </div>
+                </div>
+                <div class="muted" id="px_msg" style="margin-top:6px"></div>
+              </form>
+
+              <table id="proxyTable" aria-label="proxy targets" style="margin-top:10px">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Base URL</th>
+                    <th>Opzioni</th>
+                    <th>Azioni</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </details>
+ 	        </section>
+
+        <aside class="card"> 
+          <h2 style="margin:0;font-size:16px">Info</h2> 
+          <div class="muted" style="margin-top:8px"> 
+            <div>Endpoints:</div> 
+            <div style="margin-top:6px"><code>./api/devices</code> CRUD</div> 
+            <div style="margin-top:6px"><code>./api/control/light/&lt;s&gt;/&lt;d&gt;/&lt;c&gt;</code> comandi</div> 
+            <div style="margin-top:6px"><code>./ws</code> realtime</div> 
+          </div> 
+          <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:14px">
+            <h3 style="margin:0;font-size:14px">User UI: ordine gruppi</h3>
+            <div class="muted" style="margin-top:6px">Uno per riga. Il <code>#</code> e' opzionale.</div>
+            <textarea id="groupOrder" rows="7" placeholder="SALA&#10;CUCINA&#10;CAMERE" style="margin-top:10px;resize:vertical"></textarea>
+            <div class="muted" style="margin-top:10px">Trascina per riordinare:</div>
+            <div id="groupDnD" class="gList" aria-label="group order list"></div>
+            <div class="flex" style="margin-top:10px">
+              <button class="btn secondary small" id="btnSaveGroups" type="button">Salva</button>
+              <span class="muted" id="groupsMsg"></span>
+            </div>
+          </div>
+          <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:14px">
+            <h3 style="margin:0;font-size:14px">Backup (testo)</h3>
+            <div class="muted" style="margin-top:6px">Copia/Incolla per backup e ripristino (include dispositivi, stati e UI).</div>
+            <textarea id="backupText" rows="9" placeholder="{ ... }" style="margin-top:10px;resize:vertical"></textarea>
+            <input id="backupFile" type="file" accept=".json,.txt,application/json,text/plain" style="display:none" />
+            <div class="flex" style="margin-top:10px">
+              <button class="btn secondary small" id="btnBackup" type="button">Crea backup</button>
+              <button class="btn secondary small" id="btnBackupDl" type="button">Scarica</button>
+              <button class="btn secondary small" id="btnBackupImport" type="button">Importa file</button>
+              <button class="btn danger small" id="btnRestore" type="button">Ripristina</button>
+              <span class="muted" id="backupMsg"></span>
+            </div>
+          </div>
+          <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:14px">
+            <h3 style="margin:0;font-size:14px">Sniffer BusPro (UDP)</h3>
+            <div class="muted" style="margin-top:6px">Cattura i telegrammi ricevuti dal gateway. Filtri consigliati: <code>BroadcastTemperatureResponse</code>, <code>BroadcastSensorStatus</code>, <code>CurtainSwitch</code>.</div>
+            <div class="grid3" style="margin-top:10px">
+              <div>
+                <label>Filtro operate_code (contiene)</label>
+                <input id="sniffOps" placeholder="BroadcastTemperatureResponse, SensorStatus" />
+              </div>
+              <div>
+                <label>Source subnet/device</label>
+                <input id="sniffSrc" placeholder="1,180" />
+              </div>
+              <div>
+                <label>Target subnet/device</label>
+                <input id="sniffDst" placeholder="255,255" />
+              </div>
+            </div>
+            <div class="flex" style="margin-top:10px;align-items:center;gap:10px;flex-wrap:wrap">
+              <label class="muted" style="display:flex;align-items:center;gap:8px"><input id="sniffRaw" type="checkbox" /> include raw (hex)</label>
+              <label class="muted" style="display:flex;align-items:center;gap:8px"><input id="sniffFile" type="checkbox" checked /> salva su <code>/share</code></label>
+              <input id="sniffName" placeholder="buspro_sniffer.jsonl (opzionale)" style="min-width:260px;flex:1" />
+            </div>
+            <div class="flex" style="margin-top:10px">
+              <button class="btn secondary small" id="btnSniffStart" type="button">Start</button>
+              <button class="btn secondary small" id="btnSniffStop" type="button">Stop</button>
+              <button class="btn secondary small" id="btnSniffDl" type="button">Scarica</button>
+              <button class="btn danger small" id="btnSniffClear" type="button">Pulisci</button>
+              <span class="muted" id="sniffMsg"></span>
+            </div>
+            <div class="muted" id="sniffStatus" style="margin-top:10px"></div>
+            <details style="margin-top:10px">
+              <summary class="muted" style="cursor:pointer">Live (ultimi telegrammi)</summary>
+              <div class="muted" style="margin-top:8px">Aggiornamento automatico. Usa i filtri sopra per ridurre il rumore.</div>
+              <pre id="sniffLive" style="margin-top:10px;max-height:260px;overflow:auto;padding:10px;border:1px solid var(--line);border-radius:12px;background:rgba(0,0,0,.25);white-space:pre-wrap;word-break:break-word"></pre>
+            </details>
+          </div>
+          <div id="statusMsg" class="muted" style="margin-top:14px"></div> 
+        </aside> 
+      </div>
+    </main>
+
+    <script>
+       const qs = (id) => document.getElementById(id);
+      const stateByAddr = new Map();
+      const coverByAddr = new Map();
+      const tempByAddr = new Map();
+      const humidityByAddr = new Map();
+      const illuminanceByAddr = new Map();
+      const dryByAddr = new Map();
+      const pirByAddr = new Map();
+      const ultrasonicByAddr = new Map();
+       let editingAddr = null;
+       let editingCoverAddr = null;
+       let editingTempAddr = null;
+       let editingHumidityAddr = null;
+       let editingIlluminanceAddr = null;
+       let editingAirAddr = null;
+       let editingDryAddr = null;
+       let editingPresenceKey = null; // `${kind}:${subnet.device.sensor}`
+       let editingCoverGroup = null;
+       let coverGroups = [];
+       let lastDevices = []; 
+      let calibTicker = null; 
+      let userFilter = 'all'; // all|light|cover 
+      let groupOrder = [];
+
+      function normalizeGroup(v) {
+        const s = String(v || '').trim();
+        if (!s) return '';
+        return s.startsWith('#') ? s.slice(1).trim() : s;
+      }
+
+      function getGroupValue(selId, customId) {
+        const sel = qs(selId);
+        const custom = qs(customId);
+        const v = sel ? String(sel.value || '') : '';
+        if (v === '__custom__') return normalizeGroup(custom ? custom.value : '');
+        return normalizeGroup(v);
+      }
+
+      function setGroupValue(selId, customId, groupValue) {
+        const sel = qs(selId);
+        const custom = qs(customId);
+        if (!sel || !custom) return;
+        const v = normalizeGroup(groupValue);
+        const opts = Array.from(sel.options).map(o => String(o.value));
+        if (!v) {
+          sel.value = '';
+          custom.value = '';
+          custom.style.display = 'none';
+          return;
+        }
+        if (opts.includes(v)) {
+          sel.value = v;
+          custom.value = '';
+          custom.style.display = 'none';
+          return;
+        }
+        sel.value = '__custom__';
+        custom.value = v;
+        custom.style.display = '';
+      }
+
+      function attachGroupSelect(selId, customId) {
+        const sel = qs(selId);
+        const custom = qs(customId);
+        if (!sel || !custom) return;
+        sel.addEventListener('change', () => {
+          if (String(sel.value) === '__custom__') {
+            custom.style.display = '';
+            custom.focus();
+          } else {
+            custom.value = '';
+            custom.style.display = 'none';
+          }
+        });
+      }
+
+      async function loadUiConfig() {
+        try {
+          const ui = await getJson('api/ui');
+          groupOrder = Array.isArray(ui.group_order) ? ui.group_order.map(normalizeGroup).filter(Boolean) : [];
+          qs('groupOrder').value = groupOrder.join('\n');
+          renderGroupDnD();
+        } catch (e) {}
+      }
+
+      function groupsFromDevices(devices) {
+        const counts = new Map(); // lower -> {name, count}
+        for (const d of (devices || [])) {
+          const g = normalizeGroup(d.group);
+          if (!g) continue;
+          const key = g.toLowerCase();
+          const cur = counts.get(key);
+          if (!cur) counts.set(key, { name: g, count: 1 });
+          else cur.count += 1;
+        }
+        return Array.from(counts.values()).sort((a,b)=> String(a.name).localeCompare(String(b.name), undefined, {sensitivity:'base'}));
+      }
+
+      function refreshUsedGroups() {
+        const groups = groupsFromDevices(lastDevices).map(x => x.name);
+        const lightSel = qs('groupSel');
+        const coverSel = qs('c_groupSel');
+        const tempSel = qs('t_groupSel');
+        const humSel = qs('h_groupSel');
+        const illumSel = qs('i_groupSel');
+        const airSel = qs('a_groupSel');
+        const drySel = qs('d_groupSel');
+        const presSel = qs('p_groupSel');
+        for (const sel of [lightSel, coverSel, tempSel, humSel, illumSel, airSel, presSel, drySel]) {
+          if (!sel) continue;
+          const cur = String(sel.value || '');
+          // keep first two options: "" and "__custom__"
+          const base = Array.from(sel.options).slice(0, 2);
+          sel.innerHTML = '';
+          for (const o of base) sel.appendChild(o);
+          for (const g of groups) {
+            const opt = document.createElement('option');
+            opt.value = g;
+            opt.textContent = g;
+            sel.appendChild(opt);
+          }
+          // try keep current selection
+          const values = Array.from(sel.options).map(o => String(o.value));
+          if (values.includes(cur)) sel.value = cur;
+          else if (cur && cur !== '__custom__') sel.value = '__custom__';
+        }
+      }
+
+      function effectiveGroupOrder(devices) {
+        const fromDev = groupsFromDevices(devices);
+        const byKey = new Map(fromDev.map(x => [String(x.name).toLowerCase(), x]));
+        const out = [];
+        const seen = new Set();
+        for (const g of (groupOrder || [])) {
+          const n = normalizeGroup(g);
+          if (!n) continue;
+          const k = n.toLowerCase();
+          if (seen.has(k)) continue;
+          seen.add(k);
+          out.push({ name: n, count: (byKey.get(k)?.count || 0) });
+        }
+        for (const x of fromDev) {
+          const k = String(x.name).toLowerCase();
+          if (seen.has(k)) continue;
+          out.push({ name: x.name, count: x.count });
+        }
+        return out;
+      }
+
+      function renderGroupDnD() {
+        const root = qs('groupDnD');
+        if (!root) return;
+        const items = effectiveGroupOrder(lastDevices);
+        root.innerHTML = '';
+        if (items.length === 0) {
+          root.innerHTML = '<div class="muted" style="padding:8px 2px">Nessun gruppo trovato (imposta <code>group</code> nei dispositivi).</div>';
+          return;
+        }
+
+        let dragIndex = null;
+
+        function syncTextarea() {
+          qs('groupOrder').value = (groupOrder || []).join('\n');
+        }
+
+        function setOrderFromItems(list) {
+          groupOrder = list.map(x => x.name);
+          syncTextarea();
+        }
+
+        setOrderFromItems(items);
+
+        items.forEach((it, idx) => {
+          const el = document.createElement('div');
+          el.className = 'gItem';
+          el.draggable = true;
+          el.dataset.idx = String(idx);
+          el.innerHTML = `
+            <svg class="gHandle" viewBox="0 0 24 24" aria-hidden="true">
+              <path fill="currentColor" d="M7 5h2v2H7V5zm8 0h2v2h-2V5zM7 11h2v2H7v-2zm8 0h2v2h-2v-2zM7 17h2v2H7v-2zm8 0h2v2h-2v-2z"></path>
+            </svg>
+            <div class="gName">${escapeHtml(it.name)}</div>
+            <div class="gCount">${it.count ? `${it.count} dev` : ''}</div>
+          `;
+
+          el.addEventListener('dragstart', (e) => {
+            dragIndex = idx;
+            el.classList.add('dragging');
+            try { e.dataTransfer.effectAllowed = 'move'; } catch (err) {}
+          });
+          el.addEventListener('dragend', () => {
+            dragIndex = null;
+            el.classList.remove('dragging');
+          });
+          el.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            try { e.dataTransfer.dropEffect = 'move'; } catch (err) {}
+          });
+          el.addEventListener('drop', (e) => {
+            e.preventDefault();
+            if (dragIndex === null) return;
+            const to = idx;
+            if (to === dragIndex) return;
+            const arr = items.slice();
+            const [moved] = arr.splice(dragIndex, 1);
+            arr.splice(to, 0, moved);
+            groupOrder = arr.map(x => x.name);
+            renderGroupDnD();
+          });
+
+          root.appendChild(el);
+        });
+      }
+
+      function setCoverCalibStatus(msg) {
+        const el = qs('c_calibStatus');
+        if (!el) return;
+        el.textContent = msg || '';
+      }
+
+      function ensureCalibStore() {
+        if (!window.__calib) window.__calib = new Map();
+        return window.__calib;
+      }
+
+      function startCalibTickerIfNeeded() {
+        if (calibTicker) return;
+        calibTicker = setInterval(() => {
+          const store = ensureCalibStore();
+          if (store.size === 0) {
+            clearInterval(calibTicker);
+            calibTicker = null;
+            return;
+          }
+          for (const [addr, cal] of store.entries()) {
+            const secs = Math.max(1, Math.round((Date.now() - cal.t0) / 1000));
+            const suf = cal.dir === 'up' ? `Salva Su (${secs}s)` : `Salva Giu (${secs}s)`;
+            const id = cal.dir === 'up' ? `cup_${addr.replaceAll('.', '_')}` : `cdown_${addr.replaceAll('.', '_')}`;
+            const btn = document.getElementById(id);
+            if (btn) btn.textContent = suf;
+          }
+        }, 1000);
+      }
+
+      function basePrefix() {
+        let p = location.pathname || '/';
+        if (p.length > 1 && p.endsWith('/')) p = p.slice(0, -1);
+        // If opened via Ingress with an entry like /index.html, drop the filename.
+        // Example: /api/hassio_ingress/<token>/index.html -> /api/hassio_ingress/<token>
+        if (/\/[^/]+\.[a-z0-9]+$/i.test(p)) p = p.replace(/\/[^/]+\.[a-z0-9]+$/i, '');
+        if (p.endsWith('/ingress')) p = p.slice(0, -('/ingress'.length));
+        return p === '/' ? '' : p;
+      }
+
+      function withBase(path) {
+        let s = String(path || '');
+        if (s.startsWith('/')) s = s.slice(1);
+        const base = basePrefix();
+        return `${base}/${s}`;
+      }
+
+      async function getJson(url, opts) { 
+        const res = await fetch(withBase(url), opts || {});
+        if (!res.ok) {
+          const txt = await res.text();
+          throw new Error(txt || ("HTTP " + res.status));
+        }
+        return await res.json();
+      }
+
+      function setUsedIcons(list) {
+        const dl = document.getElementById('usedIcons');
+        if (!dl) return;
+        dl.innerHTML = '';
+        for (const v of (list || [])) {
+          const o = document.createElement('option');
+          o.value = String(v || '');
+          dl.appendChild(o);
+        }
+      }
+
+      async function refreshUsedIcons() {
+        try {
+          const res = await getJson('api/icons/used');
+          const icons = Array.isArray(res.icons) ? res.icons : [];
+          setUsedIcons(icons);
+        } catch (e) {}
+      }
+
+      function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
+      }
+
+      function addrOf(d) { 
+        return `${d.subnet_id}.${d.device_id}.${d.channel}`; 
+      } 
+
+      function updateLightAddrDisabled() {
+        const allow = !!editingAddr ? !!qs('editAddr').checked : true;
+        qs('subnet').disabled = !allow;
+        qs('device').disabled = !allow;
+        qs('channel').disabled = !allow;
+      }
+
+      function updateCoverAddrDisabled() {
+        const allow = !!editingCoverAddr ? !!qs('c_editAddr').checked : true;
+        qs('c_subnet').disabled = !allow;
+        qs('c_device').disabled = !allow;
+        qs('c_channel').disabled = !allow;
+      }
+
+      function pct255(br) {
+        const b = Number(br);
+        if (!Number.isFinite(b) || b <= 0) return 0;
+        return Math.max(1, Math.min(100, Math.round((b / 255) * 100)));
+      }
+
+      function applyRowStyle(addr, state, brightness) {
+        const row = document.getElementById(`row_${addr.replaceAll('.', '_')}`);
+        if (!row) return;
+        const isOn = String(state).toUpperCase() === 'ON';
+        row.classList.toggle('on', isOn);
+        row.classList.toggle('dim', isOn && row.dataset.dimmable === 'true');
+        row.style.setProperty('--level', String(pct255(brightness)));
+      }
+
+      function renderDevices(devs) {
+        const tbody = qs('devicesTable').querySelector('tbody');
+        tbody.innerHTML = '';
+        for (const d of devs.filter(x => (x.type || 'light') === 'light')) {
+          const addr = addrOf(d);
+          const st = stateByAddr.get(addr) || {state:'?', brightness:0};
+          const tr = document.createElement('tr');
+          tr.id = `row_${addr.replaceAll('.', '_')}`;
+          tr.dataset.dimmable = String(!!d.dimmable);
+
+          const btnId = `btn_${addr.replaceAll('.', '_')}`;
+          const sliderId = `s_${addr.replaceAll('.', '_')}`;
+
+          const slider = d.dimmable ?
+            `<input class="slider" id="${sliderId}" type="range" min="1" max="255" value="${(st.state === 'ON' && st.brightness && st.brightness > 0) ? st.brightness : 1}" />` :
+            '';
+
+          const levelPct = d.dimmable ? pct255(st.brightness) : 0;
+          const levelBadge = d.dimmable ? `<span class="levelBadge" id="pct_${addr.replaceAll('.', '_')}">${levelPct}%</span>` : '';
+
+          tr.innerHTML = `
+            <td>${escapeHtml(d.name)}</td>
+            <td><code>${addr}</code></td>
+            <td><span class="state" id="st_${addr.replaceAll('.', '_')}">${escapeHtml(st.state)}</span>${d.dimmable ? ` <span class="muted" id="br_${addr.replaceAll('.', '_')}">${st.brightness||0}</span>` : ''}${levelBadge}</td>
+            <td>
+              <div class="flex">
+                <button class="btn small secondary" id="${btnId}">${st.state === 'ON' ? 'Spegni' : 'Accendi'}</button>
+                <button class="btn small secondary" id="ed_${addr.replaceAll('.', '_')}">Modifica</button>
+                <button class="btn small danger" id="rm_${addr.replaceAll('.', '_')}">Rimuovi</button>
+                ${slider}
+              </div>
+            </td>
+          `;
+
+          tbody.appendChild(tr);
+          applyRowStyle(addr, st.state, st.brightness);
+
+          qs(btnId).addEventListener('click', async () => {
+            try {
+              const newState = (stateByAddr.get(addr)?.state === 'ON') ? 'OFF' : 'ON';
+              let brightness = undefined;
+              if (d.dimmable && newState === 'ON') {
+                const last = stateByAddr.get(addr)?.brightness;
+                if (Number.isFinite(last) && last > 0) {
+                  brightness = Number(last);
+                } else {
+                  // omit brightness -> backend uses 100% by default
+                  brightness = undefined;
+                }
+              }
+              await sendLight(addr, newState, brightness);
+            } catch (e) {
+              qs('err').textContent = e.message || String(e);
+            }
+          });
+
+          const rmId = `rm_${addr.replaceAll('.', '_')}`;
+          const rmBtn = document.getElementById(rmId);
+          if (rmBtn) {
+            rmBtn.addEventListener('click', async () => {
+              if (!confirm(`Rimuovere ${d.name} (${addr})?`)) return;
+              try {
+                const [s, dd, c] = addr.split('.').map(Number);
+                 await getJson(`api/devices/light/${s}/${dd}/${c}`, { method: 'DELETE' });
+                 stateByAddr.delete(addr);
+               } catch (e) {
+                 qs('err').textContent = e.message || String(e);
+               }
+            });
+          }
+
+          if (d.dimmable) {
+            qs(sliderId).addEventListener('change', async () => {
+              try {
+                const brightness = Number(qs(sliderId).value);
+                await sendLight(addr, 'ON', brightness);
+              } catch (e) {
+                qs('err').textContent = e.message || String(e);
+              }
+            });
+          }
+
+          const edId = `ed_${addr.replaceAll('.', '_')}`;
+          const edBtn = document.getElementById(edId);
+          if (edBtn) { 
+            edBtn.addEventListener('click', async () => { 
+              editingAddr = addr; 
+              qs('name').value = d.name || ''; 
+              setGroupValue('groupSel', 'groupCustom', d.group || '');
+              qs('subnet').value = String(d.subnet_id); 
+              qs('device').value = String(d.device_id); 
+              qs('channel').value = String(d.channel); 
+              qs('dimmable').value = String(!!d.dimmable);
+              qs('icon').value = d.icon || '';
+              const cat = (d.category || 'Luci').trim();
+              const opts = Array.from(qs('category').options).map(o => o.value);
+              if (opts.includes(cat)) {
+                qs('category').value = cat;
+                qs('categoryCustom').value = '';
+                qs('categoryCustom').style.display = 'none';
+              } else {
+                qs('category').value = 'Altro';
+                qs('categoryCustom').value = cat;
+                qs('categoryCustom').style.display = '';
+              }
+              qs('subnet').disabled = true; 
+              qs('device').disabled = true; 
+              qs('channel').disabled = true; 
+              qs('editAddr').checked = false;
+              updateLightAddrDisabled();
+              qs('btnSubmit').textContent = 'Salva'; 
+              qs('btnCancel').style.display = ''; 
+              qs('formMsg').textContent = `Modifica ${d.name} (${addr})`; 
+            }); 
+          } 
+        }
+      }
+
+      function renderCovers(devs) {
+        const tbody = qs('coversTable').querySelector('tbody');
+        tbody.innerHTML = '';
+        for (const d of devs.filter(x => String(x.type) === 'cover')) {
+          const addr = addrOf(d);
+          const st = coverByAddr.get(addr) || {state:'?', position:0};
+          const up = Number(d.opening_time_up ?? d.opening_time ?? 20);
+          const down = Number(d.opening_time_down ?? d.opening_time ?? 20);
+          const tr = document.createElement('tr');
+          tr.id = `crow_${addr.replaceAll('.', '_')}`;
+          tr.dataset.dimmable = 'false';
+
+          tr.innerHTML = `
+            <td>${escapeHtml(d.name)}</td>
+            <td><code>${addr}</code></td>
+            <td><span class="state" id="cst_${addr.replaceAll('.', '_')}">${escapeHtml(st.state)}</span></td>
+            <td><span class="muted" id="cpos_${addr.replaceAll('.', '_')}">${Number(st.position ?? 0)}%</span></td>
+            <td><span class="muted">${up}s/${down}s</span></td>
+            <td>
+              <div class="flex">
+                <button class="btn small secondary" id="copen_${addr.replaceAll('.', '_')}">Apri</button>
+                <button class="btn small secondary" id="cstop_${addr.replaceAll('.', '_')}">Stop</button>
+                <button class="btn small secondary" id="cclose_${addr.replaceAll('.', '_')}">Chiudi</button>
+                <input class="slider" id="csl_${addr.replaceAll('.', '_')}" type="range" min="0" max="100" value="${Number(st.position ?? 0)}" />
+                <button class="btn small secondary" id="ced_${addr.replaceAll('.', '_')}">Modifica</button>
+                <button class="btn small secondary" id="cup_${addr.replaceAll('.', '_')}">Calibra Su</button>
+                <button class="btn small secondary" id="cdown_${addr.replaceAll('.', '_')}">Calibra Giu</button>
+                <button class="btn small danger" id="crm_${addr.replaceAll('.', '_')}">Rimuovi</button>
+              </div>
+            </td>
+          `;
+          tbody.appendChild(tr);
+
+          const [s, dd, c] = addr.split('.').map(Number);
+
+          qs(`copen_${addr.replaceAll('.', '_')}`).addEventListener('click', async () => {
+            try { await sendCoverCmd(s, dd, c, 'OPEN'); } catch(e){ qs('err').textContent = e.message || String(e); }
+          });
+          qs(`cclose_${addr.replaceAll('.', '_')}`).addEventListener('click', async () => {
+            try { await sendCoverCmd(s, dd, c, 'CLOSE'); } catch(e){ qs('err').textContent = e.message || String(e); }
+          });
+          qs(`cstop_${addr.replaceAll('.', '_')}`).addEventListener('click', async () => {
+            try { await sendCoverCmd(s, dd, c, 'STOP'); } catch(e){ qs('err').textContent = e.message || String(e); }
+          });
+          qs(`csl_${addr.replaceAll('.', '_')}`).addEventListener('change', async () => {
+            try {
+              const pos = Number(qs(`csl_${addr.replaceAll('.', '_')}`).value);
+              await sendCoverPos(s, dd, c, pos);
+            } catch(e){ qs('err').textContent = e.message || String(e); }
+          });
+          qs(`crm_${addr.replaceAll('.', '_')}`).addEventListener('click', async () => {
+            if (!confirm(`Rimuovere ${d.name} (${addr})?`)) return;
+            try {
+              await getJson(`api/devices/cover/${s}/${dd}/${c}`, { method: 'DELETE' });
+              coverByAddr.delete(addr);
+            } catch(e){ qs('err').textContent = e.message || String(e); }
+          });
+
+          const key = addr;
+          const calibStore = ensureCalibStore();
+
+          const startOrSave = async (dir) => {
+            const cal = calibStore.get(key);
+            if (cal && cal.dir === dir) {
+              const secs = Math.max(1, Math.round((Date.now() - cal.t0) / 1000));
+              await getJson(`api/devices/cover/${s}/${dd}/${c}`, {
+                method:'PATCH',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify(dir === 'up' ? { opening_time_up: secs } : { opening_time_down: secs })
+              });
+              calibStore.delete(key);
+              const devices = await getJson('api/devices');
+              lastDevices = devices;
+              renderCovers(devices);
+              setCoverCalibStatus(`Salvato ${dir === 'up' ? 'tempo salita' : 'tempo discesa'} = ${secs}s per ${d.name}.`);
+              return;
+            }
+
+            calibStore.set(key, {dir, t0: Date.now()});
+            await sendCoverCmd(s, dd, c, dir === 'up' ? 'OPEN_RAW' : 'CLOSE_RAW');
+            startCalibTickerIfNeeded();
+            const btnId = dir === 'up' ? `cup_${addr.replaceAll('.', '_')}` : `cdown_${addr.replaceAll('.', '_')}`;
+            const btn = document.getElementById(btnId);
+            if (btn) btn.textContent = dir === 'up' ? 'Salva Su (..)' : 'Salva Giu (..)';
+            setCoverCalibStatus(`Calibrazione ${dir === 'up' ? 'SALITA' : 'DISCESA'} avviata per ${d.name}. Premi STOP al finecorsa, poi premi di nuovo "${dir === 'up' ? 'Calibra Su' : 'Calibra Giu'}" per salvare.`);
+          };
+
+          qs(`cup_${addr.replaceAll('.', '_')}`).addEventListener('click', async () => {
+            try { await startOrSave('up'); } catch(e){ qs('err').textContent = e.message || String(e); }
+          });
+          qs(`cdown_${addr.replaceAll('.', '_')}`).addEventListener('click', async () => {
+            try { await startOrSave('down'); } catch(e){ qs('err').textContent = e.message || String(e); }
+          });
+
+          qs(`ced_${addr.replaceAll('.', '_')}`).addEventListener('click', async () => { 
+            editingCoverAddr = addr; 
+            qs('c_name').value = d.name || ''; 
+            setGroupValue('c_groupSel', 'c_groupCustom', d.group || '');
+            qs('c_subnet').value = String(d.subnet_id); 
+            qs('c_device').value = String(d.device_id); 
+            qs('c_channel').value = String(d.channel); 
+            qs('c_up').value = String(up || 20);
+            qs('c_down').value = String(down || 20);
+            qs('c_start_delay').value = String(Number(d.start_delay_s ?? 0));
+            qs('c_category').value = d.category || 'Cover';
+            qs('c_icon').value = d.icon || '';
+            qs('c_reverse').checked = !!d.reverse_icon;
+            qs('c_subnet').disabled = true; 
+            qs('c_device').disabled = true; 
+            qs('c_channel').disabled = true; 
+            qs('c_editAddr').checked = false;
+            updateCoverAddrDisabled();
+            qs('c_formMsg').textContent = `Modifica ${d.name} (${addr})`; 
+            qs('c_btnSubmit').textContent = 'Salva'; 
+            qs('c_btnCancel').style.display = ''; 
+          }); 
+        } 
+      } 
+
+      async function sendLight(addr, state, brightness) {
+        const [s, d, c] = addr.split('.').map(Number);
+        const payload = {state};
+        if (brightness !== undefined) payload.brightness = brightness;
+        await getJson(`api/control/light/${s}/${d}/${c}`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload)
+        });
+        applyLightState({
+          subnet_id: s,
+          device_id: d,
+          channel: c,
+          state,
+          brightness: brightness ?? (stateByAddr.get(addr)?.brightness ?? 0)
+        });
+      }
+
+      function applyLightState(ev) {
+        const addr = `${ev.subnet_id}.${ev.device_id}.${ev.channel}`;
+        stateByAddr.set(addr, {state: ev.state, brightness: ev.brightness});
+
+        const stEl = document.getElementById(`st_${addr.replaceAll('.', '_')}`);
+        if (stEl) {
+          stEl.textContent = ev.state;
+          stEl.classList.toggle('onText', String(ev.state).toUpperCase() === 'ON');
+        }
+
+        const brEl = document.getElementById(`br_${addr.replaceAll('.', '_')}`);
+        if (brEl) brEl.textContent = String(ev.brightness || 0);
+
+        const pctEl = document.getElementById(`pct_${addr.replaceAll('.', '_')}`);
+        if (pctEl) pctEl.textContent = `${pct255(ev.brightness)}%`;
+
+        const btnEl = document.getElementById(`btn_${addr.replaceAll('.', '_')}`);
+        if (btnEl) btnEl.textContent = (ev.state === 'ON') ? 'Spegni' : 'Accendi';
+
+        applyRowStyle(addr, ev.state, ev.brightness);
+
+        const sliderEl = document.getElementById(`s_${addr.replaceAll('.', '_')}`);
+        if (sliderEl && document.activeElement !== sliderEl) {
+          const b = Number(ev.brightness);
+          if (ev.state === 'ON' && Number.isFinite(b) && b > 0) {
+            sliderEl.value = String(b);
+          } else {
+            // When OFF, reflect the state by moving to min (1 == ~0%).
+            sliderEl.value = '1';
+          }
+        }
+      }
+
+      function renderCoverGroupMembersOptions() {
+        const box = qs('cg_members');
+        if (!box) return;
+        const covers = (lastDevices || []).filter(d => String(d.type) === 'cover');
+        box.innerHTML = '';
+        if (covers.length === 0) {
+          box.innerHTML = '<div class="muted">Nessuna cover creata.</div>';
+          return;
+        }
+        for (const d of covers) {
+          const addr = addrOf(d);
+          const row = document.createElement('label');
+          row.style.display = 'flex';
+          row.style.alignItems = 'center';
+          row.style.gap = '10px';
+          row.style.padding = '6px 4px';
+          row.style.borderBottom = '1px solid var(--line)';
+          row.innerHTML = `<input type="checkbox" name="cg_member" value="${escapeHtml(addr)}" style="width:auto" /> <span>${escapeHtml(String(d.name || addr))}</span> <span class="muted" style="margin-left:auto">${escapeHtml(addr)}</span>`;
+          box.appendChild(row);
+        }
+      }
+
+      function selectedCoverGroupMembers() {
+        return Array.from(document.querySelectorAll('input[name="cg_member"]:checked')).map(el => String(el.value || '')).filter(Boolean);
+      }
+
+      function updateTempAddrDisabled() {
+        const allow = !!editingTempAddr ? !!qs('t_editAddr').checked : true;
+        qs('t_subnet').disabled = !allow;
+        qs('t_device').disabled = !allow;
+        qs('t_sensor').disabled = !allow;
+      }
+
+      function updateHumidityAddrDisabled() {
+        const allow = !!editingHumidityAddr ? !!qs('h_editAddr').checked : true;
+        qs('h_subnet').disabled = !allow;
+        qs('h_device').disabled = !allow;
+        qs('h_sensor').disabled = !allow;
+      }
+
+      function updateIlluminanceAddrDisabled() {
+        const allow = !!editingIlluminanceAddr ? !!qs('i_editAddr').checked : true;
+        qs('i_subnet').disabled = !allow;
+        qs('i_device').disabled = !allow;
+        qs('i_sensor').disabled = !allow;
+      }
+
+      function updateAirAddrDisabled() {
+        const allow = !!editingAirAddr ? !!qs('a_editAddr').checked : true;
+        qs('a_subnet').disabled = !allow;
+        qs('a_device').disabled = !allow;
+        qs('a_sensor').disabled = !allow;
+      }
+
+      function updatePresenceAddrDisabled() {
+        const allow = !!editingPresenceKey ? !!qs('p_editAddr').checked : true;
+        qs('p_subnet').disabled = !allow;
+        qs('p_device').disabled = !allow;
+        qs('p_sensor').disabled = !allow;
+      }
+
+      function updateDryAddrDisabled() {
+        const allow = !!editingDryAddr ? !!qs('d_editAddr').checked : true;
+        qs('d_subnet').disabled = !allow;
+        qs('d_device').disabled = !allow;
+        qs('d_input').disabled = !allow;
+      }
+
+      function renderTemps(devs) {
+        const table = qs('tempsTable');
+        if (!table) return;
+        const tbody = table.querySelector('tbody');
+        tbody.innerHTML = '';
+        for (const d of (devs || []).filter(x => String(x.type) === 'temp')) {
+          const addr = addrOf(d);
+          const st = tempByAddr.get(addr) || { value: null, ts: null };
+          const tr = document.createElement('tr');
+          tr.id = `trow_${addr.replaceAll('.', '_')}`;
+          tr.innerHTML = `
+            <td>${escapeHtml(String(d.name || addr))}</td>
+            <td><code>${escapeHtml(addr)}</code></td>
+            <td><span class="state" id="tval_${addr.replaceAll('.', '_')}">${escapeHtml(formatTempValue(addr, st.value))}</span> <span class="muted">°C</span></td>
+            <td>
+              <div class="flex">
+                <button class="btn small secondary" id="ted_${addr.replaceAll('.', '_')}" type="button">Modifica</button>
+                <button class="btn small danger" id="trm_${addr.replaceAll('.', '_')}" type="button">Rimuovi</button>
+              </div>
+            </td>
+          `;
+          tbody.appendChild(tr);
+
+          const [s, dd, c] = addr.split('.').map(Number);
+
+          qs(`ted_${addr.replaceAll('.', '_')}`).addEventListener('click', () => {
+            editingTempAddr = addr;
+            qs('t_name').value = String(d.name || '');
+            setGroupValue('t_groupSel', 't_groupCustom', d.group || '');
+            qs('t_subnet').value = String(d.subnet_id);
+            qs('t_device').value = String(d.device_id);
+            qs('t_sensor').value = String(d.channel);
+            qs('t_decimals').value = String(d.decimals ?? 1);
+            qs('t_min').value = (d.min_value === null || d.min_value === undefined) ? '' : String(d.min_value);
+            qs('t_max').value = (d.max_value === null || d.max_value === undefined) ? '' : String(d.max_value);
+            qs('t_format').value = String(d.temp_format || 'auto');
+            qs('t_scale').value = (d.temp_scale === null || d.temp_scale === undefined) ? '' : String(d.temp_scale);
+            qs('t_offset').value = (d.temp_offset === null || d.temp_offset === undefined) ? '' : String(d.temp_offset);
+            qs('t_category').value = String(d.category || 'Temperature');
+            qs('t_icon').value = String(d.icon || '');
+            qs('t_editAddr').checked = false;
+            updateTempAddrDisabled();
+            qs('t_btnSubmit').textContent = 'Salva Temperatura';
+            qs('t_btnCancel').style.display = '';
+            qs('t_formMsg').textContent = `Modifica ${addr}`;
+          });
+
+          qs(`trm_${addr.replaceAll('.', '_')}`).addEventListener('click', async () => {
+            if (!confirm(`Rimuovere ${d.name} (${addr})?`)) return;
+            try {
+              await getJson(`api/devices/temp/${s}/${dd}/${c}`, { method: 'DELETE' });
+              tempByAddr.delete(addr);
+            } catch (e) { qs('err').textContent = e.message || String(e); }
+          });
+        }
+      }
+
+      function renderHumidity(devs) {
+        const table = qs('humsTable');
+        if (!table) return;
+        const tbody = table.querySelector('tbody');
+        tbody.innerHTML = '';
+        for (const d of (devs || []).filter(x => String(x.type) === 'humidity')) {
+          const addr = addrOf(d);
+          const st = humidityByAddr.get(addr) || { value: null, ts: null };
+          const tr = document.createElement('tr');
+          tr.id = `hrow_${addr.replaceAll('.', '_')}`;
+          tr.innerHTML = `
+            <td>${escapeHtml(String(d.name || addr))}</td>
+            <td><code>${escapeHtml(addr)}</code></td>
+            <td><span class="state" id="hval_${addr.replaceAll('.', '_')}">${escapeHtml(formatHumidityValue(addr, st.value))}</span> <span class="muted">%</span></td>
+            <td>
+              <div class="flex">
+                <button class="btn small secondary" id="hed_${addr.replaceAll('.', '_')}" type="button">Modifica</button>
+                <button class="btn small danger" id="hrm_${addr.replaceAll('.', '_')}" type="button">Rimuovi</button>
+              </div>
+            </td>
+          `;
+          tbody.appendChild(tr);
+
+          qs(`hed_${addr.replaceAll('.', '_')}`).addEventListener('click', () => {
+            editingHumidityAddr = addr;
+            qs('h_name').value = String(d.name || '');
+            setGroupValue('h_groupSel', 'h_groupCustom', d.group || '');
+            qs('h_subnet').value = String(d.subnet_id);
+            qs('h_device').value = String(d.device_id);
+            qs('h_sensor').value = String(d.channel ?? 0);
+            qs('h_decimals').value = String(d.decimals ?? 0);
+            qs('h_min').value = (d.min_value === null || d.min_value === undefined) ? '' : String(d.min_value);
+            qs('h_max').value = (d.max_value === null || d.max_value === undefined) ? '' : String(d.max_value);
+            qs('h_category').value = String(d.category || 'Humidity');
+            qs('h_icon').value = String(d.icon || '');
+            qs('h_editAddr').checked = false;
+            updateHumidityAddrDisabled();
+            qs('h_btnSubmit').textContent = 'Salva Umidità';
+            qs('h_btnCancel').style.display = '';
+            qs('h_formMsg').textContent = `Modifica ${addr}`;
+          });
+
+          const [s, dd, c] = addr.split('.').map(Number);
+          qs(`hrm_${addr.replaceAll('.', '_')}`).addEventListener('click', async () => {
+            if (!confirm(`Rimuovere ${d.name} (${addr})?`)) return;
+            try {
+              await getJson(`api/devices/humidity/${s}/${dd}/${c}`, { method: 'DELETE' });
+              humidityByAddr.delete(addr);
+            } catch (e) { qs('err').textContent = e.message || String(e); }
+          });
+        }
+      }
+
+      function renderIlluminance(devs) {
+        const table = qs('illumsTable');
+        if (!table) return;
+        const tbody = table.querySelector('tbody');
+        tbody.innerHTML = '';
+        for (const d of (devs || []).filter(x => String(x.type) === 'illuminance')) {
+          const addr = addrOf(d);
+          const st = illuminanceByAddr.get(addr) || { value: null, ts: null };
+          const tr = document.createElement('tr');
+          tr.id = `irow_${addr.replaceAll('.', '_')}`;
+          tr.innerHTML = `
+            <td>${escapeHtml(String(d.name || addr))}</td>
+            <td><code>${escapeHtml(addr)}</code></td>
+            <td><span class="state" id="ival_${addr.replaceAll('.', '_')}">${escapeHtml(formatIlluminanceValue(addr, st.value))}</span> <span class="muted">lx</span></td>
+            <td>
+              <div class="flex">
+                <button class="btn small secondary" id="ied_${addr.replaceAll('.', '_')}" type="button">Modifica</button>
+                <button class="btn small danger" id="irm_${addr.replaceAll('.', '_')}" type="button">Rimuovi</button>
+              </div>
+            </td>
+          `;
+          tbody.appendChild(tr);
+
+          qs(`ied_${addr.replaceAll('.', '_')}`).addEventListener('click', () => {
+            editingIlluminanceAddr = addr;
+            qs('i_name').value = String(d.name || '');
+            setGroupValue('i_groupSel', 'i_groupCustom', d.group || '');
+            qs('i_subnet').value = String(d.subnet_id);
+            qs('i_device').value = String(d.device_id);
+            qs('i_sensor').value = String(d.channel ?? 0);
+            qs('i_decimals').value = String(d.decimals ?? 0);
+            qs('i_min').value = (d.min_value === null || d.min_value === undefined) ? '' : String(d.min_value);
+            qs('i_max').value = (d.max_value === null || d.max_value === undefined) ? '' : String(d.max_value);
+            qs('i_scale').value = (d.lux_scale === null || d.lux_scale === undefined) ? '' : String(d.lux_scale);
+            qs('i_offset').value = (d.lux_offset === null || d.lux_offset === undefined) ? '' : String(d.lux_offset);
+            qs('i_category').value = String(d.category || 'Illuminance');
+            qs('i_icon').value = String(d.icon || '');
+            qs('i_editAddr').checked = false;
+            updateIlluminanceAddrDisabled();
+            qs('i_btnSubmit').textContent = 'Salva Luminosita';
+            qs('i_btnCancel').style.display = '';
+            qs('i_formMsg').textContent = `Modifica ${addr}`;
+          });
+
+          const [s, dd, c] = addr.split('.').map(Number);
+          qs(`irm_${addr.replaceAll('.', '_')}`).addEventListener('click', async () => {
+            if (!confirm(`Rimuovere ${d.name} (${addr})?`)) return;
+            try {
+              await getJson(`api/devices/illuminance/${s}/${dd}/${c}`, { method: 'DELETE' });
+              illuminanceByAddr.delete(addr);
+            } catch (e) { qs('err').textContent = e.message || String(e); }
+          });
+        }
+      }
+
+      function renderAir(devs) {
+        const table = qs('airTable');
+        if (!table) return;
+        const tbody = table.querySelector('tbody');
+        tbody.innerHTML = '';
+        for (const d of (devs || []).filter(x => String(x.type) === 'air')) {
+          const addr = addrOf(d);
+          const stA = airByAddr.get(addr) || { state: '?', ts: null };
+          const stG = gasByAddr.get(addr) || { value: null, ts: null };
+          const tr = document.createElement('tr');
+          tr.id = `arow_${addr.replaceAll('.', '_')}`;
+          tr.innerHTML = `
+            <td>${escapeHtml(String(d.name || addr))}</td>
+            <td><code>${escapeHtml(addr)}</code></td>
+            <td><span class="state" id="aval_${addr.replaceAll('.', '_')}">${escapeHtml(String(stA.state || '?'))}</span></td>
+            <td><span class="state" id="gval_${addr.replaceAll('.', '_')}">${(stG.value === null || stG.value === undefined) ? '?' : escapeHtml(String(Math.round(Number(stG.value))))}</span> <span class="muted">%</span></td>
+            <td>
+              <div class="flex">
+                <button class="btn small secondary" id="aed_${addr.replaceAll('.', '_')}" type="button">Modifica</button>
+                <button class="btn small danger" id="arm_${addr.replaceAll('.', '_')}" type="button">Rimuovi</button>
+              </div>
+            </td>
+          `;
+          tbody.appendChild(tr);
+
+          qs(`aed_${addr.replaceAll('.', '_')}`).addEventListener('click', () => {
+            editingAirAddr = addr;
+            qs('a_name').value = String(d.name || '');
+            setGroupValue('a_groupSel', 'a_groupCustom', d.group || '');
+            qs('a_subnet').value = String(d.subnet_id);
+            qs('a_device').value = String(d.device_id);
+            qs('a_sensor').value = String(d.channel ?? 248);
+            qs('a_category').value = String(d.category || 'Air');
+            qs('a_icon').value = String(d.icon || '');
+            qs('a_gas_icon').value = String(d.gas_icon || '');
+            qs('a_editAddr').checked = false;
+            updateAirAddrDisabled();
+            qs('a_btnSubmit').textContent = 'Salva Aria';
+            qs('a_btnCancel').style.display = '';
+            qs('a_formMsg').textContent = `Modifica ${addr}`;
+          });
+
+          const [s, dd, c] = addr.split('.').map(Number);
+          qs(`arm_${addr.replaceAll('.', '_')}`).addEventListener('click', async () => {
+            if (!confirm(`Rimuovere ${d.name} (${addr})?`)) return;
+            try {
+              await getJson(`api/devices/air/${s}/${dd}/${c}`, { method: 'DELETE' });
+              airByAddr.delete(addr);
+              gasByAddr.delete(addr);
+            } catch (e) { qs('err').textContent = e.message || String(e); }
+          });
+        }
+      }
+
+      function renderPresence(devs) {
+        const table = qs('presenceTable');
+        if (!table) return;
+        const tbody = table.querySelector('tbody');
+        tbody.innerHTML = '';
+        for (const d of (devs || []).filter(x => ['pir','ultrasonic'].includes(String(x.type || '')))) {
+          const addr = addrOf(d);
+          const kind = String(d.type || '');
+          const st = (kind === 'pir' ? pirByAddr.get(addr) : ultrasonicByAddr.get(addr)) || { state: '?', ts: null };
+          const tr = document.createElement('tr');
+          tr.id = `prow_${kind}_${addr.replaceAll('.', '_')}`;
+          tr.innerHTML = `
+            <td>${escapeHtml(String(d.name || addr))}</td>
+            <td><code>${escapeHtml(kind)}</code></td>
+            <td><code>${escapeHtml(addr)}</code></td>
+            <td><span class="state" id="pval_${kind}_${addr.replaceAll('.', '_')}">${escapeHtml(String(st.state || '?'))}</span></td>
+            <td>
+              <div class="flex">
+                <button class="btn small secondary" id="ped_${kind}_${addr.replaceAll('.', '_')}" type="button">Modifica</button>
+                <button class="btn small danger" id="prm_${kind}_${addr.replaceAll('.', '_')}" type="button">Rimuovi</button>
+              </div>
+            </td>
+          `;
+          tbody.appendChild(tr);
+
+          qs(`ped_${kind}_${addr.replaceAll('.', '_')}`).addEventListener('click', () => {
+            editingPresenceKey = `${kind}:${addr}`;
+            qs('p_editKey').value = editingPresenceKey;
+            qs('p_name').value = String(d.name || '');
+            qs('p_kind').value = kind;
+            qs('p_category').value = String(d.category || 'Presence');
+            qs('p_icon').value = String(d.icon || '');
+            setGroupValue('p_groupSel', 'p_groupCustom', d.group || '');
+            qs('p_subnet').value = String(d.subnet_id);
+            qs('p_device').value = String(d.device_id);
+            qs('p_sensor').value = String(d.channel ?? 0);
+            qs('p_editAddr').checked = false;
+            updatePresenceAddrDisabled();
+            qs('p_btnSubmit').textContent = 'Salva Presenza';
+            qs('p_btnCancel').style.display = '';
+            qs('p_formMsg').textContent = `Modifica ${kind} ${addr}`;
+          });
+
+          const [s, dd, c] = addr.split('.').map(Number);
+          qs(`prm_${kind}_${addr.replaceAll('.', '_')}`).addEventListener('click', async () => {
+            if (!confirm(`Rimuovere ${d.name} (${kind} ${addr})?`)) return;
+            try {
+              await getJson(`api/devices/${kind}/${s}/${dd}/${c}`, { method: 'DELETE' });
+              if (kind === 'pir') pirByAddr.delete(addr);
+              else ultrasonicByAddr.delete(addr);
+            } catch (e) { qs('err').textContent = e.message || String(e); }
+          });
+        }
+      }
+
+      function renderDryContacts(devs) {
+        const table = qs('dryTable');
+        if (!table) return;
+        const tbody = table.querySelector('tbody');
+        tbody.innerHTML = '';
+        for (const d of (devs || []).filter(x => String(x.type) === 'dry_contact')) {
+          const addr = addrOf(d);
+          const st = dryByAddr.get(addr) || { state: '?', ts: null, x: null };
+          const tr = document.createElement('tr');
+          tr.id = `drow_${addr.replaceAll('.', '_')}`;
+          const stShown = (st && st.x !== null && st.x !== undefined) ? `${String(st.state || '?')} (x=${Number(st.x)})` : String(st.state || '?');
+          tr.innerHTML = `
+            <td>${escapeHtml(String(d.name || addr))}</td>
+            <td><code>${escapeHtml(addr)}</code></td>
+            <td><span class="state" id="dval_${addr.replaceAll('.', '_')}">${escapeHtml(stShown)}</span></td>
+            <td>
+              <div class="flex">
+                <button class="btn small secondary" id="ded_${addr.replaceAll('.', '_')}" type="button">Modifica</button>
+                <button class="btn small danger" id="drm_${addr.replaceAll('.', '_')}" type="button">Rimuovi</button>
+              </div>
+            </td>
+          `;
+          tbody.appendChild(tr);
+
+          qs(`ded_${addr.replaceAll('.', '_')}`).addEventListener('click', () => {
+            editingDryAddr = addr;
+            qs('d_name').value = String(d.name || '');
+            setGroupValue('d_groupSel', 'd_groupCustom', d.group || '');
+            qs('d_subnet').value = String(d.subnet_id);
+            qs('d_device').value = String(d.device_id);
+            qs('d_input').value = String(d.channel);
+            qs('d_deviceClass').value = String(d.device_class || '');
+            qs('d_category').value = String(d.category || 'Dry contact');
+            qs('d_icon').value = String(d.icon || '');
+            qs('d_invert').checked = !!d.invert;
+            qs('d_editAddr').checked = false;
+            updateDryAddrDisabled();
+            qs('d_btnSubmit').textContent = 'Salva Dry contact';
+            qs('d_btnCancel').style.display = '';
+            qs('d_formMsg').textContent = `Modifica ${addr}`;
+          });
+
+          const [s, dd, c] = addr.split('.').map(Number);
+          qs(`drm_${addr.replaceAll('.', '_')}`).addEventListener('click', async () => {
+            if (!confirm(`Rimuovere ${d.name} (${addr})?`)) return;
+            try {
+              await getJson(`api/devices/dry_contact/${s}/${dd}/${c}`, { method: 'DELETE' });
+              dryByAddr.delete(addr);
+            } catch (e) { qs('err').textContent = e.message || String(e); }
+          });
+        }
+      }
+
+      function setCoverGroupSelection(members) {
+        const set = new Set((members || []).map(x => String(x || '').trim()).filter(Boolean));
+        for (const el of document.querySelectorAll('input[name="cg_member"]')) {
+          el.checked = set.has(String(el.value || ''));
+        }
+      }
+
+      function setCoverGroupEditing(group) {
+        const nm = group ? String(group.name || '') : '';
+        const gid = group ? String(group.id || '') : '';
+        const icon = group ? String(group.icon || '') : '';
+        editingCoverGroup = gid || null;
+        qs('cg_id').value = gid || '';
+        qs('cg_name').value = nm || '';
+        qs('cg_icon').value = icon || '';
+        setCoverGroupSelection(group ? (group.members || []) : []);
+        qs('cg_delete').style.display = group ? '' : 'none';
+        qs('cg_cancel').style.display = group ? '' : 'none';
+        qs('cg_msg').textContent = group ? 'Modifica gruppo' : '';
+      }
+
+      function renderCoverGroupsTable() {
+        const tbody = qs('coverGroupsTable').querySelector('tbody');
+        tbody.innerHTML = '';
+        for (const g of (coverGroups || [])) {
+          const name = String(g.name || '').trim();
+          const gid = String(g.id || '').trim();
+          if (!name) continue;
+          const members = Array.isArray(g.members) ? g.members : [];
+
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${escapeHtml(name)}</td>
+            <td>${members.length}</td>
+            <td style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn secondary small" data-act="edit">Modifica</button>
+              <button class="btn danger small" data-act="del">Elimina</button>
+            </td>
+          `;
+
+          tr.querySelector('[data-act="edit"]').addEventListener('click', () => {
+            setCoverGroupEditing({ id: gid, name, members, icon: String(g.icon || '') });
+          });
+          tr.querySelector('[data-act="del"]').addEventListener('click', async () => {
+            try {
+              if (!confirm(`Eliminare il gruppo "${name}"?`)) return;
+              await getJson(`api/cover_groups/${encodeURIComponent(gid || name)}`, { method: 'DELETE' });
+              await refreshCoverGroups();
+              setCoverGroupEditing(null);
+              qs('cg_msg').textContent = 'Eliminato';
+              setTimeout(() => { qs('cg_msg').textContent = ''; }, 1400);
+            } catch (e) {
+              qs('cg_msg').textContent = 'Errore';
+            }
+          });
+          tbody.appendChild(tr);
+        }
+      }
+
+      async function refreshCoverGroups() {
+        try {
+          const res = await getJson('api/cover_groups');
+          coverGroups = Array.isArray(res.groups) ? res.groups : [];
+          renderCoverGroupsTable();
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      function applyCoverState(ev) {
+        const addr = `${ev.subnet_id}.${ev.device_id}.${ev.channel}`;
+        coverByAddr.set(addr, {state: ev.state, position: ev.position});
+
+        const stEl = document.getElementById(`cst_${addr.replaceAll('.', '_')}`);
+        if (stEl) stEl.textContent = ev.state;
+
+        const posEl = document.getElementById(`cpos_${addr.replaceAll('.', '_')}`);
+        if (posEl) posEl.textContent = `${Number(ev.position ?? 0)}%`;
+
+        const slEl = document.getElementById(`csl_${addr.replaceAll('.', '_')}`);
+        if (slEl && document.activeElement !== slEl) slEl.value = String(Number(ev.position ?? 0));
+      }
+
+      function tempDevForAddr(addr) {
+        return (lastDevices || []).find(d => String(d.type || '') === 'temp' && addrOf(d) === addr) || null;
+      }
+
+      function formatTempValue(addr, value) {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) return '?';
+        const d = tempDevForAddr(addr);
+        let dec = 1;
+        if (d && d.decimals !== null && d.decimals !== undefined) dec = Number(d.decimals);
+        if (!Number.isFinite(dec)) dec = 1;
+        dec = Math.max(0, Math.min(3, Math.round(dec)));
+        return Number(value).toFixed(dec);
+      }
+
+      function applyTempValue(ev) {
+        const addr = `${ev.subnet_id}.${ev.device_id}.${ev.channel}`;
+        const value = (ev.value === null || ev.value === undefined) ? null : Number(ev.value);
+        const ts = (ev.ts === null || ev.ts === undefined) ? null : Number(ev.ts);
+        tempByAddr.set(addr, { value, ts });
+
+        const vEl = document.getElementById(`tval_${addr.replaceAll('.', '_')}`);
+        if (vEl) vEl.textContent = formatTempValue(addr, value);
+      }
+
+      function humidityDevForAddr(addr) {
+        return (lastDevices || []).find(d => String(d.type || '') === 'humidity' && addrOf(d) === addr) || null;
+      }
+
+      function formatHumidityValue(addr, value) {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) return '?';
+        const d = humidityDevForAddr(addr);
+        let dec = 0;
+        if (d && d.decimals !== null && d.decimals !== undefined) dec = Number(d.decimals);
+        if (!Number.isFinite(dec)) dec = 0;
+        dec = Math.max(0, Math.min(2, Math.round(dec)));
+        return Number(value).toFixed(dec);
+      }
+
+      function applyHumidityValue(ev) {
+        const addr = `${ev.subnet_id}.${ev.device_id}.${ev.channel}`;
+        const value = (ev.value === null || ev.value === undefined) ? null : Number(ev.value);
+        const ts = (ev.ts === null || ev.ts === undefined) ? null : Number(ev.ts);
+        humidityByAddr.set(addr, { value, ts });
+
+        const vEl = document.getElementById(`hval_${addr.replaceAll('.', '_')}`);
+        if (vEl) vEl.textContent = formatHumidityValue(addr, value);
+      }
+
+      function illuminanceDevForAddr(addr) {
+        return (lastDevices || []).find(d => String(d.type || '') === 'illuminance' && addrOf(d) === addr) || null;
+      }
+
+      function formatIlluminanceValue(addr, value) {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) return '?';
+        const d = illuminanceDevForAddr(addr);
+        let dec = 0;
+        if (d && d.decimals !== null && d.decimals !== undefined) dec = Number(d.decimals);
+        if (!Number.isFinite(dec)) dec = 0;
+        dec = Math.max(0, Math.min(2, Math.round(dec)));
+        return Number(value).toFixed(dec);
+      }
+
+      function applyIlluminanceValue(ev) {
+        const addr = `${ev.subnet_id}.${ev.device_id}.${ev.channel}`;
+        const value = (ev.value === null || ev.value === undefined) ? null : Number(ev.value);
+        const ts = (ev.ts === null || ev.ts === undefined) ? null : Number(ev.ts);
+        illuminanceByAddr.set(addr, { value, ts });
+
+        const vEl = document.getElementById(`ival_${addr.replaceAll('.', '_')}`);
+        if (vEl) vEl.textContent = formatIlluminanceValue(addr, value);
+      }
+
+      function applyAirQuality(ev) {
+        const addr = `${ev.subnet_id}.${ev.device_id}.${ev.channel}`;
+        const state = String(ev.state || '').trim() || '?';
+        const ts = (ev.ts === null || ev.ts === undefined) ? null : Number(ev.ts);
+        airByAddr.set(addr, { state, ts });
+        const vEl = document.getElementById(`aval_${addr.replaceAll('.', '_')}`);
+        if (vEl) vEl.textContent = state;
+      }
+
+      function applyGasPercent(ev) {
+        const addr = `${ev.subnet_id}.${ev.device_id}.${ev.channel}`;
+        const value = (ev.value === null || ev.value === undefined) ? null : Number(ev.value);
+        const ts = (ev.ts === null || ev.ts === undefined) ? null : Number(ev.ts);
+        gasByAddr.set(addr, { value, ts });
+        const vEl = document.getElementById(`gval_${addr.replaceAll('.', '_')}`);
+        if (vEl) vEl.textContent = (value === null || Number.isNaN(value)) ? '?' : String(Math.round(value));
+      }
+
+      function applyPirState(ev) {
+        const addr = `${ev.subnet_id}.${ev.device_id}.${ev.channel}`;
+        const state = String(ev.state || '').toUpperCase() || '?';
+        const ts = (ev.ts === null || ev.ts === undefined) ? null : Number(ev.ts);
+        pirByAddr.set(addr, { state, ts });
+        const vEl = document.getElementById(`pval_pir_${addr.replaceAll('.', '_')}`);
+        if (vEl) vEl.textContent = state;
+      }
+
+      function applyUltrasonicState(ev) {
+        const addr = `${ev.subnet_id}.${ev.device_id}.${ev.channel}`;
+        const state = String(ev.state || '').toUpperCase() || '?';
+        const ts = (ev.ts === null || ev.ts === undefined) ? null : Number(ev.ts);
+        ultrasonicByAddr.set(addr, { state, ts });
+        const vEl = document.getElementById(`pval_ultrasonic_${addr.replaceAll('.', '_')}`);
+        if (vEl) vEl.textContent = state;
+      }
+
+      function applyDryContactState(ev) {
+        const addr = `${ev.subnet_id}.${ev.device_id}.${ev.channel}`;
+        const state = String(ev.state || '').toUpperCase() || '?';
+        const x = (ev.x === null || ev.x === undefined) ? null : Number(ev.x);
+        const ts = (ev.ts === null || ev.ts === undefined) ? null : Number(ev.ts);
+        dryByAddr.set(addr, { state, ts, x });
+
+        const vEl = document.getElementById(`dval_${addr.replaceAll('.', '_')}`);
+        if (vEl) vEl.textContent = x === null ? state : `${state} (x=${x})`;
+      }
+
+      async function sendCoverCmd(s, d, c, command) {
+        await getJson(`api/control/cover/${s}/${d}/${c}`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({command})
+        });
+      }
+
+      async function sendCoverPos(s, d, c, position) {
+        await getJson(`api/control/cover/${s}/${d}/${c}`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({command:'SET_POSITION', position})
+        });
+      }
+
+      function wsUrl() {
+        const proto = (location.protocol === 'https:') ? 'wss:' : 'ws:';
+        return `${proto}//${location.host}${withBase('ws')}`;
+      }
+
+      function connectWs() {
+        const url = wsUrl();
+        const ws = new WebSocket(url);
+        qs('rtPill').textContent = 'Realtime: connecting';
+
+        ws.onopen = () => {
+          qs('rtPill').textContent = 'Realtime: online';
+        };
+        ws.onclose = () => {
+          qs('rtPill').textContent = 'Realtime: offline';
+          setTimeout(connectWs, 1500);
+        };
+        ws.onmessage = async (evt) => {
+          try {
+            const msg = JSON.parse(evt.data);
+            if (msg.type === 'snapshot') { 
+              const devices = msg.data.devices || []; 
+              lastDevices = devices; 
+              const states = msg.data.states || {};
+              for (const [addr, st] of Object.entries(states)) {
+                if (!addr) continue;
+                const state = String(st.state || '').toUpperCase() || '?';
+                const brightness = (st.brightness === null || st.brightness === undefined) ? 0 : Number(st.brightness);
+                stateByAddr.set(addr, { state, brightness });
+              }
+              const cstates = msg.data.cover_states || {};
+              for (const [addr, st] of Object.entries(cstates)) {
+                if (!addr) continue;
+                const state = String(st.state || '').toUpperCase() || '?';
+                const position = (st.position === null || st.position === undefined) ? 0 : Number(st.position);
+                coverByAddr.set(addr, { state, position });
+              }
+              const tstates = msg.data.temp_states || {};
+              for (const [addr, st] of Object.entries(tstates)) {
+                if (!addr) continue;
+                const value = (st.value === null || st.value === undefined) ? null : Number(st.value);
+                const ts = (st.ts === null || st.ts === undefined) ? null : Number(st.ts);
+                tempByAddr.set(addr, { value, ts });
+              }
+              const hstates = msg.data.humidity_states || {};
+              for (const [addr, st] of Object.entries(hstates)) {
+                if (!addr) continue;
+                const value = (st.value === null || st.value === undefined) ? null : Number(st.value);
+                const ts = (st.ts === null || st.ts === undefined) ? null : Number(st.ts);
+                humidityByAddr.set(addr, { value, ts });
+              }
+              const istates = msg.data.illuminance_states || {};
+              for (const [addr, st] of Object.entries(istates)) {
+                if (!addr) continue;
+                const value = (st.value === null || st.value === undefined) ? null : Number(st.value);
+                const ts = (st.ts === null || st.ts === undefined) ? null : Number(st.ts);
+                illuminanceByAddr.set(addr, { value, ts });
+              }
+              const astates = msg.data.air_quality_states || {};
+              for (const [addr, st] of Object.entries(astates)) {
+                if (!addr) continue;
+                const state = String(st.state || '').trim() || '?';
+                const ts = (st.ts === null || st.ts === undefined) ? null : Number(st.ts);
+                airByAddr.set(addr, { state, ts });
+              }
+              const gstates = msg.data.gas_percent_states || {};
+              for (const [addr, st] of Object.entries(gstates)) {
+                if (!addr) continue;
+                const value = (st.value === null || st.value === undefined) ? null : Number(st.value);
+                const ts = (st.ts === null || st.ts === undefined) ? null : Number(st.ts);
+                gasByAddr.set(addr, { value, ts });
+              }
+              const dstates = msg.data.dry_contact_states || {};
+              for (const [addr, st] of Object.entries(dstates)) {
+                if (!addr) continue;
+                const state = String(st.state || '').toUpperCase() || '?';
+                const x = (st.x === null || st.x === undefined) ? null : Number(st.x);
+                const ts = (st.ts === null || st.ts === undefined) ? null : Number(st.ts);
+                dryByAddr.set(addr, { state, ts, x });
+              }
+              const pirstates = msg.data.pir_states || {};
+              for (const [addr, st] of Object.entries(pirstates)) {
+                if (!addr) continue;
+                const state = String(st.state || '').toUpperCase() || '?';
+                const ts = (st.ts === null || st.ts === undefined) ? null : Number(st.ts);
+                pirByAddr.set(addr, { state, ts });
+              }
+              const ustates = msg.data.ultrasonic_states || {};
+              for (const [addr, st] of Object.entries(ustates)) {
+                if (!addr) continue;
+                const state = String(st.state || '').toUpperCase() || '?';
+                const ts = (st.ts === null || st.ts === undefined) ? null : Number(st.ts);
+                ultrasonicByAddr.set(addr, { state, ts });
+              }
+              renderDevices(devices); 
+              renderCovers(devices); 
+              renderTemps(devices);
+              renderHumidity(devices);
+              renderIlluminance(devices);
+              renderAir(devices);
+              renderPresence(devices);
+              renderDryContacts(devices);
+              renderDryContacts(devices);
+              renderCoverGroupMembersOptions();
+              refreshCoverGroups();
+              renderGroupDnD();
+              refreshUsedGroups();
+              refreshUsedIcons();
+              const mqtt = msg.data.mqtt || {}; 
+              qs('mqttPill').textContent = `MQTT: ${mqtt.connected ? 'online' : 'offline'}`; 
+              return; 
+            } 
+            if (msg.type === 'devices') { 
+              const devices = msg.data.devices || []; 
+              lastDevices = devices; 
+              renderDevices(devices); 
+              renderCovers(devices); 
+              renderTemps(devices);
+              renderHumidity(devices);
+              renderIlluminance(devices);
+              renderAir(devices);
+              renderPresence(devices);
+              renderDryContacts(devices);
+              renderDryContacts(devices);
+              renderCoverGroupMembersOptions();
+              renderGroupDnD();
+              refreshUsedGroups();
+              refreshUsedIcons();
+              return; 
+            } 
+ if (msg.type === 'light_state') {
+              applyLightState(msg.data);
+              return;
+            }
+            if (msg.type === 'cover_state') {
+              applyCoverState(msg.data);
+              return;
+            }
+            if (msg.type === 'temp_value') {
+              applyTempValue(msg.data);
+              return;
+            }
+            if (msg.type === 'humidity_value') {
+              applyHumidityValue(msg.data);
+              return;
+            }
+            if (msg.type === 'illuminance_value') {
+              applyIlluminanceValue(msg.data);
+              return;
+            }
+            if (msg.type === 'air_quality') {
+              applyAirQuality(msg.data);
+              return;
+            }
+            if (msg.type === 'gas_percent') {
+              applyGasPercent(msg.data);
+              return;
+            }
+            if (msg.type === 'pir_state') {
+              applyPirState(msg.data);
+              return;
+            }
+            if (msg.type === 'ultrasonic_state') {
+              applyUltrasonicState(msg.data);
+              return;
+            }
+            if (msg.type === 'dry_contact_state') {
+              applyDryContactState(msg.data);
+              return;
+            }
+            if (msg.type === 'hub_links') {
+              applyHubLinks(msg.data);
+              return;
+            }
+            if (msg.type === 'hub_config') {
+              applyHubConfig(msg.data);
+              return;
+            }
+            if (msg.type === 'pwa_config') {
+              pwaCfg = (msg.data && msg.data.pwa) ? msg.data.pwa : pwaCfg;
+              renderPwaConfig();
+              return;
+            }
+            if (msg.type === 'proxy_targets') {
+              applyProxyTargets(msg.data);
+              return;
+            }
+          } catch (e) {
+            // ignore
+          }
+        };
+      }
+
+      async function refreshHeader() {
+        qs('err').textContent = '';
+        try {
+          const [opts, mqtt, bus] = await Promise.all([
+            getJson('api/options'),
+            getJson('api/mqtt/status'),
+            getJson('api/buspro/status')
+          ]);
+          qs('mqttPill').textContent = `MQTT: ${mqtt.connected ? 'online' : 'offline'}`;
+          qs('gwPill').textContent = `Gateway: ${opts.gateway_host || '?'}:${opts.gateway_port || '?'}`;
+          const tx = (bus.tx_host && bus.tx_port) ? `${bus.tx_host}:${bus.tx_port}` : '?';
+          const rx = (bus.rx_host && bus.rx_port) ? `${bus.rx_host}:${bus.rx_port}` : '?';
+          qs('busPill').textContent = `UDP: ${bus.ready ? 'ok' : 'ko'} | tx ${tx} | rx ${rx}`;
+          const parts = [];
+          if (!mqtt.connected) parts.push('MQTT offline');
+          if (!bus.ready) parts.push('UDP non pronto');
+          if (bus.last_error) parts.push(`UDP: ${bus.last_error}`);
+          if (mqtt.last_error) parts.push(`MQTT: ${mqtt.last_error}`);
+          qs('statusMsg').innerHTML = parts.length === 0 ? '<span class="ok">Pronto.</span>' : `<span class="error">${escapeHtml(parts.join(' | '))}</span>`;
+        } catch (e) {
+          qs('err').textContent = e.message || String(e);
+        }
+      }
+
+      async function refreshVersion() {
+        try {
+          const meta = await getJson('api/meta');
+          if (meta && meta.version) qs('verPill').textContent = `v${meta.version}`;
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      function setRoute() {
+        const h = String(location.hash || '').toLowerCase();
+        const isUser = h.startsWith('#/user') || h === '#user' || h === '#/' || h === '';
+        const uv = qs('userView');
+        const av = qs('adminView');
+        if (uv) uv.style.display = isUser ? '' : 'none';
+        if (av) av.style.display = isUser ? 'none' : '';
+        const nu = document.getElementById('navUser');
+        const na = document.getElementById('navAdmin');
+        if (nu) nu.classList.toggle('active', isUser);
+        if (na) na.classList.toggle('active', !isUser);
+        if (isUser) renderUser(lastDevices);
+      }
+
+      function renderUser(devices) {
+        if (!devices) devices = [];
+        const root = qs('userCards');
+        const count = qs('userCount');
+        if (!root || !count) return;
+
+        const list = devices.filter(d => {
+          const t = String(d.type || 'light');
+          if (userFilter === 'all') return true;
+          return t === userFilter;
+        });
+        count.textContent = `${list.length} device`;
+        root.innerHTML = '';
+
+        const grouped = new Map(); // key => {type,title,items}
+        for (const d of list) {
+          const t = String(d.type || 'light');
+          const cat = String(d.category || (t === 'cover' ? 'Cover' : 'Luci'));
+          const key = `${t}:${cat}`;
+          if (!grouped.has(key)) grouped.set(key, { type: t, title: cat, items: [] });
+          grouped.get(key).items.push(d);
+        }
+
+        const groups = Array.from(grouped.values()).sort((a,b)=> (a.type+a.title).localeCompare(b.type+b.title));
+        for (const g of groups) {
+          const header = document.createElement('div');
+          header.className = 'muted';
+          header.style.marginTop = '10px';
+          header.textContent = `${g.type === 'cover' ? 'Cover' : 'Luci'} · ${g.title}`;
+          root.appendChild(header);
+
+          for (const d of g.items) {
+            const addr = addrOf(d);
+            const t = String(d.type || 'light');
+
+            if (t === 'cover') {
+              const st = coverByAddr.get(addr) || { state:'?', position:0 };
+              const pos = Number(st.position ?? 0);
+              const state = String(st.state || '?').toUpperCase();
+              const moving = (state === 'OPENING' || state === 'CLOSING');
+              const card = document.createElement('div');
+              card.className = `devCard ${moving ? 'on' : ''}`;
+              card.innerHTML = `
+                <div class="devTitle">
+                  <h3>${escapeHtml(d.name || addr)}</h3>
+                  <span class="spacer"></span>
+                  <span class="chip">${escapeHtml(String(st.state || '?'))}</span>
+                </div>
+                <div class="devMeta">${escapeHtml(addr)} · ${Math.round(Math.max(0,Math.min(100,pos)))}%</div>
+                <div style="margin-top:10px" class="bar"><div style="width:${Math.max(0,Math.min(100,pos))}%"></div></div>
+                <div class="flex" style="margin-top:12px">
+                  <button class="btn small secondary" data-act="copen" data-addr="${addr}">Apri</button>
+                  <button class="btn small secondary" data-act="cstop" data-addr="${addr}">Stop</button>
+                  <button class="btn small secondary" data-act="cclose" data-addr="${addr}">Chiudi</button>
+                  <input class="slider" data-act="cpos" data-addr="${addr}" type="range" min="0" max="100" value="${Math.max(0,Math.min(100,pos))}" />
+                </div>
+              `;
+              root.appendChild(card);
+              continue;
+            }
+
+            const st = stateByAddr.get(addr) || { state:'?', brightness:0 };
+            const on = String(st.state || '').toUpperCase() === 'ON';
+            const b = Number(st.brightness ?? 0);
+            const pct = on ? Math.round((Math.max(0,Math.min(255,b)) * 100) / 255) : 0;
+            const card = document.createElement('div');
+            card.className = `devCard ${on ? 'on' : ''}`;
+            card.innerHTML = `
+              <div class="devTitle">
+                <h3>${escapeHtml(d.name || addr)}</h3>
+                <span class="spacer"></span>
+                <span class="chip"><span class="bigState">${escapeHtml(on ? 'ON' : (String(st.state||'?')))}</span>${on && d.dimmable ? ` · ${pct}%` : ''}</span>
+              </div>
+              <div class="devMeta">${escapeHtml(addr)}${d.dimmable ? ` · dimmer` : ''}</div>
+              <div class="flex" style="margin-top:12px">
+                <button class="btn small secondary" data-act="lon" data-addr="${addr}">${on ? 'Spegni' : 'Accendi'}</button>
+                ${d.dimmable ? `<input class="slider" data-act="lbr" data-addr="${addr}" type="range" min="1" max="255" value="${on ? String(Math.max(1,Math.min(255,b||255))) : '1'}" />` : ''}
+              </div>
+            `;
+            root.appendChild(card);
+          }
+        }
+
+        root.querySelectorAll('[data-act]').forEach((el) => {
+          const act = el.getAttribute('data-act');
+          const addr = el.getAttribute('data-addr');
+          if (!act || !addr) return;
+          if (act === 'lon') {
+            el.addEventListener('click', async () => {
+              try {
+                const cur = stateByAddr.get(addr) || { state:'OFF', brightness:255 };
+                const isOn = String(cur.state||'').toUpperCase() === 'ON';
+                if (!isOn) {
+                  const br = Number(cur.brightness ?? 255);
+                  const use = Number.isFinite(br) && br > 1 ? br : 255;
+                  await sendLight(addr, 'ON', use);
+                } else {
+                  await sendLight(addr, 'OFF');
+                }
+              } catch (e) { qs('err').textContent = e.message || String(e); }
+            });
+          } else if (act === 'lbr') {
+            el.addEventListener('change', async () => {
+              try {
+                const v = Number(el.value || 1);
+                await sendLight(addr, 'ON', v);
+              } catch (e) { qs('err').textContent = e.message || String(e); }
+            });
+          } else if (act === 'copen' || act === 'cclose' || act === 'cstop') {
+            el.addEventListener('click', async () => {
+              try {
+                const [s, d, c] = addr.split('.').map(Number);
+                const cmd = act === 'copen' ? 'OPEN' : act === 'cclose' ? 'CLOSE' : 'STOP';
+                await sendCoverCmd(s, d, c, cmd);
+              } catch (e) { qs('err').textContent = e.message || String(e); }
+            });
+          } else if (act === 'cpos') {
+            el.addEventListener('change', async () => {
+              try {
+                const [s, d, c] = addr.split('.').map(Number);
+                const pos = Number(el.value || 0);
+                await sendCoverPos(s, d, c, pos);
+              } catch (e) { qs('err').textContent = e.message || String(e); }
+            });
+          }
+        });
+      }
+
+      qs('deviceForm').addEventListener('submit', async (ev) => { 
+        ev.preventDefault(); 
+        qs('formMsg').textContent = ''; 
+        try { 
+          const wasEdit = !!editingAddr; 
+          const selectedCat = qs('category').value;
+          const category = (selectedCat === 'Altro') ? qs('categoryCustom').value.trim() : selectedCat;
+          const payload = { 
+            name: qs('name').value.trim(), 
+            group: getGroupValue('groupSel', 'groupCustom'),
+            subnet_id: Number(qs('subnet').value), 
+            device_id: Number(qs('device').value), 
+            channel: Number(qs('channel').value), 
+            dimmable: qs('dimmable').value === 'true', 
+            icon: qs('icon').value.trim(), 
+            category 
+          }; 
+          if (editingAddr) { 
+            const [s, d, c] = editingAddr.split('.').map(Number); 
+            await getJson(`api/devices/light/${s}/${d}/${c}`, { 
+              method: 'PATCH', 
+              headers: {'Content-Type': 'application/json'}, 
+              body: JSON.stringify({  
+                name: payload.name,  
+                group: payload.group, 
+                dimmable: payload.dimmable,  
+                icon: payload.icon,  
+                category: payload.category,
+                subnet_id: qs('editAddr').checked ? payload.subnet_id : undefined,
+                device_id: qs('editAddr').checked ? payload.device_id : undefined,
+                channel: qs('editAddr').checked ? payload.channel : undefined
+              })  
+            });  
+          } else { 
+            await getJson('api/devices', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify(payload)
+            });
+          }
+          qs('name').value = '';  
+          setGroupValue('groupSel', 'groupCustom', '');
+          qs('icon').value = '';  
+          qs('category').value = 'Luci';
+          qs('categoryCustom').value = '';
+          qs('categoryCustom').style.display = 'none';
+          qs('formMsg').textContent = wasEdit ? 'Salvato.' : 'Aggiunto.';
+          qs('err').textContent = '';
+          editingAddr = null; 
+          qs('editAddr').checked = false;
+          updateLightAddrDisabled();
+          qs('btnSubmit').textContent = 'Aggiungi'; 
+          qs('btnCancel').style.display = 'none'; 
+          try {
+            const devices = await getJson('api/devices');
+            lastDevices = devices;
+            renderDevices(devices);
+            renderCovers(devices);
+            renderTemps(devices);
+            renderHumidity(devices);
+            renderIlluminance(devices);
+            renderAir(devices);
+            renderPresence(devices);
+            renderDryContacts(devices);
+          } catch (e) {}
+        } catch (e) {
+          qs('err').textContent = e.message || String(e);
+        }
+      });
+
+      qs('btnCancel').addEventListener('click', () => {  
+        editingAddr = null;  
+        qs('name').value = '';  
+        setGroupValue('groupSel', 'groupCustom', '');
+        qs('icon').value = '';  
+        qs('category').value = 'Luci'; 
+        qs('categoryCustom').value = ''; 
+        qs('categoryCustom').style.display = 'none'; 
+        qs('subnet').disabled = false; 
+        qs('device').disabled = false; 
+        qs('channel').disabled = false; 
+        qs('editAddr').checked = false;
+        updateLightAddrDisabled();
+        qs('btnSubmit').textContent = 'Aggiungi'; 
+        qs('btnCancel').style.display = 'none'; 
+        qs('formMsg').textContent = ''; 
+      }); 
+
+      qs('t_editAddr').addEventListener('change', () => {
+        updateTempAddrDisabled();
+      });
+
+      qs('tempForm').addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        qs('t_formMsg').textContent = '';
+        try {
+          const payload = {
+            name: qs('t_name').value.trim(),
+            group: getGroupValue('t_groupSel', 't_groupCustom'),
+            subnet_id: Number(qs('t_subnet').value),
+            device_id: Number(qs('t_device').value),
+            sensor_id: Number(qs('t_sensor').value),
+            decimals: Number(qs('t_decimals').value || 1),
+            min_value: (qs('t_min').value.trim() === '') ? null : Number(qs('t_min').value),
+            max_value: (qs('t_max').value.trim() === '') ? null : Number(qs('t_max').value),
+            temp_format: qs('t_format').value,
+            temp_scale: (qs('t_scale').value.trim() === '') ? null : Number(qs('t_scale').value),
+            temp_offset: (qs('t_offset').value.trim() === '') ? null : Number(qs('t_offset').value),
+            category: qs('t_category').value.trim(),
+            icon: qs('t_icon').value.trim()
+          };
+
+          if (editingTempAddr) {
+            const [s, d, c] = editingTempAddr.split('.').map(Number);
+            await getJson(`api/devices/temp/${s}/${d}/${c}`, {
+              method: 'PATCH',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({
+                name: payload.name,
+                group: payload.group,
+                decimals: payload.decimals,
+                min_value: payload.min_value,
+                max_value: payload.max_value,
+                temp_format: payload.temp_format,
+                temp_scale: payload.temp_scale,
+                temp_offset: payload.temp_offset,
+                category: payload.category,
+                icon: payload.icon,
+                subnet_id: qs('t_editAddr').checked ? payload.subnet_id : undefined,
+                device_id: qs('t_editAddr').checked ? payload.device_id : undefined,
+                sensor_id: qs('t_editAddr').checked ? payload.sensor_id : undefined
+              })
+            });
+          } else {
+            await getJson('api/devices/temp', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify(payload)
+            });
+          }
+
+          editingTempAddr = null;
+          qs('t_name').value = '';
+          setGroupValue('t_groupSel', 't_groupCustom', '');
+          qs('t_icon').value = '';
+          qs('t_category').value = 'Temperature';
+          qs('t_decimals').value = '1';
+          qs('t_min').value = '';
+          qs('t_max').value = '';
+          qs('t_format').value = 'auto';
+          qs('t_scale').value = '';
+          qs('t_offset').value = '';
+          qs('t_editAddr').checked = false;
+          updateTempAddrDisabled();
+          qs('t_btnSubmit').textContent = 'Aggiungi Temperatura';
+          qs('t_btnCancel').style.display = 'none';
+          qs('t_formMsg').textContent = 'Salvato.';
+          qs('err').textContent = '';
+
+          try {
+            const devices = await getJson('api/devices');
+            lastDevices = devices;
+            renderDevices(devices);
+            renderCovers(devices);
+            renderTemps(devices);
+            renderHumidity(devices);
+            renderIlluminance(devices);
+            renderDryContacts(devices);
+          } catch (e) {}
+        } catch (e) {
+          qs('err').textContent = e.message || String(e);
+        }
+      });
+
+      qs('t_btnCancel').addEventListener('click', () => {
+        editingTempAddr = null;
+        qs('t_name').value = '';
+        setGroupValue('t_groupSel', 't_groupCustom', '');
+        qs('t_icon').value = '';
+        qs('t_category').value = 'Temperature';
+        qs('t_decimals').value = '1';
+        qs('t_min').value = '';
+        qs('t_max').value = '';
+        qs('t_format').value = 'auto';
+        qs('t_scale').value = '';
+        qs('t_offset').value = '';
+        qs('t_editAddr').checked = false;
+        updateTempAddrDisabled();
+        qs('t_btnSubmit').textContent = 'Aggiungi Temperatura';
+        qs('t_btnCancel').style.display = 'none';
+        qs('t_formMsg').textContent = '';
+      });
+
+      qs('h_editAddr').addEventListener('change', () => {
+        updateHumidityAddrDisabled();
+      });
+
+      qs('humForm').addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        qs('h_formMsg').textContent = '';
+        try {
+          const payload = {
+            name: qs('h_name').value.trim(),
+            group: getGroupValue('h_groupSel', 'h_groupCustom'),
+            subnet_id: Number(qs('h_subnet').value),
+            device_id: Number(qs('h_device').value),
+            sensor_id: Number(qs('h_sensor').value),
+            decimals: Number(qs('h_decimals').value || 0),
+            min_value: (qs('h_min').value.trim() === '') ? null : Number(qs('h_min').value),
+            max_value: (qs('h_max').value.trim() === '') ? null : Number(qs('h_max').value),
+            category: qs('h_category').value.trim(),
+            icon: qs('h_icon').value.trim()
+          };
+
+          if (editingHumidityAddr) {
+            const [s, d, c] = editingHumidityAddr.split('.').map(Number);
+            await getJson(`api/devices/humidity/${s}/${d}/${c}`, {
+              method: 'PATCH',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({
+                name: payload.name,
+                group: payload.group,
+                decimals: payload.decimals,
+                min_value: payload.min_value,
+                max_value: payload.max_value,
+                category: payload.category,
+                icon: payload.icon,
+                subnet_id: qs('h_editAddr').checked ? payload.subnet_id : undefined,
+                device_id: qs('h_editAddr').checked ? payload.device_id : undefined,
+                sensor_id: qs('h_editAddr').checked ? payload.sensor_id : undefined
+              })
+            });
+          } else {
+            await getJson('api/devices/humidity', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify(payload)
+            });
+          }
+
+          editingHumidityAddr = null;
+          qs('h_name').value = '';
+          setGroupValue('h_groupSel', 'h_groupCustom', '');
+          qs('h_icon').value = '';
+          qs('h_category').value = 'Humidity';
+          qs('h_decimals').value = '0';
+          qs('h_min').value = '';
+          qs('h_max').value = '';
+          qs('h_editAddr').checked = false;
+          updateHumidityAddrDisabled();
+          qs('h_btnSubmit').textContent = 'Aggiungi Umidità';
+          qs('h_btnCancel').style.display = 'none';
+          qs('h_formMsg').textContent = 'Salvato.';
+          qs('err').textContent = '';
+
+          try {
+            const devices = await getJson('api/devices');
+            lastDevices = devices;
+            renderDevices(devices);
+            renderCovers(devices);
+            renderTemps(devices);
+            renderHumidity(devices);
+            renderIlluminance(devices);
+            renderDryContacts(devices);
+          } catch (e) {}
+        } catch (e) {
+          qs('err').textContent = e.message || String(e);
+        }
+      });
+
+      qs('h_btnCancel').addEventListener('click', () => {
+        editingHumidityAddr = null;
+        qs('h_name').value = '';
+        setGroupValue('h_groupSel', 'h_groupCustom', '');
+        qs('h_icon').value = '';
+        qs('h_category').value = 'Humidity';
+        qs('h_decimals').value = '0';
+        qs('h_min').value = '';
+        qs('h_max').value = '';
+        qs('h_editAddr').checked = false;
+        updateHumidityAddrDisabled();
+        qs('h_btnSubmit').textContent = 'Aggiungi Umidità';
+        qs('h_btnCancel').style.display = 'none';
+        qs('h_formMsg').textContent = '';
+      });
+
+      qs('i_editAddr').addEventListener('change', () => {
+        updateIlluminanceAddrDisabled();
+      });
+
+      qs('illumForm').addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        qs('i_formMsg').textContent = '';
+        try {
+          const payload = {
+            name: qs('i_name').value.trim(),
+            group: getGroupValue('i_groupSel', 'i_groupCustom'),
+            subnet_id: Number(qs('i_subnet').value),
+            device_id: Number(qs('i_device').value),
+            sensor_id: Number(qs('i_sensor').value),
+            decimals: Number(qs('i_decimals').value || 0),
+            min_value: (qs('i_min').value.trim() === '') ? null : Number(qs('i_min').value),
+            max_value: (qs('i_max').value.trim() === '') ? null : Number(qs('i_max').value),
+            lux_scale: (qs('i_scale').value.trim() === '') ? null : Number(qs('i_scale').value),
+            lux_offset: (qs('i_offset').value.trim() === '') ? null : Number(qs('i_offset').value),
+            category: qs('i_category').value.trim(),
+            icon: qs('i_icon').value.trim()
+          };
+
+          if (editingIlluminanceAddr) {
+            const [s, d, c] = editingIlluminanceAddr.split('.').map(Number);
+            await getJson(`api/devices/illuminance/${s}/${d}/${c}`, {
+              method: 'PATCH',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({
+                name: payload.name,
+                group: payload.group,
+                decimals: payload.decimals,
+                min_value: payload.min_value,
+                max_value: payload.max_value,
+                lux_scale: payload.lux_scale,
+                lux_offset: payload.lux_offset,
+                category: payload.category,
+                icon: payload.icon,
+                subnet_id: qs('i_editAddr').checked ? payload.subnet_id : undefined,
+                device_id: qs('i_editAddr').checked ? payload.device_id : undefined,
+                sensor_id: qs('i_editAddr').checked ? payload.sensor_id : undefined
+              })
+            });
+          } else {
+            await getJson('api/devices/illuminance', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify(payload)
+            });
+          }
+
+          editingIlluminanceAddr = null;
+          qs('i_name').value = '';
+          setGroupValue('i_groupSel', 'i_groupCustom', '');
+          qs('i_icon').value = '';
+          qs('i_category').value = 'Illuminance';
+          qs('i_decimals').value = '0';
+          qs('i_min').value = '';
+          qs('i_max').value = '';
+          qs('i_scale').value = '';
+          qs('i_offset').value = '';
+          qs('i_editAddr').checked = false;
+          updateIlluminanceAddrDisabled();
+          qs('i_btnSubmit').textContent = 'Aggiungi Luminosita';
+          qs('i_btnCancel').style.display = 'none';
+          qs('i_formMsg').textContent = 'Salvato.';
+          qs('err').textContent = '';
+
+          try {
+            const devices = await getJson('api/devices');
+            lastDevices = devices;
+            renderDevices(devices);
+            renderCovers(devices);
+            renderTemps(devices);
+            renderHumidity(devices);
+            renderIlluminance(devices);
+            renderDryContacts(devices);
+          } catch (e) {}
+        } catch (e) {
+          qs('err').textContent = e.message || String(e);
+        }
+      });
+
+      qs('i_btnCancel').addEventListener('click', () => {
+        editingIlluminanceAddr = null;
+        qs('i_name').value = '';
+        setGroupValue('i_groupSel', 'i_groupCustom', '');
+        qs('i_icon').value = '';
+        qs('i_category').value = 'Illuminance';
+        qs('i_decimals').value = '0';
+        qs('i_min').value = '';
+        qs('i_max').value = '';
+        qs('i_scale').value = '';
+        qs('i_offset').value = '';
+        qs('i_editAddr').checked = false;
+        updateIlluminanceAddrDisabled();
+        qs('i_btnSubmit').textContent = 'Aggiungi Luminosita';
+        qs('i_btnCancel').style.display = 'none';
+        qs('i_formMsg').textContent = '';
+      });
+
+      qs('a_editAddr').addEventListener('change', () => {
+        updateAirAddrDisabled();
+      });
+
+      qs('airForm').addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        qs('a_formMsg').textContent = '';
+        try {
+          const payload = {
+            name: qs('a_name').value.trim(),
+            group: getGroupValue('a_groupSel', 'a_groupCustom'),
+            subnet_id: Number(qs('a_subnet').value),
+            device_id: Number(qs('a_device').value),
+            sensor_id: Number(qs('a_sensor').value),
+            category: qs('a_category').value.trim(),
+            icon: qs('a_icon').value.trim(),
+            gas_icon: qs('a_gas_icon').value.trim(),
+          };
+
+          if (editingAirAddr) {
+            const [s, d, c] = editingAirAddr.split('.').map(Number);
+            await getJson(`api/devices/air/${s}/${d}/${c}`, {
+              method: 'PATCH',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({
+                name: payload.name,
+                group: payload.group,
+                category: payload.category,
+                icon: payload.icon,
+                gas_icon: payload.gas_icon,
+                subnet_id: qs('a_editAddr').checked ? payload.subnet_id : undefined,
+                device_id: qs('a_editAddr').checked ? payload.device_id : undefined,
+                sensor_id: qs('a_editAddr').checked ? payload.sensor_id : undefined
+              })
+            });
+          } else {
+            await getJson('api/devices/air', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify(payload)
+            });
+          }
+
+          editingAirAddr = null;
+          qs('a_name').value = '';
+          setGroupValue('a_groupSel', 'a_groupCustom', '');
+          qs('a_icon').value = '';
+          qs('a_gas_icon').value = '';
+          qs('a_category').value = 'Air';
+          qs('a_sensor').value = '248';
+          qs('a_editAddr').checked = false;
+          updateAirAddrDisabled();
+          qs('a_btnSubmit').textContent = 'Aggiungi Aria';
+          qs('a_btnCancel').style.display = 'none';
+          qs('a_formMsg').textContent = 'Salvato.';
+          qs('err').textContent = '';
+
+          try {
+            const devices = await getJson('api/devices');
+            lastDevices = devices;
+            renderDevices(devices);
+            renderCovers(devices);
+            renderTemps(devices);
+            renderHumidity(devices);
+            renderIlluminance(devices);
+            renderAir(devices);
+            renderPresence(devices);
+            renderDryContacts(devices);
+          } catch (e) {}
+        } catch (e) {
+          qs('err').textContent = e.message || String(e);
+        }
+      });
+
+      qs('a_btnCancel').addEventListener('click', () => {
+        editingAirAddr = null;
+        qs('a_name').value = '';
+        setGroupValue('a_groupSel', 'a_groupCustom', '');
+        qs('a_icon').value = '';
+        qs('a_gas_icon').value = '';
+        qs('a_category').value = 'Air';
+        qs('a_sensor').value = '248';
+        qs('a_editAddr').checked = false;
+        updateAirAddrDisabled();
+        qs('a_btnSubmit').textContent = 'Aggiungi Aria';
+        qs('a_btnCancel').style.display = 'none';
+        qs('a_formMsg').textContent = '';
+      });
+
+      qs('p_editAddr').addEventListener('change', () => {
+        updatePresenceAddrDisabled();
+      });
+
+      qs('presenceForm').addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        qs('p_formMsg').textContent = '';
+        try {
+          const kind = String(qs('p_kind').value || 'pir').trim();
+          if (!['pir', 'ultrasonic'].includes(kind)) throw new Error('Tipo non valido');
+
+          const payload = {
+            name: qs('p_name').value.trim(),
+            group: getGroupValue('p_groupSel', 'p_groupCustom'),
+            subnet_id: Number(qs('p_subnet').value),
+            device_id: Number(qs('p_device').value),
+            sensor_id: Number(qs('p_sensor').value),
+            category: qs('p_category').value.trim(),
+            icon: qs('p_icon').value.trim(),
+          };
+
+          if (editingPresenceKey) {
+            const [ekind, eaddr] = String(editingPresenceKey).split(':', 2);
+            const [s, d, c] = String(eaddr || '').split('.').map(Number);
+            await getJson(`api/devices/${ekind}/${s}/${d}/${c}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name: payload.name,
+                group: payload.group,
+                category: payload.category,
+                icon: payload.icon,
+                subnet_id: qs('p_editAddr').checked ? payload.subnet_id : undefined,
+                device_id: qs('p_editAddr').checked ? payload.device_id : undefined,
+                sensor_id: qs('p_editAddr').checked ? payload.sensor_id : undefined,
+              })
+            });
+          } else {
+            await getJson(`api/devices/${kind}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+          }
+
+          editingPresenceKey = null;
+          qs('p_editKey').value = '';
+          qs('p_name').value = '';
+          qs('p_kind').value = 'pir';
+          qs('p_category').value = 'Presence';
+          qs('p_icon').value = '';
+          setGroupValue('p_groupSel', 'p_groupCustom', '');
+          qs('p_sensor').value = '';
+          qs('p_editAddr').checked = false;
+          updatePresenceAddrDisabled();
+          qs('p_btnSubmit').textContent = 'Aggiungi Presenza';
+          qs('p_btnCancel').style.display = 'none';
+          qs('p_formMsg').textContent = 'Salvato.';
+          qs('err').textContent = '';
+
+          try {
+            const devices = await getJson('api/devices');
+            lastDevices = devices;
+            renderDevices(devices);
+            renderCovers(devices);
+            renderTemps(devices);
+            renderHumidity(devices);
+            renderIlluminance(devices);
+            renderAir(devices);
+            renderPresence(devices);
+            renderDryContacts(devices);
+          } catch (e) {}
+        } catch (e) {
+          qs('err').textContent = e.message || String(e);
+        }
+      });
+
+      qs('p_btnCancel').addEventListener('click', () => {
+        editingPresenceKey = null;
+        qs('p_editKey').value = '';
+        qs('p_name').value = '';
+        qs('p_kind').value = 'pir';
+        qs('p_category').value = 'Presence';
+        qs('p_icon').value = '';
+        setGroupValue('p_groupSel', 'p_groupCustom', '');
+        qs('p_editAddr').checked = false;
+        updatePresenceAddrDisabled();
+        qs('p_btnSubmit').textContent = 'Aggiungi Presenza';
+        qs('p_btnCancel').style.display = 'none';
+        qs('p_formMsg').textContent = '';
+      });
+
+      qs('d_editAddr').addEventListener('change', () => {
+        updateDryAddrDisabled();
+      });
+
+      qs('dryForm').addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        qs('d_formMsg').textContent = '';
+        try {
+          const payload = {
+            name: qs('d_name').value.trim(),
+            group: getGroupValue('d_groupSel', 'd_groupCustom'),
+            subnet_id: Number(qs('d_subnet').value),
+            device_id: Number(qs('d_device').value),
+            input_id: Number(qs('d_input').value),
+            device_class: String(qs('d_deviceClass').value || '').trim(),
+            category: qs('d_category').value.trim(),
+            icon: qs('d_icon').value.trim(),
+            invert: !!qs('d_invert').checked,
+          };
+
+          if (editingDryAddr) {
+            const [s, d, c] = editingDryAddr.split('.').map(Number);
+            await getJson(`api/devices/dry_contact/${s}/${d}/${c}`, {
+              method: 'PATCH',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({
+                name: payload.name,
+                group: payload.group,
+                category: payload.category,
+                icon: payload.icon,
+                device_class: payload.device_class || null,
+                invert: payload.invert,
+                subnet_id: qs('d_editAddr').checked ? payload.subnet_id : undefined,
+                device_id: qs('d_editAddr').checked ? payload.device_id : undefined,
+                input_id: qs('d_editAddr').checked ? payload.input_id : undefined
+              })
+            });
+          } else {
+            await getJson('api/devices/dry_contact', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify(payload)
+            });
+          }
+
+          editingDryAddr = null;
+          qs('d_name').value = '';
+          setGroupValue('d_groupSel', 'd_groupCustom', '');
+          qs('d_icon').value = '';
+          qs('d_category').value = 'Dry contact';
+          qs('d_deviceClass').value = '';
+          qs('d_invert').checked = false;
+          qs('d_editAddr').checked = false;
+          updateDryAddrDisabled();
+          qs('d_btnSubmit').textContent = 'Aggiungi Dry contact';
+          qs('d_btnCancel').style.display = 'none';
+          qs('d_formMsg').textContent = 'Salvato.';
+          qs('err').textContent = '';
+
+          try {
+            const devices = await getJson('api/devices');
+            lastDevices = devices;
+            renderDevices(devices);
+            renderCovers(devices);
+            renderTemps(devices);
+            renderHumidity(devices);
+            renderIlluminance(devices);
+            renderDryContacts(devices);
+          } catch (e) {}
+        } catch (e) {
+          qs('err').textContent = e.message || String(e);
+        }
+      });
+
+      qs('d_btnCancel').addEventListener('click', () => {
+        editingDryAddr = null;
+        qs('d_name').value = '';
+        setGroupValue('d_groupSel', 'd_groupCustom', '');
+        qs('d_icon').value = '';
+        qs('d_category').value = 'Dry contact';
+        qs('d_deviceClass').value = '';
+        qs('d_invert').checked = false;
+        qs('d_editAddr').checked = false;
+        updateDryAddrDisabled();
+        qs('d_btnSubmit').textContent = 'Aggiungi Dry contact';
+        qs('d_btnCancel').style.display = 'none';
+        qs('d_formMsg').textContent = '';
+      });
+
+      qs('coverForm').addEventListener('submit', async (ev) => { 
+        ev.preventDefault();
+        qs('c_formMsg').textContent = '';
+        try {
+          const catSel = qs('c_category').value;
+          const category = (catSel === 'Altro') ? prompt('Nome categoria cover?') || 'Cover' : catSel;
+          const payload = { 
+            name: qs('c_name').value.trim(), 
+            group: getGroupValue('c_groupSel', 'c_groupCustom'),
+            subnet_id: Number(qs('c_subnet').value), 
+            device_id: Number(qs('c_device').value), 
+            channel: Number(qs('c_channel').value), 
+            opening_time_up: Number(qs('c_up').value || 20),
+            opening_time_down: Number(qs('c_down').value || 20),
+            start_delay_s: Number(qs('c_start_delay').value || 0),
+            category,
+            icon: qs('c_icon').value.trim(),
+            reverse_icon: !!qs('c_reverse').checked
+          };
+          if (editingCoverAddr) { 
+            const [s, d, c] = editingCoverAddr.split('.').map(Number); 
+            await getJson(`api/devices/cover/${s}/${d}/${c}`, { 
+              method: 'PATCH', 
+              headers: {'Content-Type': 'application/json'}, 
+              body: JSON.stringify({ 
+                name: payload.name, 
+                group: payload.group,
+                opening_time_up: payload.opening_time_up, 
+                opening_time_down: payload.opening_time_down, 
+                start_delay_s: payload.start_delay_s,
+                category: payload.category, 
+                icon: payload.icon, 
+                reverse_icon: payload.reverse_icon,
+                subnet_id: qs('c_editAddr').checked ? payload.subnet_id : undefined,
+                device_id: qs('c_editAddr').checked ? payload.device_id : undefined,
+                channel: qs('c_editAddr').checked ? payload.channel : undefined
+              }) 
+            }); 
+          } else { 
+            await getJson('api/devices/cover', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify(payload)
+            });
+          }
+          qs('c_name').value = ''; 
+          setGroupValue('c_groupSel', 'c_groupCustom', '');
+          qs('c_icon').value = ''; 
+          qs('c_start_delay').value = '0';
+          qs('c_reverse').checked = false; 
+          qs('c_formMsg').textContent = editingCoverAddr ? 'Salvato.' : 'Aggiunto.';
+          editingCoverAddr = null; 
+          qs('c_editAddr').checked = false;
+          updateCoverAddrDisabled();
+          qs('c_btnSubmit').textContent = 'Aggiungi Cover'; 
+          qs('c_btnCancel').style.display = 'none';
+	          try {
+	            const devices = await getJson('api/devices');
+            lastDevices = devices;
+            renderDevices(devices);
+            renderCovers(devices);
+            renderTemps(devices);
+            renderHumidity(devices);
+            renderIlluminance(devices);
+            renderDryContacts(devices);
+          } catch (e) {}
+        } catch (e) {
+          qs('err').textContent = e.message || String(e);
+        }
+      });
+
+      qs('c_btnCancel').addEventListener('click', () => { 
+        editingCoverAddr = null; 
+        qs('c_name').value = ''; 
+        setGroupValue('c_groupSel', 'c_groupCustom', '');
+        qs('c_icon').value = ''; 
+        qs('c_start_delay').value = '0';
+        qs('c_reverse').checked = false; 
+        qs('c_subnet').disabled = false; 
+        qs('c_device').disabled = false; 
+        qs('c_channel').disabled = false; 
+        qs('c_editAddr').checked = false;
+        updateCoverAddrDisabled();
+        qs('c_btnSubmit').textContent = 'Aggiungi Cover'; 
+        qs('c_btnCancel').style.display = 'none'; 
+        qs('c_formMsg').textContent = ''; 
+      }); 
+
+      qs('category').addEventListener('change', () => {
+        if (qs('category').value === 'Altro') {
+          qs('categoryCustom').style.display = '';
+          qs('categoryCustom').focus();
+        } else {
+          qs('categoryCustom').value = '';
+          qs('categoryCustom').style.display = 'none';
+        }
+      });
+
+      qs('btnClear').addEventListener('click', async () => {  
+        if (!confirm('Sicuro di voler cancellare TUTTI i dispositivi?')) return; 
+        const guard = (prompt('Scrivi SVUOTA per confermare') || '').trim().toUpperCase();
+        if (guard !== 'SVUOTA') return;
+        try { 
+	          await getJson('api/devices', {method:'DELETE'}); 
+	          stateByAddr.clear(); 
+	          coverByAddr.clear(); 
+	          tempByAddr.clear();
+	          humidityByAddr.clear();
+	          illuminanceByAddr.clear();
+	          dryByAddr.clear();
+	          renderDevices([]); 
+	          renderCovers([]);
+	          renderTemps([]);
+	          renderHumidity([]);
+	          renderIlluminance([]);
+	          renderDryContacts([]);
+	        } catch (e) {
+	          qs('err').textContent = e.message || String(e);
+	        }
+	      });
+
+      qs('btnRepublish').addEventListener('click', async () => { 
+        try { 
+          await getJson('api/mqtt/republish', {method:'POST'}); 
+          alert('Discovery ripubblicata.'); 
+        } catch (e) { 
+          qs('err').textContent = e.message || String(e); 
+        } 
+      }); 
+
+      qs('btnDedupe').addEventListener('click', async () => { 
+        try { 
+          if (!confirm('Rimuovere i duplicati? Verrà tenuta l’ultima definizione per ogni indirizzo.')) return;
+          const guard = (prompt('Scrivi DEDUPE per confermare') || '').trim().toUpperCase();
+          if (guard !== 'DEDUPE') return;
+          const res = await getJson('api/devices/dedupe', { method:'POST' }); 
+          const removed = Number(res.removed || 0); 
+          if (removed > 0) alert(`Rimossi duplicati: ${removed}`); 
+          else alert('Nessun duplicato trovato.'); 
+          try { lastDevices = await getJson('api/devices'); } catch (e) {}
+          renderDevices(lastDevices);
+          renderCovers(lastDevices);
+          refreshUsedIcons();
+          refreshUsedGroups();
+          renderGroupDnD();
+        } catch (e) {
+          qs('err').textContent = e.message || String(e);
+        }
+      });
+
+      qs('btnSaveGroups').addEventListener('click', async () => {
+        try {
+          const raw = String(qs('groupOrder').value || '');
+          const order = raw.split(/\r?\n/).map(normalizeGroup).filter(Boolean);
+          const res = await getJson('api/ui', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ group_order: order })
+          });
+          groupOrder = Array.isArray(res.group_order) ? res.group_order : order;
+          qs('groupOrder').value = groupOrder.join('\n');
+          renderGroupDnD();
+          qs('groupsMsg').textContent = 'Salvato';
+          setTimeout(() => { qs('groupsMsg').textContent = ''; }, 1500);
+        } catch (e) {
+          qs('groupsMsg').textContent = 'Errore';
+        }
+      });
+
+      qs('btnBackup').addEventListener('click', async () => {
+        try {
+          const res = await getJson('api/backup');
+          qs('backupText').value = String(res.text || '');
+          qs('backupMsg').textContent = 'Backup creato';
+          try {
+            await navigator.clipboard.writeText(qs('backupText').value);
+            qs('backupMsg').textContent = 'Backup creato (copiato)';
+          } catch (e) {}
+          setTimeout(() => { qs('backupMsg').textContent = ''; }, 1800);
+        } catch (e) {
+          qs('backupMsg').textContent = 'Errore';
+        }
+      });
+
+      qs('btnBackupDl').addEventListener('click', async () => {
+        try {
+          // Use file endpoint so browser downloads it
+          const url = withBase('api/backup/file');
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = '';
+          a.rel = 'noopener';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        } catch (e) {
+          qs('backupMsg').textContent = 'Errore';
+        }
+      });
+
+      qs('btnBackupImport').addEventListener('click', () => {
+        try { qs('backupFile').click(); } catch (e) {}
+      });
+
+      qs('backupFile').addEventListener('change', async () => {
+        const f = (qs('backupFile').files && qs('backupFile').files[0]) ? qs('backupFile').files[0] : null;
+        if (!f) return;
+        try {
+          const txt = await f.text();
+          qs('backupText').value = txt;
+          qs('backupMsg').textContent = 'Importato';
+          setTimeout(() => { qs('backupMsg').textContent = ''; }, 1800);
+        } catch (e) {
+          qs('backupMsg').textContent = 'Errore';
+        }
+      });
+
+      qs('btnRestore').addEventListener('click', async () => {
+        const txt = String(qs('backupText').value || '').trim();
+        if (!txt) { qs('backupMsg').textContent = 'Incolla un backup'; return; }
+        if (!confirm('Ripristinare il backup? Sovrascrive dispositivi e stati.')) return;
+        try {
+          await getJson('api/restore', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ text: txt }) });
+          qs('backupMsg').textContent = 'Ripristinato';
+          // refresh local state/UI
+          try { lastDevices = await getJson('api/devices'); } catch (e) {}
+          renderDevices(lastDevices);
+          renderCovers(lastDevices);
+          renderCoverGroupMembersOptions();
+          refreshCoverGroups();
+          loadUiConfig();
+          setTimeout(() => { qs('backupMsg').textContent = ''; }, 1800);
+        } catch (e) {
+          const msg = (e && e.message) ? String(e.message) : String(e || 'Errore');
+          qs('backupMsg').textContent = msg.length > 120 ? (msg.slice(0, 120) + '…') : msg;
+        }
+      });
+
+      function parsePair(s) {
+        const v = String(s || '').trim();
+        if (!v) return null;
+        const parts = v.split(',').map(x => x.trim()).filter(Boolean);
+        if (parts.length !== 2) return null;
+        const a = parseInt(parts[0], 10);
+        const b = parseInt(parts[1], 10);
+        if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+        return [a, b];
+      }
+
+      async function refreshSnifferStatus() {
+        const el = qs('sniffStatus');
+        if (!el) return;
+        try {
+          const st = await getJson('api/sniffer/status');
+          el.textContent = [
+            st.enabled ? 'ON' : 'OFF',
+            `buffer ${st.buffer_len}/${st.buffer_max}`,
+            `matched ${st.matched}`,
+            `dropped ${st.dropped}`,
+            st.file_path ? `file: ${st.file_path}` : 'file: (none)',
+          ].join(' · ');
+        } catch (e) {
+          el.textContent = '';
+        }
+      }
+
+      async function refreshSnifferLive() {
+        const el = qs('sniffLive');
+        if (!el) return;
+        try {
+          const res = await getJson('api/sniffer/recent?limit=80');
+          const items = Array.isArray(res.items) ? res.items : [];
+          const lines = items.map((it) => {
+            const ts = it && it.ts ? new Date(Number(it.ts) * 1000).toLocaleTimeString() : '';
+            const op = (it && it.operate_code) ? String(it.operate_code) : '';
+            const opRaw = (it && it.operate_code_raw_hex) ? String(it.operate_code_raw_hex) : '';
+            const src = (it && it.source_address) ? String(it.source_address) : '';
+            const dst = (it && it.target_address) ? String(it.target_address) : '';
+            const payload = (it && it.payload !== undefined) ? JSON.stringify(it.payload) : '';
+            const opShown = op || (opRaw ? `raw:0x${opRaw}` : '');
+            return `${ts} | ${opShown} | ${src} -> ${dst} | ${payload}`;
+          });
+          el.textContent = lines.join('\n');
+        } catch (e) {
+          el.textContent = '';
+        }
+      }
+
+      const btnSniffStart = qs('btnSniffStart');
+      const btnSniffStop = qs('btnSniffStop');
+      const btnSniffClear = qs('btnSniffClear');
+      const btnSniffDl = qs('btnSniffDl');
+      if (btnSniffStart && btnSniffStop && btnSniffClear && btnSniffDl) {
+        btnSniffStart.addEventListener('click', async () => {
+          qs('sniffMsg').textContent = '';
+          try {
+            const ops = String(qs('sniffOps').value || '').trim();
+            const src = parsePair(qs('sniffSrc').value);
+            const dst = parsePair(qs('sniffDst').value);
+            const include_raw = !!qs('sniffRaw').checked;
+            const write_file = !!qs('sniffFile').checked;
+            const filename = String(qs('sniffName').value || '').trim();
+            await getJson('api/sniffer/start', {
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({ op_contains: ops, src, dst, include_raw, write_file, filename, clear:false })
+            });
+            qs('sniffMsg').textContent = 'Sniffer avviato';
+            await refreshSnifferStatus();
+          } catch (e) {
+            qs('sniffMsg').textContent = String(e.message || e);
+          }
+        });
+
+        btnSniffStop.addEventListener('click', async () => {
+          qs('sniffMsg').textContent = '';
+          try {
+            await getJson('api/sniffer/stop', { method:'POST' });
+            qs('sniffMsg').textContent = 'Sniffer fermato';
+            await refreshSnifferStatus();
+          } catch (e) {
+            qs('sniffMsg').textContent = String(e.message || e);
+          }
+        });
+
+        btnSniffClear.addEventListener('click', async () => {
+          if (!confirm('Pulire buffer sniffer?')) return;
+          qs('sniffMsg').textContent = '';
+          try {
+            await getJson('api/sniffer/clear', { method:'POST' });
+            qs('sniffMsg').textContent = 'Pulito';
+            await refreshSnifferStatus();
+          } catch (e) {
+            qs('sniffMsg').textContent = String(e.message || e);
+          }
+        });
+
+        btnSniffDl.addEventListener('click', () => {
+          try {
+            const url = withBase('api/sniffer/file');
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = '';
+            a.rel = 'noopener';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+          } catch (e) {}
+        });
+
+        setInterval(refreshSnifferStatus, 2000);
+        refreshSnifferStatus();
+        setInterval(refreshSnifferLive, 1500);
+        refreshSnifferLive();
+      }
+
+      const tabAll = qs('tabAll');
+      const tabLights = qs('tabLights');
+      const tabCovers = qs('tabCovers');
+        if (tabAll && tabLights && tabCovers) {
+        tabAll.addEventListener('click', () => {
+          userFilter = 'all';
+          tabAll.classList.add('active');
+          tabLights.classList.remove('active');
+          tabCovers.classList.remove('active');
+          renderUser(lastDevices);
+        });
+        tabLights.addEventListener('click', () => {
+          userFilter = 'light';
+          tabAll.classList.remove('active');
+          tabLights.classList.add('active');
+          tabCovers.classList.remove('active');
+          renderUser(lastDevices);
+        });
+        tabCovers.addEventListener('click', () => {
+          userFilter = 'cover';
+          tabAll.classList.remove('active');
+          tabLights.classList.remove('active');
+          tabCovers.classList.add('active');
+          renderUser(lastDevices);
+        });
+      }
+
+      function initAccordions() {
+        const storageKey = 'buspro_admin_accordion_v1';
+        let saved = {};
+        try { saved = JSON.parse(localStorage.getItem(storageKey) || '{}') || {}; } catch (e) {}
+
+        document.querySelectorAll('details.acc[data-acc]').forEach((d) => {
+          const k = d.getAttribute('data-acc') || '';
+          if (k && Object.prototype.hasOwnProperty.call(saved, k)) d.open = !!saved[k];
+          d.addEventListener('toggle', () => {
+            if (!k) return;
+            saved[k] = d.open;
+            try { localStorage.setItem(storageKey, JSON.stringify(saved)); } catch (e) {}
+          });
+        });
+
+        document.querySelectorAll('summary button, summary a, summary input, summary select, summary textarea, summary label').forEach((el) => {
+          el.addEventListener('click', (ev) => ev.stopPropagation());
+          el.addEventListener('mousedown', (ev) => ev.stopPropagation());
+        });
+      }
+
+      function setUserLink() { 
+        const nh = qs('navUserHome');
+        const nh2 = qs('navUserHome2');
+        const nl = qs('navUserLights'); 
+        const nc = qs('navUserCovers'); 
+        const ne = qs('navUserExtra'); 
+        if (!nh && !nh2 && !nl && !nc && !ne) return; 
+        const proto = location.protocol || 'http:'; 
+        const host = location.hostname; 
+        const base = `${proto}//${host}:8124`; 
+        if (nh) { nh.href = `${base}/home`; nh.target = '_blank'; nh.rel = 'noopener'; } 
+        if (nh2) { nh2.href = `${base}/home2`; nh2.target = '_blank'; nh2.rel = 'noopener'; } 
+        if (nl) { nl.href = `${base}/lights`; nl.target = '_blank'; nl.rel = 'noopener'; } 
+        if (nc) { nc.href = `${base}/covers`; nc.target = '_blank'; nc.rel = 'noopener'; } 
+        if (ne) { ne.href = `${base}/extra`; ne.target = '_blank'; ne.rel = 'noopener'; } 
+      } 
+
+      let hubLinks = [];
+      let hubIcons = null;
+      let hubShow = null;
+      let pwaCfg = null;
+
+      const airByAddr = new Map(); // addr -> { state, ts }
+      const gasByAddr = new Map(); // addr -> { value, ts }
+
+      function renderHubIcons() {
+        if (!hubIcons) return;
+        qs('hubIconLights').value = String(hubIcons.lights || '');
+        qs('hubIconCovers').value = String(hubIcons.covers || '');
+        qs('hubIconExtra').value = String(hubIcons.extra || '');
+      }
+
+      function renderHubShow() {
+        if (!hubShow) return;
+        qs('hubShowLights').checked = !!hubShow.lights;
+        qs('hubShowCovers').checked = !!hubShow.covers;
+        qs('hubShowExtra').checked = !!hubShow.extra;
+      }
+
+      async function refreshHubConfig() {
+        try {
+          const res = await getJson('api/hub_config');
+          hubIcons = (res && res.hub_icons && typeof res.hub_icons === 'object') ? res.hub_icons : null;
+          hubShow = (res && res.hub_show && typeof res.hub_show === 'object') ? res.hub_show : null;
+        } catch (e) {
+          hubIcons = null;
+          hubShow = null;
+        }
+        renderHubIcons();
+        renderHubShow();
+      }
+
+      async function saveHubIcons() {
+        qs('hubIconsMsg').textContent = '';
+        const payload = {
+          hub_icons: {
+            lights: String(qs('hubIconLights').value || '').trim(),
+            covers: String(qs('hubIconCovers').value || '').trim(),
+            extra: String(qs('hubIconExtra').value || '').trim(),
+          },
+          hub_show: {
+            lights: !!qs('hubShowLights').checked,
+            covers: !!qs('hubShowCovers').checked,
+            extra: !!qs('hubShowExtra').checked,
+          },
+        };
+        try {
+          const res = await getJson('api/hub_config', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          hubIcons = (res && res.hub_icons && typeof res.hub_icons === 'object') ? res.hub_icons : payload.hub_icons;
+          hubShow = (res && res.hub_show && typeof res.hub_show === 'object') ? res.hub_show : payload.hub_show;
+          renderHubIcons();
+          renderHubShow();
+          qs('hubIconsMsg').textContent = 'Salvato';
+          setTimeout(() => { qs('hubIconsMsg').textContent = ''; }, 1400);
+        } catch (e) {
+          qs('hubIconsMsg').textContent = (e && e.message) ? e.message : 'Errore';
+        }
+      }
+
+      function renderPwaConfig() {
+        const cfg = (pwaCfg && typeof pwaCfg === 'object') ? pwaCfg : null;
+        if (!cfg) return;
+        qs('pwa_name').value = String(cfg.name || '');
+        qs('pwa_short').value = String(cfg.short_name || '');
+        qs('pwa_icon').value = String(cfg.icon_url || '');
+        qs('pwa_theme').value = String(cfg.theme_color || '');
+        qs('pwa_bg').value = String(cfg.background_color || '');
+        qs('pwa_start').value = String(cfg.start_url || '');
+      }
+
+      async function refreshPwaConfig() {
+        try {
+          pwaCfg = await getJson('api/pwa_config');
+        } catch (e) {
+          pwaCfg = null;
+        }
+        if (pwaCfg) renderPwaConfig();
+      }
+
+      async function savePwaConfig() {
+        qs('pwaMsg').textContent = '';
+        const payload = {
+          name: String(qs('pwa_name').value || '').trim(),
+          short_name: String(qs('pwa_short').value || '').trim(),
+          icon_url: String(qs('pwa_icon').value || '').trim(),
+          theme_color: String(qs('pwa_theme').value || '').trim(),
+          background_color: String(qs('pwa_bg').value || '').trim(),
+          start_url: String(qs('pwa_start').value || '').trim(),
+        };
+        try {
+          pwaCfg = await getJson('api/pwa_config', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          renderPwaConfig();
+          qs('pwaMsg').textContent = 'Salvato';
+          setTimeout(() => { qs('pwaMsg').textContent = ''; }, 1400);
+        } catch (e) {
+          qs('pwaMsg').textContent = (e && e.message) ? e.message : 'Errore';
+        }
+      }
+      function setHubLinkEditing(link) {
+        const isEdit = !!(link && link.id);
+        qs('hl_id').value = isEdit ? String(link.id) : '';
+        qs('hl_title').value = isEdit ? String(link.title || '') : '';
+        qs('hl_url').value = isEdit ? String(link.url || '') : '';
+        qs('hl_icon').value = isEdit ? String(link.icon || '') : '';
+        qs('hl_show').checked = isEdit ? !!link.show : true;
+        qs('hl_newtab').checked = isEdit ? !!link.new_tab : true;
+        qs('hl_btnSubmit').textContent = isEdit ? 'Salva link' : 'Aggiungi link';
+        qs('hl_btnCancel').style.display = isEdit ? '' : 'none';
+        qs('hl_formMsg').textContent = '';
+      }
+
+      function renderHubLinks() {
+        const table = document.getElementById('hubLinksTable');
+        if (!table) return;
+        const body = table.querySelector('tbody');
+        body.innerHTML = '';
+        for (let idx = 0; idx < hubLinks.length; idx++) {
+          const it = hubLinks[idx] || {};
+          const tr = document.createElement('tr');
+          const title = String(it.title || '').trim();
+          const url = String(it.url || '').trim();
+          const icon = String(it.icon || '').trim();
+          const show = !!it.show;
+          const nt = !!it.new_tab;
+          tr.innerHTML = `
+            <td>${escapeHtml(title)}</td>
+            <td style="word-break:break-all">${escapeHtml(url)}</td>
+            <td>
+              <span class="pill">${show ? 'show' : 'hide'}</span>
+              <span class="pill">${nt ? 'new tab' : 'same tab'}</span>
+              ${icon ? `<span class="pill">${escapeHtml(icon)}</span>` : ''}
+            </td>
+            <td>
+              <button class="btn secondary small" data-act="up" ${idx===0?'disabled':''}>â–²</button>
+              <button class="btn secondary small" data-act="down" ${idx===hubLinks.length-1?'disabled':''}>â–¼</button>
+            </td>
+            <td>
+              <button class="btn secondary small" data-act="edit">Modifica</button>
+              <button class="btn danger small" data-act="del">Elimina</button>
+            </td>
+          `;
+
+          tr.querySelector('[data-act=\"edit\"]').addEventListener('click', (ev) => {
+            ev.preventDefault();
+            setHubLinkEditing(it);
+          });
+          tr.querySelector('[data-act=\"del\"]').addEventListener('click', async (ev) => {
+            ev.preventDefault();
+            try {
+              if (!confirm(`Eliminare \"${title}\"?`)) return;
+              await getJson(`api/hub_links/${encodeURIComponent(String(it.id || ''))}`, { method:'DELETE' });
+              await refreshHubLinks();
+            } catch (e) {
+              qs('hl_formMsg').textContent = 'Errore';
+            }
+          });
+          tr.querySelector('[data-act=\"up\"]').addEventListener('click', async (ev) => {
+            ev.preventDefault();
+            await moveHubLink(idx, -1);
+          });
+          tr.querySelector('[data-act=\"down\"]').addEventListener('click', async (ev) => {
+            ev.preventDefault();
+            await moveHubLink(idx, +1);
+          });
+
+          body.appendChild(tr);
+        }
+      }
+
+      async function refreshHubLinks() {
+        try {
+          const res = await getJson('api/hub_links');
+          hubLinks = Array.isArray(res && res.links) ? res.links : [];
+        } catch (e) {
+          hubLinks = [];
+        }
+        renderHubLinks();
+      }
+
+      async function moveHubLink(index, delta) {
+        const i = Number(index);
+        const j = i + Number(delta);
+        if (!Number.isFinite(i) || !Number.isFinite(j)) return;
+        if (i < 0 || j < 0) return;
+        if (i >= hubLinks.length || j >= hubLinks.length) return;
+        const arr = hubLinks.slice();
+        const tmp = arr[i];
+        arr[i] = arr[j];
+        arr[j] = tmp;
+        try {
+          const res = await getJson('api/hub_links', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ links: arr })
+          });
+          hubLinks = (res && Array.isArray(res.links)) ? res.links : arr;
+          renderHubLinks();
+        } catch (e) {}
+      }
+
+      function applyHubLinks(data) {
+        if (!data) return;
+        const links = Array.isArray(data.links) ? data.links : [];
+        hubLinks = links;
+        renderHubLinks();
+      }
+
+      function applyHubConfig(data) {
+        if (!data) return;
+        if (data.hub_icons && typeof data.hub_icons === 'object') {
+          hubIcons = data.hub_icons;
+          renderHubIcons();
+        }
+        if (data.hub_show && typeof data.hub_show === 'object') {
+          hubShow = data.hub_show;
+          renderHubShow();
+        }
+      }
+
+      let proxyTargets = [];
+      function setProxyEditing(t) {
+        const isEdit = !!(t && t.name);
+        qs('px_name').value = isEdit ? String(t.name || '') : '';
+        qs('px_base').value = isEdit ? String(t.base_url || '') : '';
+        qs('px_icon').value = isEdit ? String(t.icon || '') : '';
+        qs('px_show').checked = isEdit ? !!t.show : true;
+        qs('px_btnSubmit').textContent = isEdit ? 'Salva target' : 'Aggiungi target';
+        qs('px_btnCancel').style.display = isEdit ? '' : 'none';
+        qs('px_name').disabled = isEdit;
+        qs('px_msg').textContent = '';
+      }
+
+      function renderProxyTargets() {
+        const table = document.getElementById('proxyTable');
+        if (!table) return;
+        const body = table.querySelector('tbody');
+        body.innerHTML = '';
+        for (const it of proxyTargets) {
+          const name = String(it.name || '').trim();
+          const base = String(it.base_url || '').trim();
+          const icon = String(it.icon || '').trim();
+          const show = !!it.show;
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><code>${escapeHtml(name)}</code></td>
+            <td style="word-break:break-all">${escapeHtml(base)}</td>
+            <td>
+              <span class="pill">${show ? 'show' : 'hide'}</span>
+              ${icon ? `<span class="pill">${escapeHtml(icon)}</span>` : ''}
+              <span class="pill">url: <code>/ext/${escapeHtml(name)}/</code></span>
+            </td>
+            <td>
+              <button class="btn secondary small" data-act="edit">Modifica</button>
+              <button class="btn danger small" data-act="del">Elimina</button>
+            </td>
+          `;
+          tr.querySelector('[data-act=\"edit\"]').addEventListener('click', (ev) => {
+            ev.preventDefault();
+            setProxyEditing(it);
+          });
+          tr.querySelector('[data-act=\"del\"]').addEventListener('click', async (ev) => {
+            ev.preventDefault();
+            try {
+              if (!confirm(`Eliminare target \"${name}\"?`)) return;
+              await getJson(`api/proxy_targets/${encodeURIComponent(name)}`, { method:'DELETE' });
+              await refreshProxyTargets();
+            } catch (e) {
+              qs('px_msg').textContent = 'Errore';
+            }
+          });
+          body.appendChild(tr);
+        }
+      }
+
+      async function refreshProxyTargets() {
+        try {
+          const res = await getJson('api/proxy_targets');
+          proxyTargets = Array.isArray(res && res.targets) ? res.targets : [];
+        } catch (e) {
+          proxyTargets = [];
+        }
+        renderProxyTargets();
+      }
+
+      function applyProxyTargets(data) {
+        if (!data) return;
+        const t = Array.isArray(data.targets) ? data.targets : [];
+        proxyTargets = t;
+        renderProxyTargets();
+      }
+
+      initAccordions();
+      setUserLink(); 
+      loadUiConfig();
+      refreshUsedIcons();
+      refreshUsedGroups();
+      renderCoverGroupMembersOptions();
+      refreshCoverGroups();
+      attachGroupSelect('groupSel', 'groupCustom');
+      attachGroupSelect('c_groupSel', 'c_groupCustom');
+      attachGroupSelect('t_groupSel', 't_groupCustom');
+      attachGroupSelect('h_groupSel', 'h_groupCustom');
+      attachGroupSelect('i_groupSel', 'i_groupCustom');
+      attachGroupSelect('a_groupSel', 'a_groupCustom');
+      attachGroupSelect('p_groupSel', 'p_groupCustom');
+      attachGroupSelect('d_groupSel', 'd_groupCustom');
+      refreshHubConfig();
+      refreshHubLinks();
+      refreshPwaConfig();
+      refreshProxyTargets();
+      qs('editAddr').addEventListener('change', () => {
+        updateLightAddrDisabled();
+      });
+      qs('c_editAddr').addEventListener('change', () => {
+        updateCoverAddrDisabled();
+      });
+      updateLightAddrDisabled();
+      updateCoverAddrDisabled();
+      updateTempAddrDisabled();
+      updateHumidityAddrDisabled();
+      updateIlluminanceAddrDisabled();
+      updateAirAddrDisabled();
+      updateDryAddrDisabled();
+      refreshHeader(); 
+      refreshVersion(); 
+      connectWs(); 
+      setInterval(refreshHeader, 8000); 
+
+      qs('hubLinkForm').addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        qs('hl_formMsg').textContent = '';
+        try {
+          const id = String(qs('hl_id').value || '').trim();
+          const title = String(qs('hl_title').value || '').trim();
+          const url = String(qs('hl_url').value || '').trim();
+          const icon = String(qs('hl_icon').value || '').trim();
+          const show = !!qs('hl_show').checked;
+          const new_tab = !!qs('hl_newtab').checked;
+          await getJson('api/hub_links', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify(id ? { id, title, url, icon, show, new_tab } : { title, url, icon, show, new_tab })
+          });
+          await refreshHubLinks();
+          setHubLinkEditing(null);
+          qs('hl_formMsg').textContent = 'Salvato';
+          setTimeout(() => { qs('hl_formMsg').textContent = ''; }, 1400);
+        } catch (e) {
+          qs('hl_formMsg').textContent = (e && e.message) ? e.message : 'Errore';
+        }
+      });
+
+      qs('hl_btnCancel').addEventListener('click', () => {
+        setHubLinkEditing(null);
+      });
+
+      qs('btnSaveHubIcons').addEventListener('click', async () => {
+        await saveHubIcons();
+      });
+
+      qs('btnSavePwa').addEventListener('click', async () => {
+        await savePwaConfig();
+      });
+
+      qs('proxyForm').addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        qs('px_msg').textContent = '';
+        try {
+          const name = String(qs('px_name').value || '').trim();
+          const base_url = String(qs('px_base').value || '').trim();
+          const icon = String(qs('px_icon').value || '').trim();
+          const show = !!qs('px_show').checked;
+          await getJson('api/proxy_targets', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ name, base_url, icon, show })
+          });
+          await refreshProxyTargets();
+          setProxyEditing(null);
+          qs('px_msg').textContent = 'Salvato';
+          setTimeout(() => { qs('px_msg').textContent = ''; }, 1400);
+        } catch (e) {
+          qs('px_msg').textContent = (e && e.message) ? e.message : 'Errore';
+        }
+      });
+
+      qs('px_btnCancel').addEventListener('click', () => {
+        setProxyEditing(null);
+      });
+
+      qs('coverGroupForm').addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        try {
+          const name = String(qs('cg_name').value || '').trim();
+          if (!name) { qs('cg_msg').textContent = 'Nome richiesto'; return; }
+          const members = selectedCoverGroupMembers();
+          const gid = String(qs('cg_id').value || '').trim();
+          const icon = String(qs('cg_icon').value || '').trim();
+          await getJson('api/cover_groups', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify(gid ? { id: gid, name, members, icon } : { name, members, icon })
+          });
+          await refreshCoverGroups();
+          setCoverGroupEditing(null);
+          qs('cg_msg').textContent = 'Salvato';
+          setTimeout(() => { qs('cg_msg').textContent = ''; }, 1400);
+        } catch (e) {
+          qs('cg_msg').textContent = 'Errore';
+        }
+      });
+
+      qs('cg_cancel').addEventListener('click', () => {
+        setCoverGroupEditing(null);
+      });
+
+      qs('cg_delete').addEventListener('click', async () => {
+        const name = String(qs('cg_name').value || '').trim();
+        const gid = String(qs('cg_id').value || '').trim();
+        if (!name && !gid) return;
+        try {
+          if (!confirm(`Eliminare il gruppo "${name}"?`)) return;
+          await getJson(`api/cover_groups/${encodeURIComponent(gid || name)}`, { method: 'DELETE' });
+          await refreshCoverGroups();
+          setCoverGroupEditing(null);
+          qs('cg_msg').textContent = 'Eliminato';
+          setTimeout(() => { qs('cg_msg').textContent = ''; }, 1400);
+        } catch (e) {
+          qs('cg_msg').textContent = 'Errore';
+        }
+      });
+    </script>
+  </body>
+</html>

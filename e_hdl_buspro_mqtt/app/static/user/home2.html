@@ -1,0 +1,397 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ekonex</title>
+    <meta name="theme-color" content="#05070b" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" type="image/png" href="static/e-face-nobg.png" />
+    <link rel="apple-touch-icon" href="static/e-face-nobg.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Ekonex" />
+    <style>
+      :root{
+        --bg0:#05070b;
+        --text:#f2f5ff;
+        --muted:rgba(255,255,255,.60);
+        --line:rgba(255,255,255,.10);
+        --tile:rgba(255,255,255,.06);
+        --tile2:rgba(0,0,0,.18);
+        --danger:#ff6b6b;
+      }
+      body{
+        margin:0;
+        font-family:system-ui,Segoe UI,Roboto,Arial;
+        color:var(--text);
+        -webkit-font-smoothing:antialiased;
+        text-rendering:optimizeLegibility;
+        min-height:100vh;
+      }
+      body::before{
+        content:'';
+        position:fixed;
+        inset:0;
+        z-index:-2;
+        background: radial-gradient(1200px 800px at 50% 50%, rgba(26,34,48,.65) 0%, var(--bg0) 52%, #000 100%);
+        background-position:center center;
+        background-repeat:no-repeat;
+      }
+      main{
+        max-width:1100px;
+        margin:0 auto;
+        padding:18px 14px;
+        min-height:100vh;
+        display:flex;
+        flex-direction:column;
+        justify-content:center;
+      }
+      .stack{
+        display:flex;
+        flex-direction:column;
+        align-items:center;
+        justify-content:center;
+        gap:26px;
+      }
+      .brand{
+        height:267px;
+        width:auto;
+        opacity:.92;
+        filter:drop-shadow(0 10px 24px rgba(0,0,0,.65));
+      }
+      .brandWrap{min-height:38px;display:flex;align-items:center}
+      .brandWrap.hidden{min-height:0}
+      .err{color:var(--danger);font-size:13px;text-align:center;margin-top:10px}
+
+      .menu{
+        display:flex;
+        flex-wrap:wrap;
+        justify-content:center;
+        align-content:center;
+        gap:14px;
+        width:min(1080px, 100%);
+      }
+      .tile{
+        height:170px;
+        width:220px;
+        flex:0 0 auto;
+        display:flex;
+        flex-direction:column;
+        align-items:center;
+        justify-content:center;
+        gap:14px;
+        text-decoration:none;
+        color:var(--text);
+        background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(0,0,0,.16));
+        position:relative;
+        -webkit-tap-highlight-color: transparent;
+        user-select:none;
+        border-radius:0;
+        border:1px solid rgba(255,255,255,.14);
+        overflow:hidden;
+      }
+      .tile::after{
+        content:'';
+        position:absolute;
+        inset:0;
+        background: radial-gradient(260px 130px at 50% 20%, rgba(255,255,255,.14), transparent 62%);
+        opacity:.75;
+        pointer-events:none;
+      }
+      .tile:hover{
+        border-color:rgba(255,255,255,.20);
+        background:linear-gradient(180deg, rgba(255,255,255,.10), rgba(0,0,0,.14));
+        box-shadow:0 12px 28px rgba(0,0,0,.32);
+      }
+      .tile:active{transform:scale(.992)}
+      .iconRing{
+        width:78px;
+        height:78px;
+        border-radius:999px;
+        background: radial-gradient(50px 50px at 30% 30%, rgba(255,255,255,.55), rgba(255,255,255,.08) 52%, rgba(0,0,0,.35) 100%);
+        border:1px solid rgba(255,255,255,.20);
+        box-shadow:
+          0 14px 26px rgba(0,0,0,.42),
+          0 0 0 1px rgba(255,255,255,.06) inset;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        position:relative;
+      }
+      .iconRing::before{
+        content:'';
+        position:absolute;
+        inset:8px;
+        border-radius:999px;
+        background: radial-gradient(18px 18px at 30% 30%, rgba(255,255,255,.65), rgba(255,255,255,0) 65%);
+        opacity:.6;
+        pointer-events:none;
+      }
+      .ico{
+        width:40px;height:40px;
+        background:rgba(255,255,255,.85);
+        -webkit-mask-repeat:no-repeat;
+        -webkit-mask-position:center;
+        -webkit-mask-size:contain;
+        mask-repeat:no-repeat;
+        mask-position:center;
+        mask-size:contain;
+        filter:drop-shadow(0 2px 3px rgba(0,0,0,.35));
+        opacity:.95;
+      }
+      .label{
+        font-size:19px;
+        font-weight:460;
+        letter-spacing:.02em;
+        opacity:.84;
+        text-align:center;
+      }
+
+      @media(max-width:820px){
+        main{padding:16px 12px}
+        .brand{height:244px}
+        .menu{gap:12px}
+        .tile{height:150px; width:200px}
+        .iconRing{width:71px;height:71px}
+        .ico{width:36px;height:36px}
+        .label{font-size:18px}
+      }
+      @media(max-width:420px){
+        .brand{height:201px}
+      }
+
+      /* Phone / narrow views: always 2 columns (2-2-2-2...) */
+      @media(max-width:900px){
+        .menu{
+          width:100%;
+          display:grid;
+          grid-template-columns:repeat(2, minmax(0, 1fr));
+          gap:12px;
+        }
+        .tile{
+          width:auto;
+          max-width:none;
+          flex:initial;
+        }
+      }
+      @media(max-width:560px){
+        .tile{height:140px}
+        .iconRing{width:67px;height:67px}
+        .ico{width:34px;height:34px}
+        .label{font-size:17px}
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="stack">
+        <div id="brandWrap" class="brandWrap">
+          <img id="brandImg" class="brand" src="static/logo_ekonex.png" alt="" />
+        </div>
+        <div id="menu" class="menu" aria-label="home tiles"></div>
+        <div id="err" class="err"></div>
+      </div>
+    </main>
+
+    <script>
+      function absUrl(path) { return new URL(path, window.location.href).toString(); }
+      async function getJson(path, opts) {
+        const r = await fetch(absUrl(path), opts);
+        if (!r.ok) throw new Error(await r.text());
+        const ct = (r.headers.get('content-type')||'').toLowerCase();
+        if (ct.includes('application/json')) return r.json();
+        return r.text();
+      }
+      function mdiName(iconValue, fallback) {
+        const v = (iconValue === null || iconValue === undefined) ? '' : String(iconValue).trim();
+        const m = /^mdi:([a-z0-9_-]+)$/i.exec(v);
+        return (m ? m[1].toLowerCase() : (fallback || 'link-variant'));
+      }
+      function iconUrl(iconValue, fallback) {
+        const name = mdiName(iconValue, fallback);
+        return absUrl(`api/icons/mdi/${name}.svg`);
+      }
+      function makeTile({ title, href, icon, targetBlank }) {
+        const a = document.createElement('a');
+        a.className = 'tile';
+        a.href = href;
+        if (targetBlank) {
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+        }
+        const ring = document.createElement('div');
+        ring.className = 'iconRing';
+        const ico = document.createElement('div');
+        ico.className = 'ico';
+        ico.style.webkitMaskImage = `url("${icon}")`;
+        ico.style.maskImage = `url("${icon}")`;
+        ring.appendChild(ico);
+        const label = document.createElement('div');
+        label.className = 'label';
+        label.textContent = title;
+        a.appendChild(ring);
+        a.appendChild(label);
+        return a;
+      }
+
+      async function init() {
+        const menu = document.getElementById('menu');
+        const err = document.getElementById('err');
+        menu.innerHTML = '';
+        err.textContent = '';
+
+        const brandImg = document.getElementById('brandImg');
+        const brandWrap = document.getElementById('brandWrap');
+        async function pickBrand() {
+          if (!brandImg) return;
+          const candidates = [
+            'static/logo_ekonex.png',
+            'static/ekonex.png',
+            'static/logo_ekonex.webp',
+            'static/ekonex.webp',
+            'static/logo_ekonex.svg',
+            'static/ekonex.svg',
+          ];
+          function tryOne(url) {
+            return new Promise((resolve) => {
+              const img = new Image();
+              img.onload = () => resolve(true);
+              img.onerror = () => resolve(false);
+              img.src = absUrl(url);
+            });
+          }
+          for (const c of candidates) {
+            try {
+              const ok = await tryOne(c);
+              if (ok) {
+                brandImg.src = c;
+                return;
+              }
+            } catch (e) {}
+          }
+          if (brandWrap) brandWrap.classList.add('hidden');
+        }
+        await pickBrand();
+
+        let meta = null;
+        try {
+          meta = await getJson('api/meta');
+        } catch (e) {
+          meta = null;
+        }
+        if (!meta) {
+          err.textContent = 'Impossibile leggere meta (api/meta)';
+          return;
+        }
+
+        const icons = (meta && meta.hub_icons && typeof meta.hub_icons === 'object') ? meta.hub_icons : {};
+        const show = (meta && meta.hub_show && typeof meta.hub_show === 'object') ? meta.hub_show : {};
+
+        const fixed = [
+          { key: 'lights', title: 'Luci', href: absUrl('lights'), fallback: 'lightbulb-group' },
+          { key: 'covers', title: 'Cover', href: absUrl('covers'), fallback: 'window-shutter' },
+          { key: 'extra', title: 'Extra', href: absUrl('extra'), fallback: 'shape' },
+        ];
+        for (const it of fixed) {
+          if (show[it.key] === false) continue;
+          const icon = String(icons[it.key] || '');
+          menu.appendChild(makeTile({
+            title: it.title,
+            href: it.href,
+            icon: iconUrl(icon || `mdi:${it.fallback}`, it.fallback),
+            targetBlank: false
+          }));
+        }
+
+        const links = (meta && Array.isArray(meta.hub_links)) ? meta.hub_links : [];
+        for (const it of links) {
+          const title = String(it.title || '').trim();
+          const url = String(it.url || '').trim();
+          if (!title || !url) continue;
+          menu.appendChild(makeTile({
+            title,
+            href: url,
+            icon: iconUrl(it.icon || 'mdi:link-variant', 'link-variant'),
+            targetBlank: !!it.new_tab
+          }));
+        }
+      }
+
+      init();
+    </script>
+    <script>
+      // PWA: register SW + align title from manifest (if reachable).
+      (async function () {
+        try {
+          const r = await fetch(absUrl('manifest.webmanifest'), { cache: 'no-cache' });
+          if (r.ok) {
+            const m = await r.json();
+            const name = String((m && (m.short_name || m.name)) || '').trim();
+            if (name) {
+              document.title = name;
+              const meta = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+              if (meta) meta.setAttribute('content', name);
+            }
+            const tc = String((m && m.theme_color) || '').trim();
+            if (tc) {
+              const theme = document.querySelector('meta[name="theme-color"]');
+              if (theme) theme.setAttribute('content', tc);
+            }
+          }
+        } catch (e) {}
+
+        try {
+          if ('serviceWorker' in navigator) {
+            await navigator.serviceWorker.register(absUrl('sw.js'));
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <script>
+      // Hidden back gesture: long-press top-left corner.
+      (function () {
+        const CORNER = 60;
+        const HOLD_MS = 450;
+        let timer = null;
+        function inCorner(e) {
+          return !!e && Number(e.clientX) <= CORNER && Number(e.clientY) <= CORNER;
+        }
+        function goHome() {
+          try {
+            window.location.href = new URL('home2', window.location.href).toString();
+          } catch (e) {}
+        }
+        function doBack() {
+          try {
+            if (window.history && window.history.length > 1) {
+              window.history.back();
+              return;
+            }
+          } catch (e) {}
+          goHome();
+        }
+        function clear() {
+          if (timer) {
+            clearTimeout(timer);
+            timer = null;
+          }
+        }
+        document.addEventListener('pointerdown', (e) => {
+          if (timer) return;
+          if (!inCorner(e)) return;
+          timer = setTimeout(() => {
+            timer = null;
+            doBack();
+          }, HOLD_MS);
+        }, { passive: true });
+        document.addEventListener('pointerup', clear, { passive: true });
+        document.addEventListener('pointercancel', clear, { passive: true });
+        document.addEventListener('pointermove', (e) => {
+          if (!timer) return;
+          if (!inCorner(e)) clear();
+        }, { passive: true });
+      })();
+    </script>
+  </body>
+</html>
