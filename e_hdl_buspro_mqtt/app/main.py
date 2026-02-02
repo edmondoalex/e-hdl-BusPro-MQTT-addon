@@ -341,6 +341,8 @@ def create_app() -> FastAPI:
         # User allowed APIs (read-only + control)
         if path.startswith("/api/control/"):
             return await call_next(request)
+        if path.startswith("/api/user/light_scenarios"):
+            return await call_next(request)
         if path.startswith("/api/icons/mdi/"):
             return await call_next(request)
         if path == "/api/devices" and request.method.upper() == "GET":
@@ -4751,6 +4753,78 @@ self.addEventListener('fetch', (event) => {{
     async def mqtt_republish():
         await _republish_discovery()
         return {"ok": True}
+
+    @api.get("/api/user/light_scenarios")
+    async def list_light_scenarios():
+        return {"items": store.list_light_scenarios()}
+
+    @api.post("/api/user/light_scenarios")
+    async def create_light_scenario(payload: dict[str, Any]):
+        try:
+            out = store.add_light_scenario(payload)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        return out
+
+    @api.put("/api/user/light_scenarios/{scenario_id}")
+    async def update_light_scenario(scenario_id: str, payload: dict[str, Any]):
+        try:
+            out = store.update_light_scenario(scenario_id=scenario_id, payload=payload)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        if out is None:
+            raise HTTPException(status_code=404, detail="Not Found")
+        return out
+
+    @api.delete("/api/user/light_scenarios/{scenario_id}")
+    async def delete_light_scenario(scenario_id: str):
+        ok = store.delete_light_scenario(scenario_id=scenario_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Not Found")
+        return {"ok": True}
+
+    @api.post("/api/control/light_scenario/{scenario_id}")
+    async def run_light_scenario(scenario_id: str):
+        gw: BusproGateway | None = api.state.gateway
+        if gw is None:
+            raise HTTPException(status_code=503, detail="Gateway not ready")
+        if not gw.started or not gw.transport_ready():
+            raise HTTPException(status_code=503, detail=gw.last_error or "UDP transport not ready")
+
+        sc = store.find_light_scenario(scenario_id=scenario_id)
+        if not sc:
+            raise HTTPException(status_code=404, detail="Not Found")
+        items = sc.get("items") or []
+        if not isinstance(items, list) or not items:
+            return {"ok": True, "sent": 0}
+
+        sent = 0
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            try:
+                subnet_id = int(it.get("subnet_id"))
+                device_id = int(it.get("device_id"))
+                channel = int(it.get("channel"))
+            except Exception:
+                continue
+            state = str(it.get("state") or "").strip().upper()
+            if state not in ("ON", "OFF"):
+                continue
+            on = state == "ON"
+            br = it.get("brightness")
+            try:
+                br255 = int(br) if (br is not None and on) else None
+            except Exception:
+                br255 = None
+            try:
+                await gw.set_light(subnet_id=subnet_id, device_id=device_id, channel=channel, on=on, brightness255=br255)
+                sent += 1
+            except Exception:
+                # Best-effort: continue other lights
+                continue
+
+        return {"ok": True, "sent": sent}
 
     @api.post("/api/control/light/{subnet_id}/{device_id}/{channel}")
     async def control_light(subnet_id: int, device_id: int, channel: int, payload: dict[str, Any]):

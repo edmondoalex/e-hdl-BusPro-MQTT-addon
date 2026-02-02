@@ -48,6 +48,7 @@ class StateStore:
             "group_order": [],
             "cover_groups": [],
             "cover_groups_published": [],
+            "light_scenarios": [],
             "hub_links": [],
             "hub_icons": StateStore.default_hub_icons(),
             "hub_show": StateStore.default_hub_show(),
@@ -97,6 +98,7 @@ class StateStore:
         raw["ui"].setdefault("group_order", [])
         raw["ui"].setdefault("cover_groups", [])
         raw["ui"].setdefault("cover_groups_published", [])
+        raw["ui"].setdefault("light_scenarios", [])
         raw["ui"].setdefault("hub_links", [])
         raw["ui"].setdefault("hub_icons", self.default_hub_icons())
         raw["ui"].setdefault("hub_show", self.default_hub_show())
@@ -129,6 +131,8 @@ class StateStore:
 
         if not isinstance(raw["ui"].get("proxy_targets", []), list):
             raw["ui"]["proxy_targets"] = []
+        if not isinstance(raw["ui"].get("light_scenarios", []), list):
+            raw["ui"]["light_scenarios"] = []
         if not isinstance(raw["ui"].get("pwa", {}), dict):
             raw["ui"]["pwa"] = self._default_ui().get("pwa")
         return raw
@@ -224,6 +228,7 @@ class StateStore:
         raw["ui"].setdefault("group_order", [])
         raw["ui"].setdefault("cover_groups", [])
         raw["ui"].setdefault("cover_groups_published", [])
+        raw["ui"].setdefault("light_scenarios", [])
         raw["ui"].setdefault("hub_links", [])
         raw["ui"].setdefault("hub_icons", self.default_hub_icons())
         raw["ui"].setdefault("hub_show", self.default_hub_show())
@@ -255,6 +260,8 @@ class StateStore:
             ui["cover_groups"] = []
         if not isinstance(ui.get("cover_groups_published", []), list):
             ui["cover_groups_published"] = []
+        if not isinstance(ui.get("light_scenarios", []), list):
+            ui["light_scenarios"] = []
         if not isinstance(ui.get("hub_links", []), list):
             ui["hub_links"] = []
         if not isinstance(ui.get("hub_icons", {}), dict):
@@ -264,6 +271,152 @@ class StateStore:
         if not isinstance(ui.get("proxy_targets", []), list):
             ui["proxy_targets"] = []
         self.write_raw({"devices": devices, "states": states, "ui": ui})
+
+    def list_light_scenarios(self) -> list[dict[str, Any]]:
+        raw = self.read_raw()
+        ui = raw.get("ui") or {}
+        items = ui.get("light_scenarios") or []
+        if not isinstance(items, list):
+            return []
+        out: list[dict[str, Any]] = []
+        for it in items:
+            if isinstance(it, dict):
+                out.append(dict(it))
+        return out
+
+    def find_light_scenario(self, *, scenario_id: str) -> dict[str, Any] | None:
+        sid = str(scenario_id or "").strip()
+        if not sid:
+            return None
+        for it in self.list_light_scenarios():
+            if str(it.get("id") or "").strip() == sid:
+                return it
+        return None
+
+    @staticmethod
+    def _normalize_light_scenario_payload(payload: dict[str, Any], *, require_name: bool) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be an object")
+
+        name = str(payload.get("name") or "").strip()
+        if require_name and not name:
+            raise ValueError("name is required")
+        if len(name) > 80:
+            name = name[:80].strip()
+
+        items_in = payload.get("items") or []
+        if items_in is None:
+            items_in = []
+        if not isinstance(items_in, list):
+            raise ValueError("items must be a list")
+
+        items: list[dict[str, Any]] = []
+        for it in items_in:
+            if not isinstance(it, dict):
+                continue
+            try:
+                subnet_id = int(it.get("subnet_id"))
+                device_id = int(it.get("device_id"))
+                channel = int(it.get("channel"))
+            except Exception:
+                continue
+            st = str(it.get("state") or "").strip().upper()
+            if st not in ("ON", "OFF"):
+                continue
+            br = it.get("brightness")
+            if br is None or st == "OFF":
+                br255 = None
+            else:
+                try:
+                    br255 = int(br)
+                except Exception:
+                    br255 = None
+                if br255 is not None:
+                    br255 = max(0, min(255, br255))
+            items.append(
+                {
+                    "subnet_id": subnet_id,
+                    "device_id": device_id,
+                    "channel": channel,
+                    "state": st,
+                    "brightness": br255,
+                }
+            )
+
+        return {"name": name, "items": items}
+
+    def add_light_scenario(self, payload: dict[str, Any]) -> dict[str, Any]:
+        cleaned = self._normalize_light_scenario_payload(payload, require_name=True)
+        scenario_id = str(uuid.uuid4())
+        out = {"id": scenario_id, "name": cleaned["name"], "items": cleaned["items"]}
+
+        raw = self.read_raw()
+        ui = dict(raw.get("ui") or {})
+        items = ui.get("light_scenarios") or []
+        if not isinstance(items, list):
+            items = []
+        items2 = [dict(x) for x in items if isinstance(x, dict)]
+        items2.append(out)
+        ui["light_scenarios"] = items2
+        raw["ui"] = ui
+        self.write_raw(raw)
+        return out
+
+    def update_light_scenario(self, *, scenario_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+        sid = str(scenario_id or "").strip()
+        if not sid:
+            return None
+        cleaned = self._normalize_light_scenario_payload(payload, require_name=False)
+
+        raw = self.read_raw()
+        ui = dict(raw.get("ui") or {})
+        items = ui.get("light_scenarios") or []
+        if not isinstance(items, list):
+            return None
+
+        updated: dict[str, Any] | None = None
+        out_items: list[dict[str, Any]] = []
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            if str(it.get("id") or "").strip() != sid:
+                out_items.append(dict(it))
+                continue
+            cur = dict(it)
+            if cleaned.get("name"):
+                cur["name"] = cleaned["name"]
+            if "items" in cleaned:
+                cur["items"] = cleaned["items"]
+            updated = cur
+            out_items.append(cur)
+
+        if updated is None:
+            return None
+
+        ui["light_scenarios"] = out_items
+        raw["ui"] = ui
+        self.write_raw(raw)
+        return updated
+
+    def delete_light_scenario(self, *, scenario_id: str) -> bool:
+        sid = str(scenario_id or "").strip()
+        if not sid:
+            return False
+
+        raw = self.read_raw()
+        ui = dict(raw.get("ui") or {})
+        items = ui.get("light_scenarios") or []
+        if not isinstance(items, list):
+            return False
+
+        kept = [dict(it) for it in items if isinstance(it, dict) and str(it.get("id") or "").strip() != sid]
+        if len(kept) == len([it for it in items if isinstance(it, dict)]):
+            return False
+
+        ui["light_scenarios"] = kept
+        raw["ui"] = ui
+        self.write_raw(raw)
+        return True
 
     def list_devices(self) -> list[dict[str, Any]]:
         return list(self.read_raw().get("devices", []))

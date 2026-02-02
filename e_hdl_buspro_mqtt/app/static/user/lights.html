@@ -126,6 +126,46 @@
       }
       input[type="range"]{width:100%;accent-color:rgba(242,245,255,.85)}
       .error{color:var(--danger);font-size:13px;margin-top:10px}
+
+      /* Scenarios modal */
+      .modalBack{
+        position:fixed;inset:0;z-index:50;
+        background:rgba(0,0,0,.55);
+        backdrop-filter: blur(10px);
+        display:none;
+        align-items:center;
+        justify-content:center;
+        padding:18px 14px;
+      }
+      .modalBack.show{display:flex}
+      .modal{
+        width:min(760px, 100%);
+        max-height:min(78vh, 760px);
+        overflow:auto;
+        border:1px solid rgba(255,255,255,.14);
+        background:rgba(8,10,14,.88);
+        box-shadow:0 18px 50px rgba(0,0,0,.55);
+        padding:14px 14px 10px;
+      }
+      .modalTop{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px}
+      .modalTitle{font-size:14px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.70)}
+      .btnRow{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:flex-end}
+      .btn{
+        height:38px;padding:0 12px;
+        border:1px solid rgba(255,255,255,.14);
+        background:rgba(255,255,255,.06);
+        color:rgba(242,245,255,.86);
+        cursor:pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .btn:active{transform:scale(.99)}
+      .btn.primary{border-color:rgba(255,215,0,.35); background:rgba(255,215,0,.08)}
+      .btn.danger{border-color:rgba(255,107,107,.40); background:rgba(255,107,107,.10)}
+      .scList{border:1px solid rgba(255,255,255,.10); background:rgba(0,0,0,.18)}
+      .scRow{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:12px;border-top:1px solid rgba(255,255,255,.07)}
+      .scRow:first-child{border-top:none}
+      .scName{min-width:0;flex:1;font-size:16px;opacity:.90;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .scMeta{font-size:12px;color:rgba(255,255,255,.55);margin-left:10px;white-space:nowrap}
     </style>
   </head>
   <body>
@@ -138,11 +178,31 @@
       <button id="collapseBtn" class="filterBtn" type="button" aria-label="Collassa/espandi gruppi">
         <svg id="collapseIcon" viewBox="0 0 24 24" aria-hidden="true"></svg>
       </button>
+      <button id="scenesBtn" class="filterBtn" type="button" aria-label="Scenari">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 3l2.6 5.4L20.5 9l-4.3 4.2 1 6-5.2-2.8-5.2 2.8 1-6L3.5 9l5.9-.6z" fill="none" />
+        </svg>
+      </button>
     </div>
     <main>
       <div id="list" class="list"></div>
       <div id="err" class="error"></div>
     </main>
+
+    <div id="scenesModalBack" class="modalBack" role="dialog" aria-modal="true" aria-label="Scenari">
+      <div class="modal">
+        <div class="modalTop">
+          <div class="modalTitle">Scenari</div>
+          <div class="btnRow">
+            <button id="scSaveOnBtn" class="btn primary" type="button">Salva (solo accese)</button>
+            <button id="scSaveAllBtn" class="btn" type="button">Salva (tutte)</button>
+            <button id="scCloseBtn" class="btn" type="button">Chiudi</button>
+          </div>
+        </div>
+        <div id="scErr" class="error" style="margin:0 0 10px 0"></div>
+        <div id="scList" class="scList"></div>
+      </div>
+    </div>
 
     <script>
       const qs = (id) => document.getElementById(id); 
@@ -158,6 +218,7 @@
       let collapsedGroups = new Set(); // groupKey
       let renderQueued = false;
       let countsQueued = false;
+      let lightScenarios = [];
 
       const GROUP_NONE = '__none__';
       const LS_COLLAPSED = 'buspro_collapsed_groups_lights';
@@ -223,6 +284,124 @@
         const payload = { state: state };
         if (brightness !== undefined) payload.brightness = brightness;
         await getJson(`api/control/light/${s}/${d}/${c}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      }
+
+      async function loadLightScenarios() {
+        const r = await getJson('api/user/light_scenarios');
+        lightScenarios = (r && r.items) ? r.items : [];
+        if (!Array.isArray(lightScenarios)) lightScenarios = [];
+        renderLightScenarios();
+      }
+
+      function renderLightScenarios() {
+        const root = qs('scList');
+        const err = qs('scErr');
+        if (!root) return;
+        root.replaceChildren();
+        if (err) err.textContent = '';
+
+        const items = (lightScenarios || []).slice().sort((a,b) => String(a.name||'').localeCompare(String(b.name||''), undefined, {sensitivity:'base'}));
+        if (!items.length) {
+          const empty = document.createElement('div');
+          empty.className = 'scRow';
+          empty.innerHTML = `<div class="scName">Nessuno scenario salvato</div><div class="scMeta">Crea uno scenario dopo aver impostato le luci</div>`;
+          root.appendChild(empty);
+          return;
+        }
+
+        for (const sc of items) {
+          const row = document.createElement('div');
+          row.className = 'scRow';
+          const name = String(sc.name || '').trim() || '(senza nome)';
+          const count = Array.isArray(sc.items) ? sc.items.length : 0;
+          row.innerHTML = `
+            <div class="scName">${escapeHtml(name)}<span class="scMeta">${escapeHtml(String(count))} luci</span></div>
+            <div class="btnRow">
+              <button class="btn primary" type="button" data-act="run" data-id="${escapeHtml(String(sc.id||''))}">Esegui</button>
+              <button class="btn danger" type="button" data-act="del" data-id="${escapeHtml(String(sc.id||''))}">Elimina</button>
+            </div>
+          `;
+          root.appendChild(row);
+        }
+
+        root.querySelectorAll('button[data-act="run"]').forEach((b) => {
+          b.addEventListener('click', async () => {
+            const id = b.getAttribute('data-id') || '';
+            try {
+              if (err) err.textContent = '';
+              await getJson(`api/control/light_scenario/${encodeURIComponent(id)}`, { method:'POST' });
+            } catch (e) {
+              if (err) err.textContent = 'Errore esecuzione scenario';
+            }
+          });
+        });
+        root.querySelectorAll('button[data-act="del"]').forEach((b) => {
+          b.addEventListener('click', async () => {
+            const id = b.getAttribute('data-id') || '';
+            if (!id) return;
+            if (!confirm('Eliminare questo scenario?')) return;
+            try {
+              if (err) err.textContent = '';
+              await getJson(`api/user/light_scenarios/${encodeURIComponent(id)}`, { method:'DELETE' });
+              await loadLightScenarios();
+            } catch (e) {
+              if (err) err.textContent = 'Errore eliminazione scenario';
+            }
+          });
+        });
+      }
+
+      function buildScenarioItems({ onlyOn }) {
+        const items = [];
+        const lights = (lastDevices || []).filter(d => String(d.type || 'light') === 'light' && !isExtraSwitch(d));
+        for (const d of lights) {
+          const addr = addrOf(d);
+          const st = stateByAddr.get(addr) || { state:'?', brightness:0 };
+          const on = String(st.state || '').toUpperCase() === 'ON';
+          if (onlyOn && !on) continue;
+          const it = { subnet_id: Number(d.subnet_id), device_id: Number(d.device_id), channel: Number(d.channel), state: on ? 'ON' : 'OFF' };
+          if (on && d.dimmable) {
+            const b = Number(st.brightness ?? 0);
+            const b255 = Math.max(1, Math.min(255, Number.isFinite(b) ? b : (lastBrightness.get(addr) || 255)));
+            it.brightness = b255;
+          }
+          items.push(it);
+        }
+        return items;
+      }
+
+      async function saveScenario({ onlyOn }) {
+        const err = qs('scErr');
+        try {
+          if (err) err.textContent = '';
+          const name = prompt('Nome scenario:', '');
+          if (!name) return;
+          const items = buildScenarioItems({ onlyOn });
+          if (!items.length) {
+            if (err) err.textContent = 'Nessuna luce da salvare';
+            return;
+          }
+          await getJson('api/user/light_scenarios', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ name, items }),
+          });
+          await loadLightScenarios();
+        } catch (e) {
+          if (err) err.textContent = 'Errore salvataggio scenario';
+        }
+      }
+
+      function openScenarios() {
+        const back = qs('scenesModalBack');
+        if (!back) return;
+        back.classList.add('show');
+        loadLightScenarios().catch(() => {});
+      }
+      function closeScenarios() {
+        const back = qs('scenesModalBack');
+        if (!back) return;
+        back.classList.remove('show');
       }
 
       function mdiName(iconValue) {
@@ -581,6 +760,18 @@
         collapsedGroups = new Set(allCollapsed ? [] : keys);
         try { localStorage.setItem(LS_COLLAPSED, JSON.stringify(Array.from(collapsedGroups))); } catch (e) {}
         queueRender();
+      });
+
+      // Scenarios modal wiring
+      qs('scenesBtn').addEventListener('click', () => openScenarios());
+      qs('scCloseBtn').addEventListener('click', () => closeScenarios());
+      qs('scSaveOnBtn').addEventListener('click', () => saveScenario({ onlyOn: true }));
+      qs('scSaveAllBtn').addEventListener('click', () => saveScenario({ onlyOn: false }));
+      qs('scenesModalBack').addEventListener('click', (evt) => {
+        if (evt && evt.target === qs('scenesModalBack')) closeScenarios();
+      });
+      document.addEventListener('keydown', (evt) => {
+        if (evt && evt.key === 'Escape') closeScenarios();
       });
 
       window.addEventListener('resize', () => queueCenter());
