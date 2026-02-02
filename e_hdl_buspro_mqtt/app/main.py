@@ -10,6 +10,7 @@ import time
 import threading
 import urllib.parse
 import urllib.request
+import urllib.error
 from typing import Any
 import re
 
@@ -45,7 +46,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.253"
+ADDON_VERSION = "0.1.254"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -260,12 +261,21 @@ def create_app() -> FastAPI:
         req = urllib.request.Request(url=url, method=method.upper(), data=data)
         for k, v in headers.items():
             req.add_header(k, v)
-        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
-            raw = resp.read()
+        try:
+            with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+                raw = resp.read()
+                try:
+                    return json.loads(raw.decode("utf-8", errors="replace"))
+                except Exception:
+                    return raw.decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as e:
             try:
-                return json.loads(raw.decode("utf-8", errors="replace"))
+                body = e.read().decode("utf-8", errors="replace")
             except Exception:
-                return raw.decode("utf-8", errors="replace")
+                body = ""
+            raise HTTPException(status_code=int(getattr(e, "code", 502) or 502), detail=body or str(e))
+        except urllib.error.URLError as e:
+            raise HTTPException(status_code=502, detail=str(e.reason or e))
 
     def _ha_state_str(v: Any) -> str:
         return str(v or "").strip().lower()
