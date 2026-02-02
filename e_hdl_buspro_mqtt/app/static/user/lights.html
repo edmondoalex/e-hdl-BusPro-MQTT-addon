@@ -161,8 +161,19 @@
       .btn:active{transform:scale(.99)}
       .btn.primary{border-color:rgba(255,215,0,.35); background:rgba(255,215,0,.08)}
       .btn.danger{border-color:rgba(255,107,107,.40); background:rgba(255,107,107,.10)}
-      .scList{border:1px solid rgba(255,255,255,.10); background:rgba(0,0,0,.18)}
-      .scRow{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:12px;border-top:1px solid rgba(255,255,255,.07)}
+      .scList{
+        border-radius:18px;
+        overflow:hidden;
+        border:1px solid var(--line);
+        background:rgba(0,0,0,.05);
+        backdrop-filter: blur(10px);
+      }
+      .scRow{
+        display:flex;gap:10px;align-items:center;justify-content:space-between;
+        padding:14px 16px;
+        border-top:1px solid rgba(255,255,255,.06);
+        background:rgba(0,0,0,.05);
+      }
       .scRow:first-child{border-top:none}
       .scName{min-width:0;flex:1;font-size:16px;opacity:.90;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .scMeta{font-size:12px;color:rgba(255,255,255,.55);margin-left:10px;white-space:nowrap}
@@ -184,8 +195,19 @@
         background:rgba(0,0,0,.24);
         color:rgba(242,245,255,.86);
       }
-      .scItems{border:1px solid rgba(255,255,255,.10); background:rgba(0,0,0,.14)}
-      .scItem{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px;border-top:1px solid rgba(255,255,255,.07)}
+      .scItems{
+        border-radius:18px;
+        overflow:hidden;
+        border:1px solid var(--line);
+        background:rgba(0,0,0,.05);
+        backdrop-filter: blur(10px);
+      }
+      .scItem{
+        display:flex;gap:10px;align-items:center;justify-content:space-between;
+        padding:12px 14px;
+        border-top:1px solid rgba(255,255,255,.06);
+        background:rgba(0,0,0,.05);
+      }
       .scItem:first-child{border-top:none}
       .scItemLeft{min-width:0;flex:1}
       .scItemTitle{font-size:15px;opacity:.90;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -198,9 +220,28 @@
         color:rgba(242,245,255,.86);
       }
       .scRange{width:180px;accent-color:rgba(255,215,0,.92)}
-      .scAddBox{border:1px solid rgba(255,255,255,.10); background:rgba(0,0,0,.12); padding:10px}
-      .scAddList{max-height:220px;overflow:auto;border:1px solid rgba(255,255,255,.08); background:rgba(0,0,0,.16)}
-      .scAddRow{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px;border-top:1px solid rgba(255,255,255,.06);cursor:pointer}
+      .scAddBox{
+        border-radius:18px;
+        border:1px solid var(--line);
+        background:rgba(0,0,0,.05);
+        padding:12px 12px 10px;
+        backdrop-filter: blur(10px);
+      }
+      .scAddList{
+        max-height:220px;
+        overflow:auto;
+        border-radius:14px;
+        overflow:hidden;
+        border:1px solid rgba(255,255,255,.10);
+        background:rgba(0,0,0,.05);
+      }
+      .scAddRow{
+        display:flex;gap:10px;align-items:center;justify-content:space-between;
+        padding:12px 12px;
+        border-top:1px solid rgba(255,255,255,.06);
+        cursor:pointer;
+        background:rgba(0,0,0,.05);
+      }
       .scAddRow:first-child{border-top:none}
       .scAddRow:active{background:rgba(255,255,255,.04)}
       .scAddName{min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.86}
