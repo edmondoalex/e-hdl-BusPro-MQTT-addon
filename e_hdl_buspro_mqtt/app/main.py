@@ -45,7 +45,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.252"
+ADDON_VERSION = "0.1.253"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -5156,6 +5156,165 @@ self.addEventListener('fetch', (event) => {{
     async def mqtt_republish():
         await _republish_discovery()
         return {"ok": True}
+
+    @api.post("/api/mqtt/discovery_reset")
+    async def mqtt_discovery_reset():
+        # Admin-only via port gate
+        st = mqtt.status()
+        if not st.connected:
+            raise HTTPException(status_code=503, detail=st.last_error or "MQTT not connected")
+
+        # Clear retained discovery configs for current entities (then re-publish).
+        topics: list[str] = []
+        devices = store.list_devices()
+        for dev in devices:
+            dtype = str(dev.get("type") or "light").strip().lower()
+            try:
+                if dtype == "cover":
+                    t1, _ = cover_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    t2, _ = cover_no_pct_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    topics.extend([t1, t2])
+                elif dtype == "humidity":
+                    t1, _ = humidity_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    topics.append(t1)
+                elif dtype == "illuminance":
+                    t1, _ = illuminance_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    topics.append(t1)
+                elif dtype == "temp":
+                    t1, _ = temperature_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    topics.append(t1)
+                elif dtype == "dry_contact":
+                    t1, _ = dry_contact_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    topics.append(t1)
+                elif dtype == "pir":
+                    t1, _ = pir_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    topics.append(t1)
+                elif dtype == "ultrasonic":
+                    t1, _ = ultrasonic_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    topics.append(t1)
+                elif dtype == "air":
+                    t1, _ = air_quality_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    t2, _ = gas_percent_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    topics.extend([t1, t2])
+                else:
+                    t1, _ = light_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    topics.append(t1)
+            except Exception:
+                continue
+
+        # Cover groups + previously published groups (for cleanup)
+        gids: set[str] = set()
+        for g in store.list_cover_groups():
+            try:
+                name = str(g.get("name") or "").strip()
+                gid = str(g.get("id") or "").strip() or slugify(name)
+                if gid:
+                    gids.add(gid)
+            except Exception:
+                continue
+        for gid in store.get_published_cover_group_ids():
+            if gid:
+                gids.add(str(gid))
+        for gid in gids:
+            topics.append(_cover_group_config_topic(gid=gid))
+            topics.append(_cover_group_no_pct_config_topic(gid=gid))
+
+        # Light scenarios + previously published scenarios (for cleanup)
+        sids: set[str] = set()
+        for sc in store.list_light_scenarios():
+            try:
+                sid = str(sc.get("id") or "").strip()
+                if sid:
+                    sids.add(sid)
+            except Exception:
+                continue
+        for sid in store.get_published_light_scenario_ids():
+            if sid:
+                sids.add(str(sid))
+        for sid in sids:
+            topics.append(_light_scenario_config_topic(sid=sid))
+
+        # de-dupe topics preserving order
+        uniq: list[str] = []
+        seen: set[str] = set()
+        for t in topics:
+            tt = str(t or "").strip()
+            if not tt or tt in seen:
+                continue
+            seen.add(tt)
+            uniq.append(tt)
+
+        for t in uniq:
+            mqtt.publish(t, "", retain=True)
+
+        await _republish_discovery()
+        return {"ok": True, "cleared": len(uniq)}
 
     @api.get("/api/user/light_scenarios")
     async def list_light_scenarios():

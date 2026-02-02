@@ -92,9 +92,10 @@
         <span class="pill" id="rtPill">Realtime: ?</span>
         <span class="spacer"></span>
         <button class="btn secondary" id="btnRepublish">Ripubblica discovery</button>
+        <button class="btn danger" id="btnResetDiscovery" title="Reset retained + ripubblica (conferma)">Reset discovery</button>
       </div>
       <div class="muted" style="margin-top:6px">Crea dispositivi, controllali dalla UI e pubblica discovery/stati su MQTT.</div>
-      <div class="muted" style="margin-top:6px">Conferme: <code>SVUOTA</code> (Svuota) · <code>DEDUPE</code> (Rimuovi duplicati)</div>
+      <div class="muted" style="margin-top:6px">Conferme: <code>SVUOTA</code> (Svuota) · <code>DEDUPE</code> (Rimuovi duplicati) · <code>RESET</code> (Reset discovery)</div>
     </header>
 
     <main>
@@ -4608,6 +4609,25 @@
           qs('cg_msg').textContent = 'Errore';
         }
       });
+
+      // MQTT discovery reset (fix stale base_topic in retained config)
+      try {
+        const resetBtn = qs('btnResetDiscovery');
+        if (resetBtn) {
+          resetBtn.addEventListener('click', async () => {
+            try {
+              if (!confirm('Reset discovery MQTT: cancella i retained config BusPro e ripubblica. Potresti perdere alcune personalizzazioni in Home Assistant. Continuare?')) return;
+              const guard = (prompt('Scrivi RESET per confermare') || '').trim().toUpperCase();
+              if (guard !== 'RESET') return;
+              const res = await getJson('api/mqtt/discovery_reset', { method: 'POST' });
+              const n = Number((res && res.cleared) || 0);
+              alert(`Reset completato. Config cancellati: ${n}`);
+            } catch (e) {
+              qs('err').textContent = e.message || String(e);
+            }
+          });
+        }
+      } catch (e) {}
     </script>
   </body>
 </html>
