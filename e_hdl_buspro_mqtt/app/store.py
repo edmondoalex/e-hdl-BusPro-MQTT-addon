@@ -52,6 +52,7 @@ class StateStore:
             "cover_groups_published": [],
             "light_scenarios": [],
             "light_scenarios_published": [],
+            "hub_order": ["lights", "scenarios", "covers", "extra"],
             "hub_links": [],
             "hub_icons": StateStore.default_hub_icons(),
             "hub_show": StateStore.default_hub_show(),
@@ -103,6 +104,7 @@ class StateStore:
         raw["ui"].setdefault("cover_groups_published", [])
         raw["ui"].setdefault("light_scenarios", [])
         raw["ui"].setdefault("light_scenarios_published", [])
+        raw["ui"].setdefault("hub_order", self._default_ui().get("hub_order"))
         raw["ui"].setdefault("hub_links", [])
         raw["ui"].setdefault("hub_icons", self.default_hub_icons())
         raw["ui"].setdefault("hub_show", self.default_hub_show())
@@ -139,6 +141,8 @@ class StateStore:
             raw["ui"]["light_scenarios"] = []
         if not isinstance(raw["ui"].get("light_scenarios_published", []), list):
             raw["ui"]["light_scenarios_published"] = []
+        if not isinstance(raw["ui"].get("hub_order", []), list):
+            raw["ui"]["hub_order"] = list(self._default_ui().get("hub_order") or [])
         if not isinstance(raw["ui"].get("pwa", {}), dict):
             raw["ui"]["pwa"] = self._default_ui().get("pwa")
         return raw
@@ -695,6 +699,44 @@ class StateStore:
         raw["ui"] = ui
         self.write_raw(raw)
         return cleaned
+
+    def get_hub_order(self) -> list[str]:
+        raw = self.read_raw()
+        ui = raw.get("ui") or {}
+        order = ui.get("hub_order") or []
+        if not isinstance(order, list):
+            order = []
+        allowed = ["lights", "scenarios", "covers", "extra"]
+        out: list[str] = []
+        seen: set[str] = set()
+        for v in order:
+            k = str(v or "").strip().lower()
+            if k in allowed and k not in seen:
+                seen.add(k)
+                out.append(k)
+        for k in allowed:
+            if k not in seen:
+                out.append(k)
+        return out
+
+    def set_hub_order(self, order: list[Any]) -> list[str]:
+        allowed = ["lights", "scenarios", "covers", "extra"]
+        out: list[str] = []
+        seen: set[str] = set()
+        for v in order or []:
+            k = str(v or "").strip().lower()
+            if k in allowed and k not in seen:
+                seen.add(k)
+                out.append(k)
+        for k in allowed:
+            if k not in seen:
+                out.append(k)
+        raw = self.read_raw()
+        ui = dict(raw.get("ui") or {})
+        ui["hub_order"] = out
+        raw["ui"] = ui
+        self.write_raw(raw)
+        return out
 
     def list_proxy_targets(self) -> list[dict[str, Any]]:
         raw = self.read_raw()

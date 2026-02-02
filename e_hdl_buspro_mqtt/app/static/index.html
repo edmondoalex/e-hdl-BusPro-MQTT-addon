@@ -937,14 +937,16 @@
                 Pulsanti extra nella pagina <code>/home</code> (User UI). Puoi aggiungere link manuali con titolo + icona (mdi) e scegliere se mostrarli e se aprirli in una nuova scheda.
               </div>
 
-              <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
-                <h3 style="margin:0;font-size:14px">Icone pulsanti fissi</h3>
-                <div class="muted" style="margin-top:6px">Modifica le icone dei pulsanti Luci/Cover/Extra mostrati nella Home.</div>
-                <div class="row3" style="margin-top:10px">
-                  <div>
-                    <label>Luci (mdi)</label>
-                    <input id="hubIconLights" list="usedIcons" placeholder="Es: mdi:lightbulb-group" />
-                  </div>
+                <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
+                  <h3 style="margin:0;font-size:14px">Icone pulsanti fissi</h3>
+                  <div class="muted" style="margin-top:6px">Modifica le icone dei pulsanti Luci/Cover/Extra mostrati nella Home.</div>
+                  <div class="muted" style="margin-top:8px">Ordine: trascina per riordinare.</div>
+                  <div id="hubOrderList" style="margin-top:10px;border:1px solid var(--line);border-radius:12px;overflow:hidden"></div>
+                  <div class="row3" style="margin-top:10px">
+                    <div>
+                      <label>Luci (mdi)</label>
+                      <input id="hubIconLights" list="usedIcons" placeholder="Es: mdi:lightbulb-group" />
+                    </div>
                   <div>
                     <label>Scenari (mdi)</label>
                     <input id="hubIconScenarios" list="usedIcons" placeholder="Es: mdi:star" />
@@ -3899,6 +3901,7 @@
       let hubLinks = [];
       let hubIcons = null;
       let hubShow = null;
+      let hubOrder = null;
       let pwaCfg = null;
 
       const airByAddr = new Map(); // addr -> { state, ts }
@@ -3920,17 +3923,101 @@
         qs('hubShowExtra').checked = !!hubShow.extra;
       }
 
+      function hubKeyLabel(k) {
+        const key = String(k || '').toLowerCase();
+        if (key === 'lights') return 'Luci';
+        if (key === 'scenarios') return 'Scenari';
+        if (key === 'covers') return 'Cover';
+        if (key === 'extra') return 'Extra';
+        return key;
+      }
+
+      function normalizeHubOrder(order) {
+        const allowed = ['lights', 'scenarios', 'covers', 'extra'];
+        const out = [];
+        const seen = new Set();
+        const arr = Array.isArray(order) ? order : [];
+        for (const v of arr) {
+          const k = String(v || '').trim().toLowerCase();
+          if (allowed.includes(k) && !seen.has(k)) { seen.add(k); out.push(k); }
+        }
+        for (const k of allowed) if (!seen.has(k)) out.push(k);
+        return out;
+      }
+
+      function renderHubOrder() {
+        const root = qs('hubOrderList');
+        if (!root) return;
+        const order = normalizeHubOrder(hubOrder || []);
+        root.replaceChildren();
+        for (const key of order) {
+          const row = document.createElement('div');
+          row.setAttribute('draggable', 'true');
+          row.setAttribute('data-key', key);
+          row.style.display = 'flex';
+          row.style.alignItems = 'center';
+          row.style.justifyContent = 'space-between';
+          row.style.gap = '10px';
+          row.style.padding = '10px 12px';
+          row.style.borderTop = '1px solid var(--line)';
+          row.style.background = 'rgba(255,255,255,.02)';
+          row.innerHTML = `
+            <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1">
+              <span style="opacity:.65;cursor:grab;user-select:none">≡</span>
+              <span style="font-weight:600;letter-spacing:.02em">${hubKeyLabel(key)}</span>
+              <span class="muted" style="font-size:12px;white-space:nowrap">(${key})</span>
+            </div>
+          `;
+          root.appendChild(row);
+        }
+        // remove first border-top
+        try { if (root.firstElementChild) root.firstElementChild.style.borderTop = 'none'; } catch(e) {}
+
+        let dragKey = null;
+        root.querySelectorAll('[draggable="true"]').forEach((el) => {
+          el.addEventListener('dragstart', (e) => {
+            dragKey = el.getAttribute('data-key') || null;
+            try { e.dataTransfer.setData('text/plain', dragKey || ''); } catch (err) {}
+            try { e.dataTransfer.effectAllowed = 'move'; } catch (err) {}
+            el.style.opacity = '0.7';
+          });
+          el.addEventListener('dragend', () => {
+            el.style.opacity = '1';
+          });
+          el.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            try { e.dataTransfer.dropEffect = 'move'; } catch (err) {}
+          });
+          el.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const targetKey = el.getAttribute('data-key') || null;
+            const srcKey = dragKey || (function () { try { return e.dataTransfer.getData('text/plain'); } catch (err) { return ''; } })();
+            if (!srcKey || !targetKey || srcKey === targetKey) return;
+            const cur = normalizeHubOrder(hubOrder || []);
+            const a = cur.filter((x) => x !== srcKey);
+            const idx = a.indexOf(targetKey);
+            if (idx < 0) return;
+            a.splice(idx, 0, srcKey);
+            hubOrder = a;
+            renderHubOrder();
+          });
+        });
+      }
+
       async function refreshHubConfig() {
         try {
           const res = await getJson('api/hub_config');
           hubIcons = (res && res.hub_icons && typeof res.hub_icons === 'object') ? res.hub_icons : null;
           hubShow = (res && res.hub_show && typeof res.hub_show === 'object') ? res.hub_show : null;
+          hubOrder = (res && Array.isArray(res.hub_order)) ? res.hub_order : null;
         } catch (e) {
           hubIcons = null;
           hubShow = null;
+          hubOrder = null;
         }
         renderHubIcons();
         renderHubShow();
+        renderHubOrder();
       }
 
       async function saveHubIcons() {
@@ -3948,6 +4035,7 @@
             covers: !!qs('hubShowCovers').checked,
             extra: !!qs('hubShowExtra').checked,
           },
+          hub_order: normalizeHubOrder(hubOrder || []),
         };
         try {
           const res = await getJson('api/hub_config', {
@@ -3957,8 +4045,10 @@
           });
           hubIcons = (res && res.hub_icons && typeof res.hub_icons === 'object') ? res.hub_icons : payload.hub_icons;
           hubShow = (res && res.hub_show && typeof res.hub_show === 'object') ? res.hub_show : payload.hub_show;
+          hubOrder = (res && Array.isArray(res.hub_order)) ? res.hub_order : payload.hub_order;
           renderHubIcons();
           renderHubShow();
+          renderHubOrder();
           qs('hubIconsMsg').textContent = 'Salvato';
           setTimeout(() => { qs('hubIconsMsg').textContent = ''; }, 1400);
         } catch (e) {

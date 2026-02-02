@@ -288,12 +288,23 @@
         const icons = (meta && meta.hub_icons && typeof meta.hub_icons === 'object') ? meta.hub_icons : {};
         const show = (meta && meta.hub_show && typeof meta.hub_show === 'object') ? meta.hub_show : {};
 
-        const fixed = [
-          { key: 'lights', title: 'Luci', href: absUrl('lights'), fallback: 'lightbulb-group' },
-          { key: 'scenarios', title: 'Scenari', href: absUrl('scenarios'), fallback: 'star' },
-          { key: 'covers', title: 'Cover', href: absUrl('covers'), fallback: 'window-shutter' },
-          { key: 'extra', title: 'Extra', href: absUrl('extra'), fallback: 'shape' },
-        ];
+        const fixedByKey = {
+          lights: { key: 'lights', title: 'Luci', href: absUrl('lights'), fallback: 'lightbulb-group' },
+          scenarios: { key: 'scenarios', title: 'Scenari', href: absUrl('scenarios'), fallback: 'star' },
+          covers: { key: 'covers', title: 'Cover', href: absUrl('covers'), fallback: 'window-shutter' },
+          extra: { key: 'extra', title: 'Extra', href: absUrl('extra'), fallback: 'shape' },
+        };
+        const allowed = ['lights','scenarios','covers','extra'];
+        const orderRaw = (meta && Array.isArray(meta.hub_order)) ? meta.hub_order : [];
+        const order = [];
+        const seen = new Set();
+        for (const v of orderRaw) {
+          const k = String(v || '').trim().toLowerCase();
+          if (allowed.includes(k) && !seen.has(k)) { seen.add(k); order.push(k); }
+        }
+        for (const k of allowed) if (!seen.has(k)) order.push(k);
+
+        const fixed = order.map((k) => fixedByKey[k]).filter(Boolean);
         for (const it of fixed) {
           if (show[it.key] === false) continue;
           const icon = String(icons[it.key] || '');

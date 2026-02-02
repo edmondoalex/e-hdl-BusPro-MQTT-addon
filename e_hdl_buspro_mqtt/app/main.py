@@ -45,7 +45,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.250"
+ADDON_VERSION = "0.1.251"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -2882,6 +2882,7 @@ self.addEventListener('fetch', (event) => {{
             "hub_links": store.list_visible_hub_links(),
             "hub_icons": store.get_hub_icons(),
             "hub_show": store.get_hub_show(),
+            "hub_order": store.get_hub_order(),
         } 
 
     @api.get("/api/ui") 
@@ -2948,7 +2949,7 @@ self.addEventListener('fetch', (event) => {{
 
     @api.get("/api/hub_config")
     async def api_hub_config_get():
-        return {"hub_icons": store.get_hub_icons(), "hub_show": store.get_hub_show()}
+        return {"hub_icons": store.get_hub_icons(), "hub_show": store.get_hub_show(), "hub_order": store.get_hub_order()}
 
     @api.put("/api/hub_config")
     async def api_hub_config_set(payload: dict[str, Any]):
@@ -2960,9 +2961,16 @@ self.addEventListener('fetch', (event) => {{
         if not isinstance(show, dict):
             raise HTTPException(status_code=400, detail="hub_show must be an object")
         cleaned_show = store.set_hub_show(show)
+        order_raw = payload.get("hub_order", None)
+        if order_raw is None:
+            cleaned_order = store.get_hub_order()
+        elif not isinstance(order_raw, list):
+            raise HTTPException(status_code=400, detail="hub_order must be a list")
+        else:
+            cleaned_order = store.set_hub_order(order_raw)
         asyncio.create_task(_sync_icons_for_hub_config({"hub_icons": cleaned}))
-        await hub.broadcast("hub_config", {"hub_icons": cleaned, "hub_show": cleaned_show})
-        return {"hub_icons": cleaned, "hub_show": cleaned_show}
+        await hub.broadcast("hub_config", {"hub_icons": cleaned, "hub_show": cleaned_show, "hub_order": cleaned_order})
+        return {"hub_icons": cleaned, "hub_show": cleaned_show, "hub_order": cleaned_order}
 
     @api.post("/api/hub_links")
     async def api_hub_links_upsert(payload: dict[str, Any]):
