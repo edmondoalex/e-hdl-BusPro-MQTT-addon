@@ -166,6 +166,39 @@
       .scRow:first-child{border-top:none}
       .scName{min-width:0;flex:1;font-size:16px;opacity:.90;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .scMeta{font-size:12px;color:rgba(255,255,255,.55);margin-left:10px;white-space:nowrap}
+      .scEditor{display:none}
+      .scEditor.show{display:block}
+      .scGrid{display:flex;flex-direction:column;gap:10px}
+      .scField{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+      .scField label{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.55)}
+      .scField input[type="text"]{
+        flex:1;min-width:220px;height:38px;padding:0 10px;
+        border:1px solid rgba(255,255,255,.14);
+        background:rgba(0,0,0,.24);
+        color:rgba(242,245,255,.88);
+        outline:none;
+      }
+      .scItems{border:1px solid rgba(255,255,255,.10); background:rgba(0,0,0,.14)}
+      .scItem{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px;border-top:1px solid rgba(255,255,255,.07)}
+      .scItem:first-child{border-top:none}
+      .scItemLeft{min-width:0;flex:1}
+      .scItemTitle{font-size:15px;opacity:.90;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .scItemSub{font-size:12px;color:rgba(255,255,255,.55);margin-top:3px}
+      .scItemCtrls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+      .scSel{
+        height:34px;padding:0 10px;
+        border:1px solid rgba(255,255,255,.14);
+        background:rgba(0,0,0,.24);
+        color:rgba(242,245,255,.86);
+      }
+      .scRange{width:180px;accent-color:rgba(255,215,0,.92)}
+      .scAddBox{border:1px solid rgba(255,255,255,.10); background:rgba(0,0,0,.12); padding:10px}
+      .scAddList{max-height:220px;overflow:auto;border:1px solid rgba(255,255,255,.08); background:rgba(0,0,0,.16)}
+      .scAddRow{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px;border-top:1px solid rgba(255,255,255,.06);cursor:pointer}
+      .scAddRow:first-child{border-top:none}
+      .scAddRow:active{background:rgba(255,255,255,.04)}
+      .scAddName{min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.86}
+      .scAddMeta{font-size:12px;color:rgba(255,255,255,.55);white-space:nowrap}
     </style>
   </head>
   <body>
@@ -201,6 +234,26 @@
         </div>
         <div id="scErr" class="error" style="margin:0 0 10px 0"></div>
         <div id="scList" class="scList"></div>
+        <div id="scEditor" class="scEditor">
+          <div class="scGrid" style="margin-top:12px">
+            <div class="scField">
+              <label for="scNameInput">Nome</label>
+              <input id="scNameInput" type="text" placeholder="Nome scenario" />
+              <div class="btnRow">
+                <button id="scBackBtn" class="btn" type="button">Indietro</button>
+                <button id="scSaveEditBtn" class="btn primary" type="button">Salva modifiche</button>
+              </div>
+            </div>
+            <div class="scItems" id="scItems"></div>
+            <div class="scAddBox">
+              <div class="scField" style="margin-bottom:8px">
+                <label for="scAddSearch">Aggiungi</label>
+                <input id="scAddSearch" type="text" placeholder="Cerca luce..." />
+              </div>
+              <div id="scAddList" class="scAddList"></div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -219,6 +272,9 @@
       let renderQueued = false;
       let countsQueued = false;
       let lightScenarios = [];
+      let editingScenarioId = '';
+      let editingScenarioName = '';
+      let editingScenarioItems = [];
 
       const GROUP_NONE = '__none__';
       const LS_COLLAPSED = 'buspro_collapsed_groups_lights';
@@ -293,12 +349,33 @@
         renderLightScenarios();
       }
 
+      function scenarioById(id) {
+        const sid = String(id || '').trim();
+        if (!sid) return null;
+        for (const sc of (lightScenarios || [])) {
+          if (String(sc && sc.id || '').trim() === sid) return sc;
+        }
+        return null;
+      }
+
+      function deviceByAddrLookup() {
+        const m = new Map();
+        for (const d of (lastDevices || [])) {
+          if (String(d.type || 'light') !== 'light') continue;
+          if (isExtraSwitch(d)) continue;
+          m.set(addrOf(d), d);
+        }
+        return m;
+      }
+
       function renderLightScenarios() {
         const root = qs('scList');
         const err = qs('scErr');
+        const editor = qs('scEditor');
         if (!root) return;
         root.replaceChildren();
         if (err) err.textContent = '';
+        if (editor) editor.classList.remove('show');
 
         const items = (lightScenarios || []).slice().sort((a,b) => String(a.name||'').localeCompare(String(b.name||''), undefined, {sensitivity:'base'}));
         if (!items.length) {
@@ -318,6 +395,7 @@
             <div class="scName">${escapeHtml(name)}<span class="scMeta">${escapeHtml(String(count))} luci</span></div>
             <div class="btnRow">
               <button class="btn primary" type="button" data-act="run" data-id="${escapeHtml(String(sc.id||''))}">Esegui</button>
+              <button class="btn" type="button" data-act="edit" data-id="${escapeHtml(String(sc.id||''))}">Modifica</button>
               <button class="btn danger" type="button" data-act="del" data-id="${escapeHtml(String(sc.id||''))}">Elimina</button>
             </div>
           `;
@@ -349,6 +427,231 @@
             }
           });
         });
+
+        root.querySelectorAll('button[data-act="edit"]').forEach((b) => {
+          b.addEventListener('click', async () => {
+            const id = b.getAttribute('data-id') || '';
+            if (!id) return;
+            openScenarioEditor(id);
+          });
+        });
+      }
+
+      function openScenarioEditor(id) {
+        const sc = scenarioById(id);
+        const err = qs('scErr');
+        if (!sc) {
+          if (err) err.textContent = 'Scenario non trovato';
+          return;
+        }
+        if (err) err.textContent = '';
+        editingScenarioId = String(sc.id || '');
+        editingScenarioName = String(sc.name || '').trim();
+        const items = Array.isArray(sc.items) ? sc.items : [];
+        editingScenarioItems = items
+          .filter(it => it && typeof it === 'object')
+          .map(it => ({
+            subnet_id: Number(it.subnet_id),
+            device_id: Number(it.device_id),
+            channel: Number(it.channel),
+            state: String(it.state || '').toUpperCase() === 'OFF' ? 'OFF' : 'ON',
+            brightness: (it.brightness === null || it.brightness === undefined) ? null : Math.max(0, Math.min(255, Number(it.brightness))),
+          }))
+          .filter(it => Number.isFinite(it.subnet_id) && Number.isFinite(it.device_id) && Number.isFinite(it.channel));
+
+        const nameInput = qs('scNameInput');
+        if (nameInput) nameInput.value = editingScenarioName;
+
+        qs('scList').style.display = 'none';
+        const editor = qs('scEditor');
+        if (editor) editor.classList.add('show');
+        renderScenarioEditorItems();
+        renderScenarioAddList();
+      }
+
+      function closeScenarioEditor() {
+        editingScenarioId = '';
+        editingScenarioName = '';
+        editingScenarioItems = [];
+        qs('scList').style.display = '';
+        const editor = qs('scEditor');
+        if (editor) editor.classList.remove('show');
+        try { qs('scItems').replaceChildren(); } catch (e) {}
+        try { qs('scAddList').replaceChildren(); } catch (e) {}
+      }
+
+      function addrFromItem(it) {
+        return `${Number(it.subnet_id)}.${Number(it.device_id)}.${Number(it.channel)}`;
+      }
+
+      function renderScenarioEditorItems() {
+        const root = qs('scItems');
+        const err = qs('scErr');
+        if (!root) return;
+        root.replaceChildren();
+        const devMap = deviceByAddrLookup();
+
+        const items = (editingScenarioItems || []).slice().sort((a,b) => {
+          const aa = addrFromItem(a), bb = addrFromItem(b);
+          const da = devMap.get(aa), db = devMap.get(bb);
+          const na = String((da && da.name) || aa);
+          const nb = String((db && db.name) || bb);
+          return na.localeCompare(nb, undefined, { sensitivity:'base' });
+        });
+
+        if (!items.length) {
+          const empty = document.createElement('div');
+          empty.className = 'scItem';
+          empty.innerHTML = `<div class="scItemLeft"><div class="scItemTitle">Nessuna luce nello scenario</div><div class="scItemSub">Aggiungi luci dalla lista sotto</div></div>`;
+          root.appendChild(empty);
+          return;
+        }
+
+        for (const it of items) {
+          const addr = addrFromItem(it);
+          const d = devMap.get(addr);
+          const title = String((d && d.name) || addr);
+          const sub = d ? `${addr} • ${d.dimmable ? 'dimmer' : 'on/off'}` : `${addr}`;
+          const dimmable = !!(d && d.dimmable);
+          const state = String(it.state || 'ON').toUpperCase() === 'OFF' ? 'OFF' : 'ON';
+          const br = (it.brightness === null || it.brightness === undefined) ? null : Number(it.brightness);
+          const br255 = (br === null) ? 255 : Math.max(0, Math.min(255, Number.isFinite(br) ? br : 255));
+          const pct = Math.round((Math.max(0, Math.min(255, br255)) * 100) / 255);
+
+          const row = document.createElement('div');
+          row.className = 'scItem';
+          row.setAttribute('data-addr', addr);
+          row.innerHTML = `
+            <div class="scItemLeft">
+              <div class="scItemTitle">${escapeHtml(title)}</div>
+              <div class="scItemSub">${escapeHtml(sub)}</div>
+            </div>
+            <div class="scItemCtrls">
+              <select class="scSel" data-act="state" data-addr="${escapeHtml(addr)}">
+                <option value="ON" ${state === 'ON' ? 'selected' : ''}>ON</option>
+                <option value="OFF" ${state === 'OFF' ? 'selected' : ''}>OFF</option>
+              </select>
+              ${dimmable ? `
+                <span class="bubble" style="margin:0">${escapeHtml(String(state === 'ON' ? pct : 0))}</span>
+                <input class="scRange" type="range" min="1" max="255" value="${escapeHtml(String(Math.max(1, br255)))}" data-act="br" data-addr="${escapeHtml(addr)}" ${state === 'OFF' ? 'disabled' : ''} />
+              ` : ''}
+              <button class="btn danger" type="button" data-act="rm" data-addr="${escapeHtml(addr)}">Rimuovi</button>
+            </div>
+          `;
+          root.appendChild(row);
+        }
+
+        root.querySelectorAll('[data-act="rm"]').forEach((b) => {
+          b.addEventListener('click', () => {
+            const addr = b.getAttribute('data-addr') || '';
+            editingScenarioItems = (editingScenarioItems || []).filter((x) => addrFromItem(x) !== addr);
+            renderScenarioEditorItems();
+            renderScenarioAddList();
+          });
+        });
+
+        root.querySelectorAll('select[data-act="state"]').forEach((sel) => {
+          sel.addEventListener('change', () => {
+            const addr = sel.getAttribute('data-addr') || '';
+            const v = String(sel.value || '').toUpperCase() === 'OFF' ? 'OFF' : 'ON';
+            for (const it of (editingScenarioItems || [])) {
+              if (addrFromItem(it) !== addr) continue;
+              it.state = v;
+              if (v === 'OFF') it.brightness = null;
+              break;
+            }
+            renderScenarioEditorItems();
+          });
+        });
+
+        root.querySelectorAll('input[data-act="br"]').forEach((inp) => {
+          inp.addEventListener('input', () => {
+            const addr = inp.getAttribute('data-addr') || '';
+            const v = Math.max(1, Math.min(255, Number(inp.value || 255)));
+            for (const it of (editingScenarioItems || [])) {
+              if (addrFromItem(it) !== addr) continue;
+              it.state = 'ON';
+              it.brightness = v;
+              break;
+            }
+            renderScenarioEditorItems();
+          });
+        });
+
+        if (err) err.textContent = '';
+      }
+
+      function renderScenarioAddList() {
+        const root = qs('scAddList');
+        if (!root) return;
+        root.replaceChildren();
+        const search = String((qs('scAddSearch') && qs('scAddSearch').value) || '').trim().toLowerCase();
+        const devMap = deviceByAddrLookup();
+        const existing = new Set((editingScenarioItems || []).map(addrFromItem));
+        const all = Array.from(devMap.entries())
+          .map(([addr, d]) => ({ addr, d }))
+          .filter(({addr, d}) => !existing.has(addr))
+          .filter(({addr, d}) => {
+            if (!search) return true;
+            const name = String((d && d.name) || '').toLowerCase();
+            return addr.toLowerCase().includes(search) || name.includes(search);
+          })
+          .sort((a,b) => String(a.d.name||a.addr).localeCompare(String(b.d.name||b.addr), undefined, {sensitivity:'base'}))
+          .slice(0, 80);
+
+        if (!all.length) {
+          const empty = document.createElement('div');
+          empty.className = 'scAddRow';
+          empty.innerHTML = `<div class="scAddName">Nessuna luce da aggiungere</div><div class="scAddMeta">usa la ricerca</div>`;
+          root.appendChild(empty);
+          return;
+        }
+        for (const { addr, d } of all) {
+          const row = document.createElement('div');
+          row.className = 'scAddRow';
+          row.setAttribute('data-addr', addr);
+          const meta = d.dimmable ? 'dimmer' : 'on/off';
+          row.innerHTML = `<div class="scAddName">${escapeHtml(String(d.name||addr))}</div><div class="scAddMeta">${escapeHtml(addr)} • ${escapeHtml(meta)}</div>`;
+          row.addEventListener('click', () => {
+            const it = { subnet_id: Number(d.subnet_id), device_id: Number(d.device_id), channel: Number(d.channel), state: 'ON', brightness: d.dimmable ? 255 : null };
+            editingScenarioItems = (editingScenarioItems || []).concat([it]);
+            renderScenarioEditorItems();
+            renderScenarioAddList();
+          });
+          root.appendChild(row);
+        }
+      }
+
+      async function saveScenarioEdits() {
+        const err = qs('scErr');
+        try {
+          if (err) err.textContent = '';
+          const sid = String(editingScenarioId || '').trim();
+          if (!sid) return;
+          const nameInput = qs('scNameInput');
+          const name = String((nameInput && nameInput.value) || '').trim();
+          if (!name) {
+            if (err) err.textContent = 'Nome scenario obbligatorio';
+            return;
+          }
+          const items = (editingScenarioItems || []).map((it) => {
+            const st = String(it.state || 'ON').toUpperCase() === 'OFF' ? 'OFF' : 'ON';
+            let br = it.brightness;
+            if (st === 'OFF') br = null;
+            if (br === null || br === undefined) br = null;
+            else br = Math.max(0, Math.min(255, Number(br)));
+            return { subnet_id: Number(it.subnet_id), device_id: Number(it.device_id), channel: Number(it.channel), state: st, brightness: br };
+          });
+          await getJson(`api/user/light_scenarios/${encodeURIComponent(sid)}`, {
+            method:'PUT',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ name, items }),
+          });
+          await loadLightScenarios();
+          closeScenarioEditor();
+        } catch (e) {
+          if (err) err.textContent = 'Errore salvataggio modifiche';
+        }
       }
 
       function buildScenarioItems({ onlyOn }) {
@@ -402,6 +705,7 @@
         const back = qs('scenesModalBack');
         if (!back) return;
         back.classList.remove('show');
+        closeScenarioEditor();
       }
 
       function mdiName(iconValue) {
@@ -767,6 +1071,9 @@
       qs('scCloseBtn').addEventListener('click', () => closeScenarios());
       qs('scSaveOnBtn').addEventListener('click', () => saveScenario({ onlyOn: true }));
       qs('scSaveAllBtn').addEventListener('click', () => saveScenario({ onlyOn: false }));
+      qs('scBackBtn').addEventListener('click', () => closeScenarioEditor());
+      qs('scSaveEditBtn').addEventListener('click', () => saveScenarioEdits());
+      qs('scAddSearch').addEventListener('input', () => renderScenarioAddList());
       qs('scenesModalBack').addEventListener('click', (evt) => {
         if (evt && evt.target === qs('scenesModalBack')) closeScenarios();
       });
