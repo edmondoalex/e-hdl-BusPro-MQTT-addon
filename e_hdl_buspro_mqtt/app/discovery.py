@@ -54,6 +54,48 @@ def light_scenario_button_discovery(
     return topic, payload
 
 
+def light_scenario_switch_discovery(
+    *,
+    discovery_prefix: str,
+    base_topic: str,
+    gateway_host: str,
+    gateway_port: int,
+    scenario: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    name = str(scenario.get("name") or "").strip() or "Scenario"
+    sid = str(scenario.get("id") or "").strip() or slugify(name)
+
+    nid = node_id(gateway_host, gateway_port)
+    oid = f"light_scenario_{sid}_switch"
+    uid = f"{nid}_light_scenario_switch_{sid}"
+
+    availability_topic = f"{base_topic}/availability"
+    state_topic = f"{base_topic}/state/light_scenario/{sid}"
+    cmd_topic = f"{base_topic}/cmd/light_scenario_switch/{sid}"
+
+    payload: dict[str, Any] = {
+        "name": name,
+        "unique_id": uid,
+        "availability_topic": availability_topic,
+        "payload_available": "online",
+        "payload_not_available": "offline",
+        "state_topic": state_topic,
+        "command_topic": cmd_topic,
+        "payload_on": "ON",
+        "payload_off": "OFF",
+        "device": {
+            "identifiers": [f"buspro:light_scenarios:{nid}"],
+            "name": "BusPro Scenari luci",
+            "manufacturer": "HDL",
+            "model": "BusPro",
+        },
+        "icon": "mdi:light-switch",
+    }
+
+    topic = f"{discovery_prefix}/switch/{nid}/{oid}/config"
+    return topic, payload
+
+
 def light_discovery(
     *,
     discovery_prefix: str,

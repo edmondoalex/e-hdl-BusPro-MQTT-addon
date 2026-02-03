@@ -327,6 +327,7 @@
       let renderQueued = false;
       let countsQueued = false;
       let lightScenarios = [];
+      let scenarioStates = {};
       let editingScenarioId = '';
       let editingScenarioName = '';
       let editingScenarioItems = [];
@@ -414,6 +415,12 @@
         const r = await getJson('api/user/light_scenarios');
         lightScenarios = (r && r.items) ? r.items : [];
         if (!Array.isArray(lightScenarios)) lightScenarios = [];
+        try {
+          const st = await getJson('api/user/light_scenarios_status');
+          scenarioStates = (st && st.states && typeof st.states === 'object') ? st.states : {};
+        } catch (e) {
+          scenarioStates = {};
+        }
         renderLightScenarios();
       }
 
@@ -500,10 +507,11 @@
           row.className = 'row scRow';
           const name = String(sc.name || '').trim() || '(senza nome)';
           const count = Array.isArray(sc.items) ? sc.items.length : 0;
+          const isOn = String((scenarioStates && scenarioStates[String(sc.id||'')]) || '').toUpperCase() === 'ON';
           row.innerHTML = `
             <div class="scName">${escapeHtml(name)}<span class="scMeta">${escapeHtml(String(count))} luci</span></div>
             <div class="btnRow">
-              <button class="btn primary" type="button" data-act="run" data-id="${escapeHtml(String(sc.id||''))}">Esegui</button>
+              <button class="btn ${isOn ? 'danger' : 'primary'}" type="button" data-act="toggle" data-id="${escapeHtml(String(sc.id||''))}">${isOn ? 'Spegni' : 'Accendi'}</button>
               <button class="btn" type="button" data-act="edit" data-id="${escapeHtml(String(sc.id||''))}">Modifica</button>
               <button class="btn danger" type="button" data-act="del" data-id="${escapeHtml(String(sc.id||''))}">Elimina</button>
             </div>
@@ -511,12 +519,18 @@
           root.appendChild(row);
         }
 
-        root.querySelectorAll('button[data-act="run"]').forEach((b) => {
+        root.querySelectorAll('button[data-act="toggle"]').forEach((b) => {
           b.addEventListener('click', async () => {
             const id = b.getAttribute('data-id') || '';
             try {
               if (err) err.textContent = '';
-              await getJson(`api/control/light_scenario/${encodeURIComponent(id)}`, { method:'POST' });
+              const nowOn = String((scenarioStates && scenarioStates[id]) || '').toUpperCase() === 'ON';
+              await getJson(`api/control/light_scenario/${encodeURIComponent(id)}`, {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ state: nowOn ? 'OFF' : 'ON' })
+              });
+              await loadLightScenarios();
             } catch (e) {
               if (err) err.textContent = 'Errore esecuzione scenario';
             }
@@ -871,6 +885,16 @@
         return !!(st && String(st.state || '').toUpperCase() === 'ON');
       }
 
+      function applyScenarioStateEvent(ev) {
+        if (!ev) return;
+        const id = String(ev.id || '').trim();
+        const st = String(ev.state || '').trim().toUpperCase();
+        if (!id || (st !== 'ON' && st !== 'OFF')) return;
+        scenarioStates = scenarioStates && typeof scenarioStates === 'object' ? scenarioStates : {};
+        scenarioStates[id] = st;
+        try { renderLightScenarios(); } catch (e) {}
+      }
+
       function refreshDeviceIndex() {
         deviceByAddr.clear();
         for (const d of (lastDevices || [])) {
@@ -1182,6 +1206,10 @@
               applyLightStateToRow(addr);
               queueCountsUpdate();
               if (showActiveOnly && prevActive !== nowActive) queueRender();
+              return;
+            }
+            if (msg.type === 'light_scenario_state') {
+              applyScenarioStateEvent(msg.data || {});
               return;
             }
           } catch (e) {}

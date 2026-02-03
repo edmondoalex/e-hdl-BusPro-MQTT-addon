@@ -33,6 +33,7 @@ from .discovery import (
     gas_percent_discovery,
     light_discovery,
     light_scenario_button_discovery,
+    light_scenario_switch_discovery,
     slugify,
     temperature_discovery,
 )
@@ -46,7 +47,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.255"
+ADDON_VERSION = "0.1.256"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -525,6 +526,8 @@ def create_app() -> FastAPI:
         if path.startswith("/api/control/"):
             return await call_next(request)
         if path.startswith("/api/user/light_scenarios"):
+            return await call_next(request)
+        if path == "/api/user/light_scenarios_status" and request.method.upper() == "GET":
             return await call_next(request)
         if path == "/api/user/devices" and request.method.upper() == "GET":
             return await call_next(request)
@@ -1511,6 +1514,85 @@ self.addEventListener('fetch', (event) => {{
         nid = f"buspro_{settings.gateway.host.replace('.', '_')}_{settings.gateway.port}"
         return f"{settings.mqtt.discovery_prefix}/button/{nid}/light_scenario_{sid}/config"
 
+    def _light_scenario_switch_config_topic(*, sid: str) -> str:
+        nid = f"buspro_{settings.gateway.host.replace('.', '_')}_{settings.gateway.port}"
+        return f"{settings.mqtt.discovery_prefix}/switch/{nid}/light_scenario_{sid}_switch/config"
+
+    def _light_scenario_state_topic(*, sid: str) -> str:
+        sid2 = str(sid or "").strip()
+        return f"{settings.mqtt.base_topic}/state/light_scenario/{sid2}"
+
+    def _rebuild_light_scenario_index() -> None:
+        membership: dict[str, set[str]] = {}
+        for sc in store.list_light_scenarios():
+            sid = str(sc.get("id") or "").strip()
+            if not sid:
+                continue
+            items = sc.get("items") or []
+            if not isinstance(items, list):
+                continue
+            for it in items:
+                if not isinstance(it, dict):
+                    continue
+                try:
+                    subnet_id = int(it.get("subnet_id"))
+                    device_id = int(it.get("device_id"))
+                    channel = int(it.get("channel"))
+                except Exception:
+                    continue
+                addr = f"{subnet_id}.{device_id}.{channel}"
+                membership.setdefault(addr, set()).add(sid)
+        api.state.light_scenario_membership = membership
+
+    def _scenario_switch_state(sc: dict[str, Any]) -> str:
+        # Rule (user choice #1): ON iff all scenario lights are currently ON.
+        items = sc.get("items") or []
+        if not isinstance(items, list) or not items:
+            return "OFF"
+        states = store.get_states()
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            try:
+                subnet_id = int(it.get("subnet_id"))
+                device_id = int(it.get("device_id"))
+                channel = int(it.get("channel"))
+            except Exception:
+                continue
+            addr = f"{subnet_id}.{device_id}.{channel}"
+            st = states.get(f"light:{addr}") or {}
+            if not isinstance(st, dict):
+                return "OFF"
+            if str(st.get("state") or "").upper() != "ON":
+                return "OFF"
+        return "ON"
+
+    async def _publish_light_scenario_state(sc: dict[str, Any]) -> str:
+        sid = str(sc.get("id") or "").strip()
+        if not sid:
+            return "OFF"
+        state = _scenario_switch_state(sc)
+        try:
+            mqtt.publish(_light_scenario_state_topic(sid=sid), state, retain=True)
+        except Exception:
+            pass
+        try:
+            await hub.broadcast("light_scenario_state", {"id": sid, "state": state})
+        except Exception:
+            pass
+        return state
+
+    async def _publish_light_scenario_states_for_member(addr: str) -> None:
+        membership = getattr(api.state, "light_scenario_membership", {}) or {}
+        sids = membership.get(str(addr or "").strip()) if isinstance(membership, dict) else None
+        if not sids:
+            return
+        for sid in list(sids):
+            sc = store.find_light_scenario(scenario_id=str(sid))
+            if not sc:
+                continue
+            await _publish_light_scenario_state(sc)
+
     def _publish_cover_group_state(*, gid: str, state: str, position: int | None) -> None:
         state_u = str(state or "").upper() or "STOP"
         pos_i = int(position) if position is not None else None
@@ -2066,7 +2148,7 @@ self.addEventListener('fetch', (event) => {{
 
         store.set_published_cover_group_ids(current_gids)
 
-        # Light scenarios as MQTT button entities + cleanup removed ones
+        # Light scenarios as MQTT entities (button + switch) + cleanup removed ones
         scenarios = store.list_light_scenarios()
         current_sids: list[str] = []
         for sc in scenarios:
@@ -2081,6 +2163,8 @@ self.addEventListener('fetch', (event) => {{
         for sid in prev_sids:
             if sid not in current_sids:
                 mqtt.publish(_light_scenario_config_topic(sid=sid), "", retain=True)
+                mqtt.publish(_light_scenario_switch_config_topic(sid=sid), "", retain=True)
+                mqtt.publish(_light_scenario_state_topic(sid=sid), "", retain=True)
 
         for sc in scenarios:
             try:
@@ -2092,10 +2176,20 @@ self.addEventListener('fetch', (event) => {{
                     scenario=sc,
                 )
                 mqtt.publish(topic, payload, retain=True)
+                topic2, payload2 = light_scenario_switch_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=settings.gateway.host,
+                    gateway_port=settings.gateway.port,
+                    scenario=sc,
+                )
+                mqtt.publish(topic2, payload2, retain=True)
+                await _publish_light_scenario_state(sc)
             except Exception:
                 continue
 
         store.set_published_light_scenario_ids(current_sids)
+        _rebuild_light_scenario_index()
 
     @api.on_event("startup")
     async def _startup() -> None:
@@ -2673,6 +2767,7 @@ self.addEventListener('fetch', (event) => {{
                     api.state._last_light_state[addr] = cur
                     _publish_light_state(dev, st)
                     asyncio.run_coroutine_threadsafe(_broadcast_light_state(dev, st), loop)
+                    asyncio.run_coroutine_threadsafe(_publish_light_scenario_states_for_member(addr), loop)
                     break
 
         gateway.add_state_listener(_on_state)
@@ -2967,12 +3062,19 @@ self.addEventListener('fetch', (event) => {{
         # Subscribe to light command topics
         mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/light/+/+/+")
         mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/light_scenario/+")
+        mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/light_scenario_switch/+")
         mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/cover/+/+/+")
         mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/cover_raw/+/+/+")
         mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/cover_pos/+/+/+")
         mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/cover_group/+")
         mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/cover_group_raw/+")
         mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/cover_group_pos/+")
+
+        # Build scenario membership index for state updates on light changes
+        try:
+            _rebuild_light_scenario_index()
+        except Exception:
+            pass
 
         def _on_mqtt_message(topic: str, payload: str) -> None:
             try:
@@ -2984,6 +3086,12 @@ self.addEventListener('fetch', (event) => {{
                 if kind2 == "light_scenario":
                     sid = parts[-1]
                     asyncio.run_coroutine_threadsafe(run_light_scenario(scenario_id=sid), loop)
+                    return
+                if kind2 == "light_scenario_switch":
+                    sid = parts[-1]
+                    cmd = payload.strip().upper()
+                    if cmd in ("ON", "OFF"):
+                        asyncio.run_coroutine_threadsafe(run_light_scenario(scenario_id=sid, payload={"state": cmd}), loop)
                     return
                 if kind2 == "cover_group":
                     gid = parts[-1]
@@ -5309,6 +5417,8 @@ self.addEventListener('fetch', (event) => {{
                 sids.add(str(sid))
         for sid in sids:
             topics.append(_light_scenario_config_topic(sid=sid))
+            topics.append(_light_scenario_switch_config_topic(sid=sid))
+            topics.append(_light_scenario_state_topic(sid=sid))
 
         # de-dupe topics preserving order
         uniq: list[str] = []
@@ -5329,6 +5439,17 @@ self.addEventListener('fetch', (event) => {{
     @api.get("/api/user/light_scenarios")
     async def list_light_scenarios():
         return {"items": store.list_light_scenarios()}
+
+    @api.get("/api/user/light_scenarios_status")
+    async def list_light_scenarios_status():
+        items = store.list_light_scenarios()
+        out: dict[str, str] = {}
+        for sc in items:
+            sid = str(sc.get("id") or "").strip()
+            if not sid:
+                continue
+            out[sid] = _scenario_switch_state(sc)
+        return {"states": out}
 
     @api.post("/api/user/light_scenarios")
     async def create_light_scenario(payload: dict[str, Any]):
@@ -5368,7 +5489,7 @@ self.addEventListener('fetch', (event) => {{
         return {"ok": True}
 
     @api.post("/api/control/light_scenario/{scenario_id}")
-    async def run_light_scenario(scenario_id: str):
+    async def run_light_scenario(scenario_id: str, payload: dict[str, Any] | None = None):
         gw: BusproGateway | None = api.state.gateway
         if gw is None:
             raise HTTPException(status_code=503, detail="Gateway not ready")
@@ -5378,6 +5499,12 @@ self.addEventListener('fetch', (event) => {{
         sc = store.find_light_scenario(scenario_id=scenario_id)
         if not sc:
             raise HTTPException(status_code=404, detail="Not Found")
+        desired = None
+        if isinstance(payload, dict):
+            v = str(payload.get("state") or "").strip().upper()
+            if v in ("ON", "OFF"):
+                desired = v
+
         items = sc.get("items") or []
         if not isinstance(items, list) or not items:
             return {"ok": True, "sent": 0}
@@ -5392,7 +5519,7 @@ self.addEventListener('fetch', (event) => {{
                 channel = int(it.get("channel"))
             except Exception:
                 continue
-            state = str(it.get("state") or "").strip().upper()
+            state = desired or str(it.get("state") or "").strip().upper()
             if state not in ("ON", "OFF"):
                 continue
             on = state == "ON"
@@ -5408,6 +5535,11 @@ self.addEventListener('fetch', (event) => {{
                 # Best-effort: continue other lights
                 continue
 
+        # Best-effort: publish scenario switch state (optimistic)
+        try:
+            await _publish_light_scenario_state(sc)
+        except Exception:
+            pass
         return {"ok": True, "sent": sent}
 
     @api.post("/api/control/light/{subnet_id}/{device_id}/{channel}")

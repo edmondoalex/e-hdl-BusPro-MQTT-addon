@@ -71,6 +71,7 @@
       }
       .btn:active{transform:scale(.99)}
       .btn.primary{border-color:rgba(255,215,0,.35); background:rgba(255,215,0,.08)}
+      .btn.danger{border-color:rgba(255,107,107,.40); background:rgba(255,107,107,.10)}
       .error{color:var(--danger);font-size:13px;margin-top:10px}
     </style>
   </head>
@@ -125,14 +126,25 @@
         await getJson(`api/control/light_scenario/${encodeURIComponent(String(id||''))}`, { method:'POST' });
       }
 
+      async function setScenario(id, state) {
+        await getJson(`api/control/light_scenario/${encodeURIComponent(String(id||''))}`, {
+          method:'POST',
+          headers: { 'Content-Type':'application/json' },
+          body: JSON.stringify({ state: String(state || '').toUpperCase() })
+        });
+      }
+
       async function load() {
         const root = qs('list');
         const err = qs('err');
         root.replaceChildren();
         err.textContent = '';
         let data = null;
+        let stMap = {};
         try {
           data = await getJson('api/user/light_scenarios');
+          const st = await getJson('api/user/light_scenarios_status');
+          stMap = (st && st.states && typeof st.states === 'object') ? st.states : {};
         } catch (e) {
           err.textContent = 'Errore caricamento scenari';
           return;
@@ -153,17 +165,22 @@
             row.className = 'row';
             const name = String(sc.name || '').trim() || '(senza nome)';
             const n = Array.isArray(sc.items) ? sc.items.length : 0;
+            const sid = String(sc.id || '').trim();
+            const on = String((stMap && stMap[sid]) || '').toUpperCase() === 'ON';
             row.innerHTML = `
               <div class="left">
                 <div class="name">${escapeHtml(name)}</div>
                 <div class="meta">${escapeHtml(String(n))} luci</div>
               </div>
-              <button class="btn primary" type="button" data-id="${escapeHtml(String(sc.id||''))}">Esegui</button>
+              <button class="btn ${on ? 'danger' : 'primary'}" type="button" data-id="${escapeHtml(String(sc.id||''))}">${on ? 'Spegni' : 'Accendi'}</button>
             `;
             row.querySelector('button').addEventListener('click', async () => {
               try {
                 err.textContent = '';
-                await runScenario(sc.id);
+                const sid2 = String(sc.id || '').trim();
+                const nowOn = String((stMap && stMap[sid2]) || '').toUpperCase() === 'ON';
+                await setScenario(sc.id, nowOn ? 'OFF' : 'ON');
+                await load();
               } catch (e) {
                 err.textContent = 'Errore esecuzione scenario';
               }
