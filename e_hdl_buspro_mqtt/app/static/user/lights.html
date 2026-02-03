@@ -307,6 +307,14 @@
               </div>
               <div id="scAddList" class="scAddList"></div>
             </div>
+            <div class="scItems" id="scCoverItems"></div>
+            <div class="scAddBox">
+              <div class="scField" style="margin-bottom:8px">
+                <label for="scCoverAddSearch">Aggiungi tapparella</label>
+                <input id="scCoverAddSearch" type="text" placeholder="Cerca tapparella/gruppo..." />
+              </div>
+              <div id="scCoverAddList" class="scAddList"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -331,6 +339,8 @@
       let editingScenarioId = '';
       let editingScenarioName = '';
       let editingScenarioItems = [];
+      let editingScenarioCovers = [];
+      let coverGroupsCache = [];
       const LS_SC_GROUP = 'buspro_scenarios_group_lights';
 
       const GROUP_NONE = '__none__';
@@ -421,6 +431,7 @@
         } catch (e) {
           scenarioStates = {};
         }
+        try { await ensureCoverGroupsCache(); } catch (e) {}
         renderLightScenarios();
       }
 
@@ -582,6 +593,28 @@
           }))
           .filter(it => Number.isFinite(it.subnet_id) && Number.isFinite(it.device_id) && Number.isFinite(it.channel));
 
+        const covers = Array.isArray(sc.covers) ? sc.covers : [];
+        editingScenarioCovers = covers
+          .filter(it => it && typeof it === 'object')
+          .map(it => {
+            const kind = String(it.kind || 'single').toLowerCase();
+            const cmd = String(it.command || '').toUpperCase();
+            const pos = (it.position === null || it.position === undefined) ? null : Math.max(0, Math.min(100, Number(it.position)));
+            if (kind === 'group') {
+              return { kind: 'group', group_id: String(it.group_id || it.id || '').trim(), command: cmd, position: Number.isFinite(pos) ? Math.round(pos) : null };
+            }
+            return {
+              kind: 'single',
+              subnet_id: Number(it.subnet_id),
+              device_id: Number(it.device_id),
+              channel: Number(it.channel),
+              command: cmd,
+              position: Number.isFinite(pos) ? Math.round(pos) : null,
+            };
+          })
+          .filter(it => (it.kind === 'group' ? !!it.group_id : (Number.isFinite(it.subnet_id) && Number.isFinite(it.device_id) && Number.isFinite(it.channel))))
+          .filter(it => ['OPEN','CLOSE','STOP','SET_POSITION'].includes(String(it.command||'')));
+
         const nameInput = qs('scNameInput');
         if (nameInput) nameInput.value = editingScenarioName;
 
@@ -590,21 +623,227 @@
         if (editor) editor.classList.add('show');
         renderScenarioEditorItems();
         renderScenarioAddList();
+        renderScenarioEditorCovers();
+        renderScenarioCoverAddList();
       }
 
       function closeScenarioEditor() {
         editingScenarioId = '';
         editingScenarioName = '';
         editingScenarioItems = [];
+        editingScenarioCovers = [];
         qs('scList').style.display = '';
         const editor = qs('scEditor');
         if (editor) editor.classList.remove('show');
         try { qs('scItems').replaceChildren(); } catch (e) {}
         try { qs('scAddList').replaceChildren(); } catch (e) {}
+        try { qs('scCoverItems').replaceChildren(); } catch (e) {}
+        try { qs('scCoverAddList').replaceChildren(); } catch (e) {}
       }
 
       function addrFromItem(it) {
         return `${Number(it.subnet_id)}.${Number(it.device_id)}.${Number(it.channel)}`;
+      }
+
+      function coverKeyFromItem(it) {
+        if (!it) return '';
+        if (String(it.kind || 'single') === 'group') return `group:${String(it.group_id || '')}`;
+        return `cover:${Number(it.subnet_id)}.${Number(it.device_id)}.${Number(it.channel)}`;
+      }
+
+      function coverAddrFromItem(it) {
+        return `${Number(it.subnet_id)}.${Number(it.device_id)}.${Number(it.channel)}`;
+      }
+
+      async function ensureCoverGroupsCache() {
+        try {
+          const res = await getJson('api/cover_groups');
+          coverGroupsCache = Array.isArray(res && res.items) ? res.items : [];
+        } catch (e) {
+          coverGroupsCache = [];
+        }
+      }
+
+      function coverDeviceMap() {
+        const m = new Map(); // addr -> device
+        for (const d of (lastDevices || [])) {
+          if (String(d.type || '').toLowerCase() !== 'cover') continue;
+          if (String(d.origin || '') === 'ha') continue;
+          const addr = `${Number(d.subnet_id)}.${Number(d.device_id)}.${Number(d.channel)}`;
+          m.set(addr, d);
+        }
+        return m;
+      }
+
+      function coverGroupMap() {
+        const m = new Map(); // gid -> group
+        for (const g of (coverGroupsCache || [])) {
+          const gid = String(g.id || g.name || '').trim();
+          if (!gid) continue;
+          m.set(gid, g);
+        }
+        return m;
+      }
+
+      function renderScenarioEditorCovers() {
+        const root = qs('scCoverItems');
+        const err = qs('scErr');
+        if (!root) return;
+        root.replaceChildren();
+
+        const devMap = coverDeviceMap();
+        const grpMap = coverGroupMap();
+
+        const items = (editingScenarioCovers || []).slice().sort((a,b) => {
+          const ka = coverKeyFromItem(a);
+          const kb = coverKeyFromItem(b);
+          const ta = (String(a.kind||'')==='group') ? String((grpMap.get(String(a.group_id||''))||{}).name || a.group_id || ka) : String((devMap.get(coverAddrFromItem(a))||{}).name || coverAddrFromItem(a) || ka);
+          const tb = (String(b.kind||'')==='group') ? String((grpMap.get(String(b.group_id||''))||{}).name || b.group_id || kb) : String((devMap.get(coverAddrFromItem(b))||{}).name || coverAddrFromItem(b) || kb);
+          return ta.localeCompare(tb, undefined, { sensitivity:'base' });
+        });
+
+        const header = document.createElement('div');
+        header.className = 'scItem';
+        header.innerHTML = `<div class="scItemLeft"><div class="scItemTitle">Tapparelle scenario</div><div class="scItemSub">Su / Giù / Stop / %</div></div>`;
+        root.appendChild(header);
+
+        if (!items.length) {
+          const empty = document.createElement('div');
+          empty.className = 'scItem';
+          empty.innerHTML = `<div class="scItemLeft"><div class="scItemTitle">Nessuna tapparella nello scenario</div><div class="scItemSub">Aggiungi tapparelle o gruppi dalla lista sotto</div></div>`;
+          root.appendChild(empty);
+          return;
+        }
+
+        for (const it of items) {
+          const key = coverKeyFromItem(it);
+          const kind = String(it.kind || 'single');
+          const cmd = String(it.command || '').toUpperCase();
+          const pos = (it.position === null || it.position === undefined) ? 0 : Math.max(0, Math.min(100, Number(it.position)));
+          const isGroup = kind === 'group';
+          const title = isGroup
+            ? String(((grpMap.get(String(it.group_id||''))||{}).name) || it.group_id || key)
+            : String(((devMap.get(coverAddrFromItem(it))||{}).name) || coverAddrFromItem(it) || key);
+          const sub = isGroup ? `Gruppo â€¢ ${escapeHtml(String(it.group_id||''))}` : `${escapeHtml(coverAddrFromItem(it))}`;
+
+          const row = document.createElement('div');
+          row.className = 'scItem';
+          row.setAttribute('data-key', key);
+          row.innerHTML = `
+            <div class="scItemLeft">
+              <div class="scItemTitle">${escapeHtml(title)}</div>
+              <div class="scItemSub">${sub}</div>
+            </div>
+            <div class="scItemCtrls">
+              <button class="btn ${cmd==='OPEN' ? 'primary':''}" type="button" data-act="c_open" data-key="${escapeHtml(key)}">Su</button>
+              <button class="btn ${cmd==='CLOSE' ? 'primary':''}" type="button" data-act="c_close" data-key="${escapeHtml(key)}">Giù</button>
+              <button class="btn ${cmd==='STOP' ? 'primary':''}" type="button" data-act="c_stop" data-key="${escapeHtml(key)}">Stop</button>
+              <input class="scRange" type="range" min="0" max="100" value="${Math.round(pos)}" data-act="c_pos" data-key="${escapeHtml(key)}" />
+              <span class="scMeta" style="margin-left:6px">${Math.round(pos)}%</span>
+              <button class="btn danger" type="button" data-act="c_del" data-key="${escapeHtml(key)}">Rimuovi</button>
+            </div>
+          `;
+          root.appendChild(row);
+        }
+
+        root.querySelectorAll('button[data-act="c_del"]').forEach((b) => {
+          b.addEventListener('click', () => {
+            const key = b.getAttribute('data-key') || '';
+            editingScenarioCovers = (editingScenarioCovers || []).filter((x) => coverKeyFromItem(x) !== key);
+            renderScenarioEditorCovers();
+            renderScenarioCoverAddList();
+          });
+        });
+        root.querySelectorAll('button[data-act="c_open"]').forEach((b) => {
+          b.addEventListener('click', () => {
+            const key = b.getAttribute('data-key') || '';
+            for (const it of (editingScenarioCovers || [])) if (coverKeyFromItem(it) === key) { it.command = 'OPEN'; it.position = null; }
+            renderScenarioEditorCovers();
+          });
+        });
+        root.querySelectorAll('button[data-act="c_close"]').forEach((b) => {
+          b.addEventListener('click', () => {
+            const key = b.getAttribute('data-key') || '';
+            for (const it of (editingScenarioCovers || [])) if (coverKeyFromItem(it) === key) { it.command = 'CLOSE'; it.position = null; }
+            renderScenarioEditorCovers();
+          });
+        });
+        root.querySelectorAll('button[data-act="c_stop"]').forEach((b) => {
+          b.addEventListener('click', () => {
+            const key = b.getAttribute('data-key') || '';
+            for (const it of (editingScenarioCovers || [])) if (coverKeyFromItem(it) === key) { it.command = 'STOP'; it.position = null; }
+            renderScenarioEditorCovers();
+          });
+        });
+        root.querySelectorAll('input[data-act="c_pos"]').forEach((el) => {
+          el.addEventListener('input', () => {
+            const key = el.getAttribute('data-key') || '';
+            const v = Math.max(0, Math.min(100, Number(el.value || 0)));
+            for (const it of (editingScenarioCovers || [])) if (coverKeyFromItem(it) === key) { it.command = 'SET_POSITION'; it.position = Math.round(v); }
+            try {
+              const meta = el.parentElement && el.parentElement.querySelector('.scMeta');
+              if (meta) meta.textContent = `${Math.round(v)}%`;
+            } catch (e) {}
+          });
+        });
+      }
+
+      function renderScenarioCoverAddList() {
+        const root = qs('scCoverAddList');
+        if (!root) return;
+        root.replaceChildren();
+
+        const search = String((qs('scCoverAddSearch') && qs('scCoverAddSearch').value) || '').trim().toLowerCase();
+        const groupSel = selectedScenarioGroupKey();
+
+        const existing = new Set((editingScenarioCovers || []).map(coverKeyFromItem));
+        const devMap = coverDeviceMap();
+        const grpMap = coverGroupMap();
+
+        const candidates = [];
+        for (const [addr, d] of devMap.entries()) {
+          const key = `cover:${addr}`;
+          if (existing.has(key)) continue;
+          if (groupSel && groupSel !== '__all__' && groupKeyFromGroup(d.group) !== groupSel) continue;
+          const name = String(d.name || addr);
+          if (search && !(addr.toLowerCase().includes(search) || name.toLowerCase().includes(search))) continue;
+          candidates.push({ key, kind:'single', addr, name, meta: `${addr}` });
+        }
+        for (const [gid, g] of grpMap.entries()) {
+          const key = `group:${gid}`;
+          if (existing.has(key)) continue;
+          const name = String(g.name || gid);
+          if (search && !(gid.toLowerCase().includes(search) || name.toLowerCase().includes(search))) continue;
+          candidates.push({ key, kind:'group', gid, name, meta: `Gruppo â€¢ ${gid}` });
+        }
+
+        candidates.sort((a,b) => String(a.name||a.key).localeCompare(String(b.name||b.key), undefined, { sensitivity:'base' }));
+
+        if (!candidates.length) {
+          const empty = document.createElement('div');
+          empty.className = 'scAddRow';
+          empty.innerHTML = `<div class="scAddName">Nessuna tapparella da aggiungere</div><div class="scAddMeta">usa la ricerca</div>`;
+          root.appendChild(empty);
+          return;
+        }
+
+        for (const c of candidates.slice(0, 80)) {
+          const row = document.createElement('div');
+          row.className = 'scAddRow';
+          row.setAttribute('data-key', c.key);
+          row.innerHTML = `<div class="scAddName">${escapeHtml(c.name)}</div><div class="scAddMeta">${escapeHtml(c.meta)}</div>`;
+          row.addEventListener('click', () => {
+            if (c.kind === 'group') {
+              editingScenarioCovers = (editingScenarioCovers || []).concat([{ kind:'group', group_id: String(c.gid), command:'STOP', position:null }]);
+            } else {
+              const parts = String(c.addr).split('.').map(Number);
+              editingScenarioCovers = (editingScenarioCovers || []).concat([{ kind:'single', subnet_id: parts[0], device_id: parts[1], channel: parts[2], command:'STOP', position:null }]);
+            }
+            renderScenarioEditorCovers();
+            renderScenarioCoverAddList();
+          });
+          root.appendChild(row);
+        }
       }
 
       function renderScenarioEditorItems() {
@@ -770,10 +1009,26 @@
             else br = Math.max(0, Math.min(255, Number(br)));
             return { subnet_id: Number(it.subnet_id), device_id: Number(it.device_id), channel: Number(it.channel), state: st, brightness: br };
           });
+          const covers = (editingScenarioCovers || []).map((it) => {
+            const kind = String(it.kind || 'single') === 'group' ? 'group' : 'single';
+            const cmd = String(it.command || '').toUpperCase();
+            const pos = (it.position === null || it.position === undefined) ? null : Math.max(0, Math.min(100, Number(it.position)));
+            if (kind === 'group') {
+              return { kind: 'group', group_id: String(it.group_id || '').trim(), command: cmd, position: (cmd === 'SET_POSITION') ? Math.round(pos || 0) : null };
+            }
+            return {
+              kind: 'single',
+              subnet_id: Number(it.subnet_id),
+              device_id: Number(it.device_id),
+              channel: Number(it.channel),
+              command: cmd,
+              position: (cmd === 'SET_POSITION') ? Math.round(pos || 0) : null,
+            };
+          });
           await getJson(`api/user/light_scenarios/${encodeURIComponent(sid)}`, {
             method:'PUT',
             headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ name, items }),
+            body: JSON.stringify({ name, items, covers }),
           });
           await loadLightScenarios();
           closeScenarioEditor();
@@ -1268,9 +1523,11 @@
       qs('scBackBtn').addEventListener('click', () => closeScenarioEditor());
       qs('scSaveEditBtn').addEventListener('click', () => saveScenarioEdits());
       qs('scAddSearch').addEventListener('input', () => renderScenarioAddList());
+      try { qs('scCoverAddSearch').addEventListener('input', () => renderScenarioCoverAddList()); } catch (e) {}
       qs('scGroupSelect').addEventListener('change', () => {
         try { localStorage.setItem(LS_SC_GROUP, selectedScenarioGroupKey()); } catch (e) {}
         try { renderScenarioAddList(); } catch (e) {}
+        try { renderScenarioCoverAddList(); } catch (e) {}
       });
       qs('scenesModalBack').addEventListener('click', (evt) => {
         if (evt && evt.target === qs('scenesModalBack')) closeScenarios();

@@ -47,7 +47,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.256"
+ADDON_VERSION = "0.1.257"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -5507,7 +5507,7 @@ self.addEventListener('fetch', (event) => {{
 
         items = sc.get("items") or []
         if not isinstance(items, list) or not items:
-            return {"ok": True, "sent": 0}
+            items = []
 
         sent = 0
         for it in items:
@@ -5535,12 +5535,60 @@ self.addEventListener('fetch', (event) => {{
                 # Best-effort: continue other lights
                 continue
 
+        cover_sent = 0
+        # Covers are applied only when scenario is turned ON (not on OFF toggle).
+        apply_covers = (desired is None) or (desired == "ON")
+        if apply_covers:
+            covers = sc.get("covers") or []
+            if isinstance(covers, list):
+                for it in covers:
+                    if not isinstance(it, dict):
+                        continue
+                    cmd = str(it.get("command") or "").strip().upper()
+                    if cmd not in ("OPEN", "CLOSE", "STOP", "SET_POSITION"):
+                        continue
+                    kind = str(it.get("kind") or "single").strip().lower()
+                    if kind == "group":
+                        gid = str(it.get("group_id") or "").strip()
+                        if not gid:
+                            continue
+                        try:
+                            if cmd == "SET_POSITION":
+                                pos = int(it.get("position"))
+                                await _run_cover_group_command(gid, "SET_POSITION", pos=pos)
+                            else:
+                                await _run_cover_group_command(gid, cmd)
+                            cover_sent += 1
+                        except Exception:
+                            continue
+                        continue
+
+                    try:
+                        subnet_id = int(it.get("subnet_id"))
+                        device_id = int(it.get("device_id"))
+                        channel = int(it.get("channel"))
+                    except Exception:
+                        continue
+                    try:
+                        if cmd == "OPEN":
+                            await gw.cover_open(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                        elif cmd == "CLOSE":
+                            await gw.cover_close(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                        elif cmd == "STOP":
+                            await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                        else:
+                            pos = int(it.get("position"))
+                            await gw.cover_set_position(subnet_id=subnet_id, device_id=device_id, channel=channel, position=pos)
+                        cover_sent += 1
+                    except Exception:
+                        continue
+
         # Best-effort: publish scenario switch state (optimistic)
         try:
             await _publish_light_scenario_state(sc)
         except Exception:
             pass
-        return {"ok": True, "sent": sent}
+        return {"ok": True, "sent": sent, "cover_sent": cover_sent}
 
     @api.post("/api/control/light/{subnet_id}/{device_id}/{channel}")
     async def control_light(subnet_id: int, device_id: int, channel: int, payload: dict[str, Any]):

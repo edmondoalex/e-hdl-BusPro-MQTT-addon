@@ -524,12 +524,69 @@ class StateStore:
                 }
             )
 
-        return {"name": name, "items": items}
+        covers_in = payload.get("covers") or []
+        if covers_in is None:
+            covers_in = []
+        if not isinstance(covers_in, list):
+            raise ValueError("covers must be a list")
+
+        covers: list[dict[str, Any]] = []
+        for it in covers_in:
+            if not isinstance(it, dict):
+                continue
+            kind = str(it.get("kind") or "single").strip().lower()
+            if kind not in ("single", "group"):
+                kind = "single"
+
+            cmd = str(it.get("command") or "").strip().upper()
+            if cmd not in ("OPEN", "CLOSE", "STOP", "SET_POSITION"):
+                continue
+
+            pos = it.get("position")
+            if cmd == "SET_POSITION":
+                try:
+                    pos_i = int(pos)
+                except Exception:
+                    continue
+                pos_i = max(0, min(100, pos_i))
+            else:
+                pos_i = None
+
+            if kind == "group":
+                gid = str(it.get("group_id") or it.get("id") or "").strip()
+                if not gid:
+                    continue
+                covers.append({"kind": "group", "group_id": gid, "command": cmd, "position": pos_i})
+                continue
+
+            try:
+                subnet_id = int(it.get("subnet_id"))
+                device_id = int(it.get("device_id"))
+                channel = int(it.get("channel"))
+            except Exception:
+                continue
+            covers.append(
+                {
+                    "kind": "single",
+                    "subnet_id": subnet_id,
+                    "device_id": device_id,
+                    "channel": channel,
+                    "command": cmd,
+                    "position": pos_i,
+                }
+            )
+
+        return {"name": name, "items": items, "covers": covers}
 
     def add_light_scenario(self, payload: dict[str, Any]) -> dict[str, Any]:
         cleaned = self._normalize_light_scenario_payload(payload, require_name=True)
         scenario_id = str(uuid.uuid4())
-        out = {"id": scenario_id, "name": cleaned["name"], "items": cleaned["items"]}
+        out = {
+            "id": scenario_id,
+            "name": cleaned["name"],
+            "items": cleaned["items"],
+            "covers": cleaned.get("covers") or [],
+        }
 
         raw = self.read_raw()
         ui = dict(raw.get("ui") or {})
@@ -568,6 +625,8 @@ class StateStore:
                 cur["name"] = cleaned["name"]
             if "items" in cleaned:
                 cur["items"] = cleaned["items"]
+            if "covers" in cleaned:
+                cur["covers"] = cleaned.get("covers") or []
             updated = cur
             out_items.append(cur)
 
