@@ -47,7 +47,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.257"
+ADDON_VERSION = "0.1.258"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -1534,6 +1534,10 @@ self.addEventListener('fetch', (event) => {{
             for it in items:
                 if not isinstance(it, dict):
                     continue
+                eid = str(it.get("entity_id") or "").strip()
+                if eid:
+                    membership.setdefault(eid, set()).add(sid)
+                    continue
                 try:
                     subnet_id = int(it.get("subnet_id"))
                     device_id = int(it.get("device_id"))
@@ -1550,8 +1554,17 @@ self.addEventListener('fetch', (event) => {{
         if not isinstance(items, list) or not items:
             return "OFF"
         states = store.get_states()
+        ha_states: dict[str, Any] = getattr(api.state, "ha_states", {}) or {}
         for it in items:
             if not isinstance(it, dict):
+                continue
+            eid = str(it.get("entity_id") or "").strip()
+            if eid:
+                st = ha_states.get(eid) if isinstance(ha_states, dict) else None
+                if not isinstance(st, dict):
+                    return "OFF"
+                if str(st.get("state") or "").upper() != "ON":
+                    return "OFF"
                 continue
             try:
                 subnet_id = int(it.get("subnet_id"))
@@ -2960,12 +2973,20 @@ self.addEventListener('fetch', (event) => {{
                             if prev != mapped:
                                 next_states[eid] = mapped
                                 await hub.broadcast("ha_switch_state", mapped)
+                                try:
+                                    await _publish_light_scenario_states_for_member(eid)
+                                except Exception:
+                                    pass
                         else:
                             mapped = _map_ha_state_to_light(st)
                             prev = last.get(eid)
                             if prev != mapped:
                                 next_states[eid] = mapped
                                 await hub.broadcast("ha_light_state", mapped)
+                                try:
+                                    await _publish_light_scenario_states_for_member(eid)
+                                except Exception:
+                                    pass
 
                     api.state.ha_states = next_states
                     api.state.ha_caps = next_caps
@@ -5513,6 +5534,38 @@ self.addEventListener('fetch', (event) => {{
         for it in items:
             if not isinstance(it, dict):
                 continue
+
+            eid = str(it.get("entity_id") or "").strip().lower()
+            if eid and "." in eid:
+                dom = str(it.get("domain") or eid.split(".", 1)[0]).strip().lower()
+                state = desired or str(it.get("state") or "").strip().upper()
+                if state not in ("ON", "OFF"):
+                    continue
+                try:
+                    if dom == "switch" or eid.startswith("switch."):
+                        svc = "turn_on" if state == "ON" else "turn_off"
+                        await asyncio.to_thread(_ha_request, "POST", f"/api/services/switch/{svc}", payload={"entity_id": eid}, timeout_s=10)
+                        sent += 1
+                        continue
+                    if dom != "light" and not eid.startswith("light."):
+                        continue
+                    if state == "OFF":
+                        await asyncio.to_thread(_ha_request, "POST", "/api/services/light/turn_off", payload={"entity_id": eid}, timeout_s=10)
+                        sent += 1
+                        continue
+                    data: dict[str, Any] = {"entity_id": eid}
+                    br = it.get("brightness")
+                    if br is not None:
+                        try:
+                            data["brightness"] = int(br)
+                        except Exception:
+                            pass
+                    await asyncio.to_thread(_ha_request, "POST", "/api/services/light/turn_on", payload=data, timeout_s=10)
+                    sent += 1
+                except Exception:
+                    continue
+                continue
+
             try:
                 subnet_id = int(it.get("subnet_id"))
                 device_id = int(it.get("device_id"))

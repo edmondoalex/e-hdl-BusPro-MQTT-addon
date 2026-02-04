@@ -495,6 +495,36 @@ class StateStore:
         for it in items_in:
             if not isinstance(it, dict):
                 continue
+
+            # Home Assistant entities (light/switch) in scenarios (stored by entity_id)
+            entity_id = str(it.get("entity_id") or "").strip().lower()
+            if entity_id and "." in entity_id:
+                domain = entity_id.split(".", 1)[0]
+                if domain not in ("light", "switch"):
+                    continue
+                st = str(it.get("state") or "").strip().upper()
+                if st not in ("ON", "OFF"):
+                    continue
+                br = it.get("brightness")
+                if domain != "light" or br is None or st == "OFF":
+                    br255 = None
+                else:
+                    try:
+                        br255 = int(br)
+                    except Exception:
+                        br255 = None
+                    if br255 is not None:
+                        br255 = max(0, min(255, br255))
+                items.append(
+                    {
+                        "entity_id": entity_id,
+                        "domain": domain,
+                        "state": st,
+                        "brightness": br255,
+                    }
+                )
+                continue
+
             try:
                 subnet_id = int(it.get("subnet_id"))
                 device_id = int(it.get("device_id"))

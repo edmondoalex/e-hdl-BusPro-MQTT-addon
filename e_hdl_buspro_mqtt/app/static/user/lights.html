@@ -584,14 +584,25 @@
         const items = Array.isArray(sc.items) ? sc.items : [];
         editingScenarioItems = items
           .filter(it => it && typeof it === 'object')
-          .map(it => ({
-            subnet_id: Number(it.subnet_id),
-            device_id: Number(it.device_id),
-            channel: Number(it.channel),
-            state: String(it.state || '').toUpperCase() === 'OFF' ? 'OFF' : 'ON',
-            brightness: (it.brightness === null || it.brightness === undefined) ? null : Math.max(0, Math.min(255, Number(it.brightness))),
-          }))
-          .filter(it => Number.isFinite(it.subnet_id) && Number.isFinite(it.device_id) && Number.isFinite(it.channel));
+          .map(it => {
+            const eid = String(it.entity_id || '').trim();
+            if (eid) {
+              return {
+                entity_id: eid,
+                domain: String(it.domain || (eid.split('.',1)[0]||'light')).trim().toLowerCase(),
+                state: String(it.state || '').toUpperCase() === 'OFF' ? 'OFF' : 'ON',
+                brightness: (it.brightness === null || it.brightness === undefined) ? null : Math.max(0, Math.min(255, Number(it.brightness))),
+              };
+            }
+            return {
+              subnet_id: Number(it.subnet_id),
+              device_id: Number(it.device_id),
+              channel: Number(it.channel),
+              state: String(it.state || '').toUpperCase() === 'OFF' ? 'OFF' : 'ON',
+              brightness: (it.brightness === null || it.brightness === undefined) ? null : Math.max(0, Math.min(255, Number(it.brightness))),
+            };
+          })
+          .filter(it => (it && it.entity_id) || (Number.isFinite(it.subnet_id) && Number.isFinite(it.device_id) && Number.isFinite(it.channel)));
 
         const covers = Array.isArray(sc.covers) ? sc.covers : [];
         editingScenarioCovers = covers
@@ -642,6 +653,7 @@
       }
 
       function addrFromItem(it) {
+        if (it && it.entity_id) return String(it.entity_id);
         return `${Number(it.subnet_id)}.${Number(it.device_id)}.${Number(it.channel)}`;
       }
 
@@ -980,7 +992,9 @@
           const meta = d.dimmable ? 'dimmer' : 'on/off';
           row.innerHTML = `<div class="scAddName">${escapeHtml(String(d.name||addr))}</div><div class="scAddMeta">${escapeHtml(addr)} • ${escapeHtml(meta)}</div>`;
           row.addEventListener('click', () => {
-            const it = { subnet_id: Number(d.subnet_id), device_id: Number(d.device_id), channel: Number(d.channel), state: 'ON', brightness: d.dimmable ? 255 : null };
+            const it = (String(d.origin || '') === 'ha')
+              ? { entity_id: String(d.entity_id || addr), domain: String(d.domain || 'light'), state: 'ON', brightness: d.dimmable ? 255 : null }
+              : { subnet_id: Number(d.subnet_id), device_id: Number(d.device_id), channel: Number(d.channel), state: 'ON', brightness: d.dimmable ? 255 : null };
             editingScenarioItems = (editingScenarioItems || []).concat([it]);
             renderScenarioEditorItems();
             renderScenarioAddList();
@@ -1007,6 +1021,11 @@
             if (st === 'OFF') br = null;
             if (br === null || br === undefined) br = null;
             else br = Math.max(0, Math.min(255, Number(br)));
+            if (it && it.entity_id) {
+              const eid = String(it.entity_id || '').trim();
+              const dom = String(it.domain || (eid.split('.',1)[0]||'light')).trim().toLowerCase();
+              return { entity_id: eid, domain: dom, state: st, brightness: br };
+            }
             return { subnet_id: Number(it.subnet_id), device_id: Number(it.device_id), channel: Number(it.channel), state: st, brightness: br };
           });
           const covers = (editingScenarioCovers || []).map((it) => {
