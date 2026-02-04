@@ -1053,6 +1053,97 @@
             </div>
           </details>
 
+          <details class="acc" data-acc="home_actions">
+            <summary>
+              <h2 style="margin:0;font-size:16px">Home actions (Home2)</h2>
+            </summary>
+            <div class="accBody">
+              <div class="muted" style="margin-top:6px">
+                Aggiungi pulsanti nella pagina <code>/home2</code> che eseguono direttamente un'azione (toggle/ON/OFF, cover su/giù/stop/%,
+                scenari). Non pubblica nulla su MQTT.
+              </div>
+
+              <form id="homeActionForm" style="margin-top:10px">
+                <input id="haction_id" type="hidden" />
+                <datalist id="scenarioIds"></datalist>
+                <datalist id="coverGroupIds"></datalist>
+
+                <div class="row3">
+                  <div>
+                    <label>Titolo</label>
+                    <input id="haction_title" required placeholder="Es: Spegni tutto" />
+                  </div>
+                  <div>
+                    <label>Icona (mdi)</label>
+                    <input id="haction_icon" list="usedIcons" placeholder="Es: mdi:power" />
+                  </div>
+                  <div>
+                    <label>Tipo</label>
+                    <select id="haction_kind">
+                      <option value="ha">Home Assistant (entity_id)</option>
+                      <option value="buspro_light">BusPro luce (addr)</option>
+                      <option value="buspro_cover">BusPro cover (addr)</option>
+                      <option value="cover_group">BusPro cover group (id)</option>
+                      <option value="scenario">Scenario luci/cover</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="row3">
+                  <div>
+                    <label>Azione</label>
+                    <select id="haction_action"></select>
+                  </div>
+                  <div>
+                    <label>Target</label>
+                    <input id="haction_target" required placeholder="Es: light.sala / 1.2.3 / gruppo_tapparelle / scenario_id" />
+                  </div>
+                  <div>
+                    <label>Posizione % (solo SET_POSITION)</label>
+                    <input id="haction_position" type="number" min="0" max="100" placeholder="0..100" />
+                  </div>
+                </div>
+
+                <div class="row3">
+                  <div style="display:flex;align-items:end;gap:10px">
+                    <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
+                      <input id="haction_show" type="checkbox" checked />
+                      Mostra
+                    </label>
+                  </div>
+                  <div style="display:flex;align-items:end;gap:10px">
+                    <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
+                      <input id="haction_confirm" type="checkbox" />
+                      Chiedi conferma
+                    </label>
+                  </div>
+                  <div></div>
+                </div>
+
+                <div class="flex" style="margin-top:10px">
+                  <button class="btn" id="haction_btnSubmit" type="submit">Aggiungi</button>
+                  <button class="btn secondary" id="haction_btnCancel" type="button" style="display:none">Annulla</button>
+                  <span id="haction_formMsg" class="muted"></span>
+                </div>
+              </form>
+
+              <table id="homeActionsTable" aria-label="home actions" style="margin-top:10px">
+                <thead>
+                  <tr>
+                    <th>Titolo</th>
+                    <th>Tipo</th>
+                    <th>Azione</th>
+                    <th>Target</th>
+                    <th>Opzioni</th>
+                    <th>Ordine</th>
+                    <th>Azioni</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </details>
+
           <details class="acc" data-acc="ha_devices">
             <summary>
               <h2 style="margin:0;font-size:16px">Home Assistant devices (UI utente)</h2>
@@ -2364,6 +2455,7 @@
           const res = await getJson('api/cover_groups');
           coverGroups = Array.isArray(res.groups) ? res.groups : [];
           renderCoverGroupsTable();
+          renderCoverGroupIdsDatalist();
         } catch (e) {
           // ignore
         }
@@ -2690,6 +2782,10 @@
             }
             if (msg.type === 'hub_links') {
               applyHubLinks(msg.data);
+              return;
+            }
+            if (msg.type === 'home_actions') {
+              applyHomeActions(msg.data);
               return;
             }
             if (msg.type === 'hub_config') {
@@ -3965,6 +4061,7 @@
       } 
 
       let hubLinks = [];
+      let homeActions = [];
       let hubIcons = null;
       let hubShow = null;
       let hubOrder = null;
@@ -4274,6 +4371,203 @@
         renderHubLinks();
       }
 
+      function homeActionTarget(it) {
+        const kind = String(it.kind || '').trim().toLowerCase();
+        const data = (it && typeof it.data === 'object' && it.data) ? it.data : {};
+        if (kind === 'ha') return String(data.entity_id || '');
+        if (kind === 'buspro_light' || kind === 'buspro_cover') return String(data.addr || '');
+        if (kind === 'cover_group') return String(data.group_id || '');
+        if (kind === 'scenario') return String(data.scenario_id || '');
+        return '';
+      }
+
+      function setHomeActionEditing(it) {
+        const isEdit = !!(it && it.id);
+        qs('haction_id').value = isEdit ? String(it.id || '') : '';
+        qs('haction_title').value = isEdit ? String(it.title || '') : '';
+        qs('haction_icon').value = isEdit ? String(it.icon || '') : '';
+        qs('haction_kind').value = isEdit ? String(it.kind || 'ha') : 'ha';
+        qs('haction_show').checked = isEdit ? !!it.show : true;
+        qs('haction_confirm').checked = isEdit ? !!it.confirm : false;
+        qs('haction_target').value = isEdit ? homeActionTarget(it) : '';
+        qs('haction_position').value = isEdit ? String(((it.data||{})||{}).position ?? '') : '';
+        qs('haction_btnSubmit').textContent = isEdit ? 'Salva' : 'Aggiungi';
+        qs('haction_btnCancel').style.display = isEdit ? '' : 'none';
+        qs('haction_formMsg').textContent = '';
+        renderHomeActionFormUI();
+        if (isEdit) {
+          qs('haction_action').value = String(it.action || '').toUpperCase();
+        }
+        renderHomeActionFormUI();
+      }
+
+      function renderHomeActionFormUI() {
+        const kind = String(qs('haction_kind').value || '').trim().toLowerCase();
+        const actionSel = qs('haction_action');
+        const cur = String(actionSel.value || '').toUpperCase();
+
+        const opts = [];
+        if (kind === 'buspro_light') opts.push('TOGGLE','ON','OFF');
+        else if (kind === 'buspro_cover' || kind === 'cover_group') opts.push('OPEN','CLOSE','STOP','SET_POSITION');
+        else if (kind === 'scenario') opts.push('RUN','TOGGLE','ON','OFF');
+        else opts.push('TOGGLE','ON','OFF','OPEN','CLOSE','STOP','SET_POSITION'); // ha (domain checked server-side)
+
+        actionSel.innerHTML = '';
+        for (const v of opts) {
+          const o = document.createElement('option');
+          o.value = v;
+          o.textContent = v;
+          actionSel.appendChild(o);
+        }
+        if (opts.includes(cur)) actionSel.value = cur;
+
+        const target = qs('haction_target');
+        target.removeAttribute('list');
+        if (kind === 'scenario') target.setAttribute('list', 'scenarioIds');
+        if (kind === 'cover_group') target.setAttribute('list', 'coverGroupIds');
+
+        const isSet = String(actionSel.value || '').toUpperCase() === 'SET_POSITION';
+        qs('haction_position').disabled = !isSet;
+      }
+
+      function renderHomeActions() {
+        const table = document.getElementById('homeActionsTable');
+        if (!table) return;
+        const body = table.querySelector('tbody');
+        body.innerHTML = '';
+
+        const items = Array.isArray(homeActions) ? homeActions : [];
+        for (let idx = 0; idx < items.length; idx++) {
+          const it = items[idx] || {};
+          const id = String(it.id || '').trim();
+          const title = String(it.title || '').trim();
+          const kind = String(it.kind || '').trim();
+          const action = String(it.action || '').trim().toUpperCase();
+          const icon = String(it.icon || '').trim();
+          const show = !!it.show;
+          const confirm = !!it.confirm;
+          const target = homeActionTarget(it);
+          const pos = (it.data && typeof it.data === 'object') ? it.data.position : null;
+
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${escapeHtml(title)}</td>
+            <td>${escapeHtml(kind)}</td>
+            <td>${escapeHtml(action)}</td>
+            <td><code>${escapeHtml(target)}${(action==='SET_POSITION' && pos!==null && pos!==undefined) ? (' @'+escapeHtml(String(pos))) : ''}</code></td>
+            <td>
+              <span class="pill">${show ? 'show' : 'hide'}</span>
+              <span class="pill">${confirm ? 'confirm' : 'no confirm'}</span>
+              ${icon ? `<span class="pill">${escapeHtml(icon)}</span>` : ''}
+            </td>
+            <td>
+              <button class="btn secondary small" data-act="up" ${idx===0?'disabled':''}>Ã¢â€“Â²</button>
+              <button class="btn secondary small" data-act="down" ${idx===items.length-1?'disabled':''}>Ã¢â€“Â¼</button>
+            </td>
+            <td>
+              <button class="btn secondary small" data-act="edit">Modifica</button>
+              <button class="btn danger small" data-act="del">Elimina</button>
+            </td>
+          `;
+
+          tr.querySelector('[data-act="edit"]').addEventListener('click', (ev) => {
+            ev.preventDefault();
+            setHomeActionEditing(it);
+          });
+          tr.querySelector('[data-act="del"]').addEventListener('click', async (ev) => {
+            ev.preventDefault();
+            try {
+              if (!confirm(`Eliminare \"${title}\"?`)) return;
+              await getJson(`api/home_actions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+              await refreshHomeActions();
+              await refreshUsedIcons();
+            } catch (e) {
+              qs('haction_formMsg').textContent = 'Errore';
+            }
+          });
+          tr.querySelector('[data-act="up"]').addEventListener('click', async (ev) => {
+            ev.preventDefault();
+            await moveHomeAction(idx, -1);
+          });
+          tr.querySelector('[data-act="down"]').addEventListener('click', async (ev) => {
+            ev.preventDefault();
+            await moveHomeAction(idx, +1);
+          });
+
+          body.appendChild(tr);
+        }
+      }
+
+      async function refreshHomeActions() {
+        try {
+          const res = await getJson('api/home_actions');
+          homeActions = Array.isArray(res && res.items) ? res.items : [];
+        } catch (e) {
+          homeActions = [];
+        }
+        renderHomeActions();
+      }
+
+      async function moveHomeAction(index, delta) {
+        const i = Number(index);
+        const j = i + Number(delta);
+        if (!Number.isFinite(i) || !Number.isFinite(j)) return;
+        if (i < 0 || j < 0) return;
+        if (i >= homeActions.length || j >= homeActions.length) return;
+        const arr = homeActions.slice();
+        const tmp = arr[i];
+        arr[i] = arr[j];
+        arr[j] = tmp;
+        try {
+          const res = await getJson('api/home_actions', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ actions: arr })
+          });
+          homeActions = (res && Array.isArray(res.items)) ? res.items : arr;
+          renderHomeActions();
+        } catch (e) {}
+      }
+
+      function applyHomeActions(data) {
+        if (!data) return;
+        const items = Array.isArray(data.items) ? data.items : [];
+        homeActions = items;
+        renderHomeActions();
+      }
+
+      function renderCoverGroupIdsDatalist() {
+        const dl = document.getElementById('coverGroupIds');
+        if (!dl) return;
+        dl.innerHTML = '';
+        for (const g of (coverGroups || [])) {
+          const gid = String(g.id || '').trim();
+          if (!gid) continue;
+          const o = document.createElement('option');
+          o.value = gid;
+          dl.appendChild(o);
+        }
+      }
+
+      async function refreshScenarioIdsDatalist() {
+        const dl = document.getElementById('scenarioIds');
+        if (!dl) return;
+        dl.innerHTML = '';
+        try {
+          const res = await getJson('api/user/light_scenarios');
+          const items = Array.isArray(res && res.items) ? res.items : [];
+          for (const sc of items) {
+            const sid = String(sc.id || '').trim();
+            if (!sid) continue;
+            const o = document.createElement('option');
+            o.value = sid;
+            const nm = String(sc.name || '').trim();
+            if (nm) o.label = nm;
+            dl.appendChild(o);
+          }
+        } catch (e) {}
+      }
+
       function applyHubConfig(data) {
         if (!data) return;
         if (data.hub_icons && typeof data.hub_icons === 'object') {
@@ -4446,9 +4740,12 @@
       attachGroupSelect('d_groupSel', 'd_groupCustom');
       refreshHubConfig();
       refreshHubLinks();
+      refreshHomeActions();
+      refreshScenarioIdsDatalist();
       refreshHaDevices();
       refreshPwaConfig();
       refreshProxyTargets();
+      setHomeActionEditing(null);
       qs('editAddr').addEventListener('change', () => {
         updateLightAddrDisabled();
       });
@@ -4528,6 +4825,56 @@
       qs('ha_btnCancel').addEventListener('click', (ev) => {
         ev.preventDefault();
         setHaEditing(null);
+      });
+
+      qs('haction_kind').addEventListener('change', () => {
+        renderHomeActionFormUI();
+      });
+      qs('haction_action').addEventListener('change', () => {
+        renderHomeActionFormUI();
+      });
+
+      qs('homeActionForm').addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        qs('haction_formMsg').textContent = '';
+        try {
+          const id = String(qs('haction_id').value || '').trim();
+          const title = String(qs('haction_title').value || '').trim();
+          const icon = String(qs('haction_icon').value || '').trim();
+          const kind = String(qs('haction_kind').value || '').trim();
+          const action = String(qs('haction_action').value || '').trim().toUpperCase();
+          const target = String(qs('haction_target').value || '').trim();
+          const show = !!qs('haction_show').checked;
+          const confirm = !!qs('haction_confirm').checked;
+          const positionRaw = String(qs('haction_position').value || '').trim();
+
+          const data = {};
+          if (String(kind).toLowerCase() === 'ha') data.entity_id = target;
+          else if (String(kind).toLowerCase() === 'buspro_light' || String(kind).toLowerCase() === 'buspro_cover') data.addr = target;
+          else if (String(kind).toLowerCase() === 'cover_group') data.group_id = target;
+          else if (String(kind).toLowerCase() === 'scenario') data.scenario_id = target;
+
+          if (action === 'SET_POSITION' && positionRaw) data.position = Number(positionRaw);
+
+          const payload = id ? { id, title, icon, kind, action, show, confirm, data } : { title, icon, kind, action, show, confirm, data };
+          await getJson('api/home_actions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          await refreshHomeActions();
+          await refreshUsedIcons();
+          setHomeActionEditing(null);
+          qs('haction_formMsg').textContent = 'Salvato';
+          setTimeout(() => { qs('haction_formMsg').textContent = ''; }, 1400);
+        } catch (e) {
+          qs('haction_formMsg').textContent = (e && e.message) ? e.message : 'Errore';
+        }
+      });
+
+      qs('haction_btnCancel').addEventListener('click', (ev) => {
+        ev.preventDefault();
+        setHomeActionEditing(null);
       });
 
       qs('hl_btnCancel').addEventListener('click', () => {

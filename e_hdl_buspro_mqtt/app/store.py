@@ -55,6 +55,7 @@ class StateStore:
             "hub_order": ["lights", "scenarios", "covers", "extra"],
             "ha_devices": [],
             "hub_links": [],
+            "home_actions": [],
             "hub_icons": StateStore.default_hub_icons(),
             "hub_show": StateStore.default_hub_show(),
             "proxy_targets": [],
@@ -108,6 +109,7 @@ class StateStore:
         raw["ui"].setdefault("hub_order", self._default_ui().get("hub_order"))
         raw["ui"].setdefault("ha_devices", [])
         raw["ui"].setdefault("hub_links", [])
+        raw["ui"].setdefault("home_actions", [])
         raw["ui"].setdefault("hub_icons", self.default_hub_icons())
         raw["ui"].setdefault("hub_show", self.default_hub_show())
         raw["ui"].setdefault("proxy_targets", [])
@@ -287,6 +289,8 @@ class StateStore:
             ui["ha_devices"] = []
         if not isinstance(ui.get("hub_links", []), list):
             ui["hub_links"] = []
+        if not isinstance(ui.get("home_actions", []), list):
+            ui["home_actions"] = []
         if not isinstance(ui.get("hub_icons", {}), dict):
             ui["hub_icons"] = self.default_hub_icons()
         if not isinstance(ui.get("hub_show", {}), dict):
@@ -1131,6 +1135,186 @@ class StateStore:
         raw["ui"] = ui
         self.write_raw(raw)
         return cleaned
+
+    def list_home_actions(self) -> list[dict[str, Any]]:
+        raw = self.read_raw()
+        ui = raw.get("ui") or {}
+        items = ui.get("home_actions") or []
+        if not isinstance(items, list):
+            return []
+        out: list[dict[str, Any]] = []
+        for it in items:
+            if isinstance(it, dict):
+                out.append(dict(it))
+        return out
+
+    def list_visible_home_actions(self) -> list[dict[str, Any]]:
+        return [it for it in self.list_home_actions() if bool(it.get("show", True))]
+
+    @staticmethod
+    def _normalize_home_action(payload: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be an object")
+
+        title = str(payload.get("title") or "").strip()
+        if not title:
+            raise ValueError("title required")
+        if len(title) > 40:
+            title = title[:40].strip()
+
+        icon = str(payload.get("icon") or "").strip() or None
+        if icon and not icon.startswith("mdi:"):
+            raise ValueError("icon must be mdi:<name>")
+
+        show = bool(payload.get("show", True))
+        confirm = bool(payload.get("confirm", False))
+
+        kind = str(payload.get("kind") or "").strip().lower()
+        if kind not in ("ha", "buspro_light", "buspro_cover", "cover_group", "scenario"):
+            raise ValueError("kind unsupported")
+
+        action = str(payload.get("action") or "").strip().upper()
+        data = payload.get("data") or {}
+        if data is None:
+            data = {}
+        if not isinstance(data, dict):
+            raise ValueError("data must be an object")
+
+        # minimal validation per kind
+        if kind == "ha":
+            entity_id = str(data.get("entity_id") or "").strip().lower()
+            if not entity_id or "." not in entity_id:
+                raise ValueError("data.entity_id required")
+            domain = entity_id.split(".", 1)[0]
+            if domain not in ("light", "switch", "cover"):
+                raise ValueError("only light/switch/cover supported")
+            if domain in ("light", "switch"):
+                if action not in ("TOGGLE", "ON", "OFF"):
+                    raise ValueError("action must be TOGGLE/ON/OFF for light/switch")
+            else:
+                if action not in ("OPEN", "CLOSE", "STOP", "SET_POSITION"):
+                    raise ValueError("action must be OPEN/CLOSE/STOP/SET_POSITION for cover")
+                if action == "SET_POSITION":
+                    try:
+                        pos = int(data.get("position"))
+                    except Exception:
+                        raise ValueError("data.position required")
+                    data["position"] = max(0, min(100, pos))
+        elif kind == "buspro_light":
+            addr = str(data.get("addr") or "").strip()
+            if not addr or addr.count(".") != 2:
+                raise ValueError("data.addr required (subnet.device.channel)")
+            if action not in ("TOGGLE", "ON", "OFF"):
+                raise ValueError("action must be TOGGLE/ON/OFF")
+        elif kind == "buspro_cover":
+            addr = str(data.get("addr") or "").strip()
+            if not addr or addr.count(".") != 2:
+                raise ValueError("data.addr required (subnet.device.channel)")
+            if action not in ("OPEN", "CLOSE", "STOP", "SET_POSITION"):
+                raise ValueError("action must be OPEN/CLOSE/STOP/SET_POSITION")
+            if action == "SET_POSITION":
+                try:
+                    pos = int(data.get("position"))
+                except Exception:
+                    raise ValueError("data.position required")
+                data["position"] = max(0, min(100, pos))
+        elif kind == "cover_group":
+            gid = str(data.get("group_id") or "").strip()
+            if not gid:
+                raise ValueError("data.group_id required")
+            if action not in ("OPEN", "CLOSE", "STOP", "SET_POSITION"):
+                raise ValueError("action must be OPEN/CLOSE/STOP/SET_POSITION")
+            if action == "SET_POSITION":
+                try:
+                    pos = int(data.get("position"))
+                except Exception:
+                    raise ValueError("data.position required")
+                data["position"] = max(0, min(100, pos))
+        else:  # scenario
+            sid = str(data.get("scenario_id") or "").strip()
+            if not sid:
+                raise ValueError("data.scenario_id required")
+            if action not in ("TOGGLE", "ON", "OFF", "RUN"):
+                raise ValueError("action must be TOGGLE/ON/OFF/RUN")
+
+        return {"title": title, "icon": icon, "show": show, "confirm": confirm, "kind": kind, "action": action, "data": data}
+
+    def upsert_home_action(self, payload: dict[str, Any]) -> dict[str, Any]:
+        action_id = str(payload.get("id") or "").strip() or uuid.uuid4().hex
+        cleaned = self._normalize_home_action(payload)
+        item: dict[str, Any] = {"id": action_id, **cleaned}
+
+        raw = self.read_raw()
+        ui = dict(raw.get("ui") or {})
+        items = ui.get("home_actions") or []
+        if not isinstance(items, list):
+            items = []
+
+        out: list[dict[str, Any]] = []
+        replaced = False
+        for it in items:
+            if isinstance(it, dict) and str(it.get("id") or "").strip() == action_id:
+                out.append(item)
+                replaced = True
+            elif isinstance(it, dict):
+                out.append(dict(it))
+        if not replaced:
+            out.append(item)
+
+        ui["home_actions"] = out
+        raw["ui"] = ui
+        self.write_raw(raw)
+        return item
+
+    def delete_home_action(self, *, action_id: str) -> bool:
+        aid = str(action_id or "").strip()
+        if not aid:
+            return False
+        raw = self.read_raw()
+        ui = dict(raw.get("ui") or {})
+        items = ui.get("home_actions") or []
+        if not isinstance(items, list):
+            return False
+        before = len(items)
+        items2 = [it for it in items if not (isinstance(it, dict) and str(it.get("id") or "").strip() == aid)]
+        if len(items2) == before:
+            return False
+        ui["home_actions"] = items2
+        raw["ui"] = ui
+        self.write_raw(raw)
+        return True
+
+    def set_home_actions(self, actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        cleaned: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for it in actions or []:
+            if not isinstance(it, dict):
+                continue
+            try:
+                item = self.upsert_home_action(it)
+            except Exception:
+                continue
+            aid = str(item.get("id") or "")
+            if not aid or aid in seen:
+                continue
+            seen.add(aid)
+            cleaned.append(item)
+
+        raw = self.read_raw()
+        ui = dict(raw.get("ui") or {})
+        ui["home_actions"] = cleaned
+        raw["ui"] = ui
+        self.write_raw(raw)
+        return cleaned
+
+    def find_home_action(self, *, action_id: str) -> dict[str, Any] | None:
+        aid = str(action_id or "").strip()
+        if not aid:
+            return None
+        for it in self.list_home_actions():
+            if str(it.get("id") or "").strip() == aid:
+                return it
+        return None
 
     @staticmethod
     def _slugify(text: str) -> str:

@@ -47,7 +47,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.258"
+ADDON_VERSION = "0.1.259"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -3007,6 +3007,7 @@ self.addEventListener('fetch', (event) => {{
         asyncio.create_task(_sync_icons_for_devices(store.list_devices()))
         asyncio.create_task(_sync_icons_for_cover_groups(store.list_cover_groups()))
         asyncio.create_task(_sync_icons_for_hub_links(store.list_hub_links()))
+        asyncio.create_task(_sync_icons_for_home_actions(store.list_home_actions()))
         asyncio.create_task(_sync_icons_for_hub_config({"hub_icons": store.get_hub_icons()}))
         asyncio.create_task(_sync_icons_for_ha_devices(store.list_ha_devices()))
 
@@ -3300,6 +3301,7 @@ self.addEventListener('fetch', (event) => {{
             "version": ADDON_VERSION,
             "group_order": store.get_group_order(),
             "hub_links": store.list_visible_hub_links(),
+            "home_actions": store.list_visible_home_actions(),
             "hub_icons": store.get_hub_icons(),
             "hub_show": store.get_hub_show(),
             "hub_order": store.get_hub_order(),
@@ -3331,6 +3333,11 @@ self.addEventListener('fetch', (event) => {{
     @api.get("/api/hub_links")
     async def api_hub_links_list():
         return {"links": store.list_hub_links()}
+
+    @api.get("/api/home_actions")
+    async def api_home_actions_list():
+        # Admin-only via port gate
+        return {"items": store.list_home_actions()}
 
     @api.get("/api/proxy_targets")
     async def api_proxy_targets_list():
@@ -3446,6 +3453,17 @@ self.addEventListener('fetch', (event) => {{
         await _republish_discovery()
         return item
 
+    @api.post("/api/home_actions")
+    async def api_home_actions_upsert(payload: dict[str, Any]):
+        # Admin-only via port gate
+        try:
+            item = store.upsert_home_action(payload)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        asyncio.create_task(_sync_icons_for_home_actions(store.list_home_actions()))
+        await hub.broadcast("home_actions", {"items": store.list_home_actions()})
+        return item
+
     @api.put("/api/hub_links")
     async def api_hub_links_replace(payload: dict[str, Any]):
         links = payload.get("links", [])
@@ -3457,6 +3475,17 @@ self.addEventListener('fetch', (event) => {{
         await _republish_discovery()
         return {"links": cleaned}
 
+    @api.put("/api/home_actions")
+    async def api_home_actions_replace(payload: dict[str, Any]):
+        # Admin-only via port gate
+        actions = payload.get("actions", [])
+        if not isinstance(actions, list):
+            raise HTTPException(status_code=400, detail="actions must be a list")
+        cleaned = store.set_home_actions(actions)
+        asyncio.create_task(_sync_icons_for_home_actions(cleaned))
+        await hub.broadcast("home_actions", {"items": cleaned})
+        return {"items": cleaned}
+
     @api.delete("/api/hub_links/{link_id}")
     async def api_hub_links_delete(link_id: str):
         removed = store.delete_hub_link(link_id=link_id)
@@ -3465,6 +3494,16 @@ self.addEventListener('fetch', (event) => {{
         asyncio.create_task(_sync_icons_for_hub_links(store.list_hub_links()))
         await hub.broadcast("hub_links", {"links": store.list_hub_links()})
         await _republish_discovery()
+        return {"ok": True}
+
+    @api.delete("/api/home_actions/{action_id}")
+    async def api_home_actions_delete(action_id: str):
+        # Admin-only via port gate
+        removed = store.delete_home_action(action_id=action_id)
+        if not removed:
+            raise HTTPException(status_code=404, detail="Not Found")
+        asyncio.create_task(_sync_icons_for_home_actions(store.list_home_actions()))
+        await hub.broadcast("home_actions", {"items": store.list_home_actions()})
         return {"ok": True}
 
     @api.post("/api/devices/dedupe")
@@ -3503,6 +3542,14 @@ self.addEventListener('fetch', (event) => {{
     def _mdi_names_from_hub_links(links: list[dict[str, Any]]) -> list[str]:
         names: list[str] = []
         for it in links:
+            mdi = parse_mdi_icon(str(it.get("icon") or ""))
+            if mdi:
+                names.append(mdi)
+        return names
+
+    def _mdi_names_from_home_actions(items: list[dict[str, Any]]) -> list[str]:
+        names: list[str] = []
+        for it in items or []:
             mdi = parse_mdi_icon(str(it.get("icon") or ""))
             if mdi:
                 names.append(mdi)
@@ -3555,6 +3602,18 @@ self.addEventListener('fetch', (event) => {{
 
     async def _sync_icons_for_hub_links(links: list[dict[str, Any]]) -> None:
         names = _mdi_names_from_hub_links(links)
+        if not names:
+            return
+        lock: asyncio.Lock = api.state.icon_lock
+        icons_dir: str = api.state.icons_dir
+        async with lock:
+            try:
+                await asyncio.to_thread(ensure_mdi_icons, icons_dir, names)
+            except Exception:
+                return
+
+    async def _sync_icons_for_home_actions(items: list[dict[str, Any]]) -> None:
+        names = _mdi_names_from_home_actions(items)
         if not names:
             return
         lock: asyncio.Lock = api.state.icon_lock
@@ -3628,6 +3687,10 @@ self.addEventListener('fetch', (event) => {{
             if mdi:
                 icons.add(f"mdi:{mdi}")
         for it in store.list_ha_devices():
+            mdi = parse_mdi_icon(str(it.get("icon") or ""))
+            if mdi:
+                icons.add(f"mdi:{mdi}")
+        for it in store.list_home_actions():
             mdi = parse_mdi_icon(str(it.get("icon") or ""))
             if mdi:
                 icons.add(f"mdi:{mdi}")
@@ -5724,6 +5787,194 @@ self.addEventListener('fetch', (event) => {{
             await asyncio.to_thread(_ha_request, "POST", "/api/services/cover/set_cover_position", payload={"entity_id": eid, "position": pos_i}, timeout_s=10)
             return {"ok": True}
         raise HTTPException(status_code=400, detail="unsupported command")
+
+    @api.post("/api/control/home_action/{action_id}")
+    async def control_home_action(action_id: str, payload: dict[str, Any] | None = None):
+        gw: BusproGateway | None = api.state.gateway
+
+        item = store.find_home_action(action_id=str(action_id or ""))
+        if not item:
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        kind = str(item.get("kind") or "").strip().lower()
+        action = str(item.get("action") or "").strip().upper()
+        data = item.get("data") or {}
+        if not isinstance(data, dict):
+            data = {}
+
+        if kind == "ha":
+            if not _ha_enabled():
+                raise HTTPException(status_code=503, detail="Home Assistant API not available (SUPERVISOR_TOKEN missing)")
+            eid = str(data.get("entity_id") or "").strip().lower()
+            if not eid or "." not in eid:
+                raise HTTPException(status_code=400, detail="Invalid action: data.entity_id required")
+            domain = eid.split(".", 1)[0]
+
+            if domain in ("light", "switch"):
+                desired = action
+                if desired == "TOGGLE":
+                    st = (getattr(api.state, "ha_states", {}) or {}).get(eid)
+                    cur_on = isinstance(st, dict) and str(st.get("state") or "").upper() == "ON"
+                    desired = "OFF" if cur_on else "ON"
+                if desired not in ("ON", "OFF"):
+                    raise HTTPException(status_code=400, detail="Invalid action")
+                if domain == "switch":
+                    svc = "turn_on" if desired == "ON" else "turn_off"
+                    await asyncio.to_thread(_ha_request, "POST", f"/api/services/switch/{svc}", payload={"entity_id": eid}, timeout_s=10)
+                    return {"ok": True}
+                if desired == "OFF":
+                    await asyncio.to_thread(_ha_request, "POST", "/api/services/light/turn_off", payload={"entity_id": eid}, timeout_s=10)
+                    return {"ok": True}
+                await asyncio.to_thread(_ha_request, "POST", "/api/services/light/turn_on", payload={"entity_id": eid}, timeout_s=10)
+                return {"ok": True}
+
+            if domain == "cover":
+                cmd = action
+                if cmd in ("OPEN", "CLOSE", "STOP"):
+                    svc = "open_cover" if cmd == "OPEN" else ("close_cover" if cmd == "CLOSE" else "stop_cover")
+                    await asyncio.to_thread(_ha_request, "POST", f"/api/services/cover/{svc}", payload={"entity_id": eid}, timeout_s=10)
+                    return {"ok": True}
+                if cmd == "SET_POSITION":
+                    pos = None
+                    if isinstance(payload, dict) and payload.get("position") is not None:
+                        pos = payload.get("position")
+                    else:
+                        pos = data.get("position")
+                    try:
+                        pos_i = int(pos)
+                    except Exception:
+                        raise HTTPException(status_code=400, detail="position required")
+                    pos_i = max(0, min(100, pos_i))
+                    await asyncio.to_thread(
+                        _ha_request,
+                        "POST",
+                        "/api/services/cover/set_cover_position",
+                        payload={"entity_id": eid, "position": pos_i},
+                        timeout_s=10,
+                    )
+                    return {"ok": True}
+                raise HTTPException(status_code=400, detail="Invalid action")
+
+            raise HTTPException(status_code=400, detail="Invalid action: unsupported domain")
+
+        if kind == "buspro_light":
+            if gw is None:
+                raise HTTPException(status_code=503, detail="Gateway not ready")
+            if not gw.started or not gw.transport_ready():
+                raise HTTPException(status_code=503, detail=gw.last_error or "UDP transport not ready")
+
+            addr = str(data.get("addr") or "").strip()
+            parts = addr.split(".") if addr else []
+            if len(parts) != 3:
+                raise HTTPException(status_code=400, detail="Invalid action: data.addr required")
+            try:
+                subnet_id, device_id, channel = (int(parts[0]), int(parts[1]), int(parts[2]))
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid action: data.addr must be subnet.device.channel")
+
+            desired = action
+            if desired == "TOGGLE":
+                st = store.get_states().get(f"light:{addr}") or {}
+                cur_on = isinstance(st, dict) and str(st.get("state") or "").upper() == "ON"
+                desired = "OFF" if cur_on else "ON"
+            if desired not in ("ON", "OFF"):
+                raise HTTPException(status_code=400, detail="Invalid action")
+            await gw.set_light(subnet_id=subnet_id, device_id=device_id, channel=channel, on=(desired == "ON"), brightness255=None)
+            try:
+                await gw.read_light_status(subnet_id=subnet_id, device_id=device_id, channel=channel)
+            except Exception:
+                pass
+            return {"ok": True}
+
+        if kind == "buspro_cover":
+            if gw is None:
+                raise HTTPException(status_code=503, detail="Gateway not ready")
+            if not gw.started or not gw.transport_ready():
+                raise HTTPException(status_code=503, detail=gw.last_error or "UDP transport not ready")
+
+            addr = str(data.get("addr") or "").strip()
+            parts = addr.split(".") if addr else []
+            if len(parts) != 3:
+                raise HTTPException(status_code=400, detail="Invalid action: data.addr required")
+            try:
+                subnet_id, device_id, channel = (int(parts[0]), int(parts[1]), int(parts[2]))
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid action: data.addr must be subnet.device.channel")
+
+            cmd = action
+            if cmd == "OPEN":
+                await gw.cover_open(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                return {"ok": True}
+            if cmd == "CLOSE":
+                await gw.cover_close(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                return {"ok": True}
+            if cmd == "STOP":
+                await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                return {"ok": True}
+            if cmd == "SET_POSITION":
+                pos = None
+                if isinstance(payload, dict) and payload.get("position") is not None:
+                    pos = payload.get("position")
+                else:
+                    pos = data.get("position")
+                try:
+                    pos_i = int(pos)
+                except Exception:
+                    raise HTTPException(status_code=400, detail="position required")
+                pos_i = max(0, min(100, pos_i))
+                await gw.cover_set_position(subnet_id=subnet_id, device_id=device_id, channel=channel, position=pos_i)
+                return {"ok": True}
+            raise HTTPException(status_code=400, detail="Invalid action")
+
+        if kind == "cover_group":
+            gid = str(data.get("group_id") or "").strip()
+            if not gid:
+                raise HTTPException(status_code=400, detail="Invalid action: data.group_id required")
+            cmd = action
+            if cmd in ("OPEN", "CLOSE", "STOP"):
+                await _run_cover_group_command(gid, cmd, pos=None)
+                return {"ok": True}
+            if cmd == "SET_POSITION":
+                pos = None
+                if isinstance(payload, dict) and payload.get("position") is not None:
+                    pos = payload.get("position")
+                else:
+                    pos = data.get("position")
+                try:
+                    pos_i = int(pos)
+                except Exception:
+                    raise HTTPException(status_code=400, detail="position required")
+                pos_i = max(0, min(100, pos_i))
+                await _run_cover_group_command(gid, "SET_POSITION", pos=pos_i)
+                return {"ok": True}
+            raise HTTPException(status_code=400, detail="Invalid action")
+
+        if kind == "scenario":
+            sid = str(data.get("scenario_id") or "").strip()
+            if not sid:
+                raise HTTPException(status_code=400, detail="Invalid action: data.scenario_id required")
+            sc = store.find_light_scenario(scenario_id=sid)
+            if not sc:
+                raise HTTPException(status_code=404, detail="Scenario not found")
+
+            desired: str | None = None
+            if action == "RUN":
+                desired = None
+            elif action in ("ON", "OFF"):
+                desired = action
+            elif action == "TOGGLE":
+                cur = _scenario_switch_state(sc)
+                desired = "OFF" if cur == "ON" else "ON"
+            else:
+                raise HTTPException(status_code=400, detail="Invalid action")
+
+            if desired is None:
+                await run_light_scenario(sid, None)
+            else:
+                await run_light_scenario(sid, {"state": desired})
+            return {"ok": True}
+
+        raise HTTPException(status_code=400, detail="Invalid action kind")
 
     @api.websocket("/ws")
     async def ws_endpoint(ws: WebSocket):

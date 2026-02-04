@@ -91,6 +91,13 @@
         border:1px solid rgba(255,255,255,.14);
         overflow:hidden;
       }
+      button.tile{
+        cursor:pointer;
+        appearance:none;
+        -webkit-appearance:none;
+        font:inherit;
+        padding:0;
+      }
       .tile::after{
         content:'';
         position:absolute;
@@ -235,6 +242,40 @@
         return a;
       }
 
+      function makeActionTile({ title, icon, confirm, actionId }) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'tile';
+        b.setAttribute('aria-label', title);
+        const ring = document.createElement('div');
+        ring.className = 'iconRing';
+        const ico = document.createElement('div');
+        ico.className = 'ico';
+        ico.style.webkitMaskImage = `url("${icon}")`;
+        ico.style.maskImage = `url("${icon}")`;
+        ring.appendChild(ico);
+        const label = document.createElement('div');
+        label.className = 'label';
+        label.textContent = title;
+        b.appendChild(ring);
+        b.appendChild(label);
+        b.addEventListener('click', async () => {
+          if (confirm) {
+            if (!window.confirm(`Eseguire "${title}"?`)) return;
+          }
+          b.disabled = true;
+          try {
+            await getJson(`api/control/home_action/${encodeURIComponent(String(actionId||''))}`, { method:'POST' });
+          } catch (e) {
+            const err = document.getElementById('err');
+            if (err) err.textContent = (e && e.message) ? e.message : 'Errore';
+          } finally {
+            setTimeout(() => { b.disabled = false; }, 350);
+          }
+        });
+        return b;
+      }
+
       async function init() {
         const menu = document.getElementById('menu');
         const err = document.getElementById('err');
@@ -313,6 +354,21 @@
             href: it.href,
             icon: iconUrl(icon || `mdi:${it.fallback}`, it.fallback),
             targetBlank: false
+          }));
+        }
+
+        const actions = (meta && Array.isArray(meta.home_actions)) ? meta.home_actions : [];
+        for (const it of actions) {
+          const id = String(it.id || '').trim();
+          const title = String(it.title || '').trim();
+          if (!id || !title) continue;
+          const icon = String(it.icon || '').trim();
+          const confirm = !!it.confirm;
+          menu.appendChild(makeActionTile({
+            title,
+            actionId: id,
+            confirm,
+            icon: iconUrl(icon || 'mdi:gesture-tap-button', 'gesture-tap-button'),
           }));
         }
 
