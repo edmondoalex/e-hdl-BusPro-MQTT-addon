@@ -581,7 +581,7 @@ class StateStore:
             if not isinstance(it, dict):
                 continue
             kind = str(it.get("kind") or "single").strip().lower()
-            if kind not in ("single", "group"):
+            if kind not in ("single", "group", "ha"):
                 kind = "single"
 
             cmd = str(it.get("command") or "").strip().upper()
@@ -603,6 +603,13 @@ class StateStore:
                 if not gid:
                     continue
                 covers.append({"kind": "group", "group_id": gid, "command": cmd, "position": pos_i})
+                continue
+
+            if kind == "ha":
+                entity_id = str(it.get("entity_id") or "").strip().lower()
+                if not entity_id.startswith("cover."):
+                    continue
+                covers.append({"kind": "ha", "entity_id": entity_id, "command": cmd, "position": pos_i})
                 continue
 
             try:

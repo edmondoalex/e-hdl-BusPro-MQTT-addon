@@ -47,7 +47,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.260"
+ADDON_VERSION = "0.1.261"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -5680,6 +5680,36 @@ self.addEventListener('fetch', (event) => {{
                     if cmd not in ("OPEN", "CLOSE", "STOP", "SET_POSITION"):
                         continue
                     kind = str(it.get("kind") or "single").strip().lower()
+                    if kind == "ha":
+                        if not _ha_enabled():
+                            continue
+                        eid = str(it.get("entity_id") or "").strip().lower()
+                        if not eid.startswith("cover."):
+                            continue
+                        try:
+                            if cmd == "SET_POSITION":
+                                pos = int(it.get("position"))
+                                pos = max(0, min(100, pos))
+                                await asyncio.to_thread(
+                                    _ha_request,
+                                    "POST",
+                                    "/api/services/cover/set_cover_position",
+                                    payload={"entity_id": eid, "position": pos},
+                                    timeout_s=10,
+                                )
+                            else:
+                                svc = "open_cover" if cmd == "OPEN" else ("close_cover" if cmd == "CLOSE" else "stop_cover")
+                                await asyncio.to_thread(
+                                    _ha_request,
+                                    "POST",
+                                    f"/api/services/cover/{svc}",
+                                    payload={"entity_id": eid},
+                                    timeout_s=10,
+                                )
+                            cover_sent += 1
+                        except Exception:
+                            continue
+                        continue
                     if kind == "group":
                         gid = str(it.get("group_id") or "").strip()
                         if not gid:

@@ -659,30 +659,38 @@
 
       function coverKeyFromItem(it) {
         if (!it) return '';
-        if (String(it.kind || 'single') === 'group') return `group:${String(it.group_id || '')}`;
+        const k = String(it.kind || 'single');
+        if (k === 'group') return `group:${String(it.group_id || '')}`;
+        if (k === 'ha') return `ha:${String(it.entity_id || '')}`;
         return `cover:${Number(it.subnet_id)}.${Number(it.device_id)}.${Number(it.channel)}`;
       }
 
       function coverAddrFromItem(it) {
+        if (it && String(it.kind || '') === 'ha') return String(it.entity_id || '');
         return `${Number(it.subnet_id)}.${Number(it.device_id)}.${Number(it.channel)}`;
       }
 
       async function ensureCoverGroupsCache() {
         try {
           const res = await getJson('api/cover_groups');
-          coverGroupsCache = Array.isArray(res && res.items) ? res.items : [];
+          coverGroupsCache = Array.isArray(res && res.groups) ? res.groups : (Array.isArray(res && res.items) ? res.items : []);
         } catch (e) {
           coverGroupsCache = [];
         }
       }
 
       function coverDeviceMap() {
-        const m = new Map(); // addr -> device
+        const m = new Map(); // id (addr or entity_id) -> device
         for (const d of (lastDevices || [])) {
           if (String(d.type || '').toLowerCase() !== 'cover') continue;
-          if (String(d.origin || '') === 'ha') continue;
-          const addr = `${Number(d.subnet_id)}.${Number(d.device_id)}.${Number(d.channel)}`;
-          m.set(addr, d);
+          if (String(d.origin || '') === 'ha') {
+            const eid = String(d.entity_id || '').trim().toLowerCase();
+            if (!eid) continue;
+            m.set(eid, d);
+          } else {
+            const addr = `${Number(d.subnet_id)}.${Number(d.device_id)}.${Number(d.channel)}`;
+            m.set(addr, d);
+          }
         }
         return m;
       }
@@ -716,7 +724,7 @@
 
         const header = document.createElement('div');
         header.className = 'scItem';
-        header.innerHTML = `<div class="scItemLeft"><div class="scItemTitle">Tapparelle scenario</div><div class="scItemSub">Su / Giù / Stop / %</div></div>`;
+        header.innerHTML = `<div class="scItemLeft"><div class="scItemTitle">Tapparelle scenario</div><div class="scItemSub">Su / Gi&#249; / Stop / %</div></div>`;
         root.appendChild(header);
 
         if (!items.length) {
@@ -736,7 +744,10 @@
           const title = isGroup
             ? String(((grpMap.get(String(it.group_id||''))||{}).name) || it.group_id || key)
             : String(((devMap.get(coverAddrFromItem(it))||{}).name) || coverAddrFromItem(it) || key);
-          const sub = isGroup ? `Gruppo â€¢ ${escapeHtml(String(it.group_id||''))}` : `${escapeHtml(coverAddrFromItem(it))}`;
+          const isHa = kind === 'ha';
+          const sub = isGroup
+            ? `Gruppo &bull; ${escapeHtml(String(it.group_id||''))}`
+            : `${escapeHtml(coverAddrFromItem(it))}${isHa ? ' &bull; HA' : ''}`;
 
           const row = document.createElement('div');
           row.className = 'scItem';
@@ -748,7 +759,7 @@
             </div>
             <div class="scItemCtrls">
               <button class="btn ${cmd==='OPEN' ? 'primary':''}" type="button" data-act="c_open" data-key="${escapeHtml(key)}">Su</button>
-              <button class="btn ${cmd==='CLOSE' ? 'primary':''}" type="button" data-act="c_close" data-key="${escapeHtml(key)}">Giù</button>
+              <button class="btn ${cmd==='CLOSE' ? 'primary':''}" type="button" data-act="c_close" data-key="${escapeHtml(key)}">Gi&#249;</button>
               <button class="btn ${cmd==='STOP' ? 'primary':''}" type="button" data-act="c_stop" data-key="${escapeHtml(key)}">Stop</button>
               <input class="scRange" type="range" min="0" max="100" value="${Math.round(pos)}" data-act="c_pos" data-key="${escapeHtml(key)}" />
               <span class="scMeta" style="margin-left:6px">${Math.round(pos)}%</span>
@@ -813,20 +824,22 @@
         const grpMap = coverGroupMap();
 
         const candidates = [];
-        for (const [addr, d] of devMap.entries()) {
-          const key = `cover:${addr}`;
+        for (const [id, d] of devMap.entries()) {
+          const idStr = String(id || '').trim();
+          const isHa2 = idStr.toLowerCase().startsWith('cover.');
+          const key = isHa2 ? `ha:${idStr.toLowerCase()}` : `cover:${idStr}`;
           if (existing.has(key)) continue;
           if (groupSel && groupSel !== '__all__' && groupKeyFromGroup(d.group) !== groupSel) continue;
-          const name = String(d.name || addr);
-          if (search && !(addr.toLowerCase().includes(search) || name.toLowerCase().includes(search))) continue;
-          candidates.push({ key, kind:'single', addr, name, meta: `${addr}` });
+          const name = String(d.name || idStr);
+          if (search && !(idStr.toLowerCase().includes(search) || name.toLowerCase().includes(search))) continue;
+          candidates.push({ key, kind: isHa2 ? 'ha' : 'single', id: idStr, name, meta: `${idStr}${isHa2 ? ' • HA' : ''}` });
         }
         for (const [gid, g] of grpMap.entries()) {
           const key = `group:${gid}`;
           if (existing.has(key)) continue;
           const name = String(g.name || gid);
           if (search && !(gid.toLowerCase().includes(search) || name.toLowerCase().includes(search))) continue;
-          candidates.push({ key, kind:'group', gid, name, meta: `Gruppo â€¢ ${gid}` });
+          candidates.push({ key, kind:'group', gid, name, meta: `Gruppo • ${gid}` });
         }
 
         candidates.sort((a,b) => String(a.name||a.key).localeCompare(String(b.name||b.key), undefined, { sensitivity:'base' }));
@@ -847,8 +860,10 @@
           row.addEventListener('click', () => {
             if (c.kind === 'group') {
               editingScenarioCovers = (editingScenarioCovers || []).concat([{ kind:'group', group_id: String(c.gid), command:'STOP', position:null }]);
+            } else if (c.kind === 'ha') {
+              editingScenarioCovers = (editingScenarioCovers || []).concat([{ kind:'ha', entity_id: String(c.id || '').trim().toLowerCase(), command:'STOP', position:null }]);
             } else {
-              const parts = String(c.addr).split('.').map(Number);
+              const parts = String(c.id).split('.').map(Number);
               editingScenarioCovers = (editingScenarioCovers || []).concat([{ kind:'single', subnet_id: parts[0], device_id: parts[1], channel: parts[2], command:'STOP', position:null }]);
             }
             renderScenarioEditorCovers();
