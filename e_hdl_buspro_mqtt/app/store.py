@@ -56,6 +56,7 @@ class StateStore:
             "ha_devices": [],
             "hub_links": [],
             "home_actions": [],
+            "home2_order": [],
             "hub_icons": StateStore.default_hub_icons(),
             "hub_show": StateStore.default_hub_show(),
             "proxy_targets": [],
@@ -110,6 +111,7 @@ class StateStore:
         raw["ui"].setdefault("ha_devices", [])
         raw["ui"].setdefault("hub_links", [])
         raw["ui"].setdefault("home_actions", [])
+        raw["ui"].setdefault("home2_order", [])
         raw["ui"].setdefault("hub_icons", self.default_hub_icons())
         raw["ui"].setdefault("hub_show", self.default_hub_show())
         raw["ui"].setdefault("proxy_targets", [])
@@ -149,6 +151,12 @@ class StateStore:
             raw["ui"]["hub_order"] = list(self._default_ui().get("hub_order") or [])
         if not isinstance(raw["ui"].get("ha_devices", []), list):
             raw["ui"]["ha_devices"] = []
+        if not isinstance(raw["ui"].get("hub_links", []), list):
+            raw["ui"]["hub_links"] = []
+        if not isinstance(raw["ui"].get("home_actions", []), list):
+            raw["ui"]["home_actions"] = []
+        if not isinstance(raw["ui"].get("home2_order", []), list):
+            raw["ui"]["home2_order"] = []
         if not isinstance(raw["ui"].get("pwa", {}), dict):
             raw["ui"]["pwa"] = self._default_ui().get("pwa")
         return raw
@@ -249,6 +257,8 @@ class StateStore:
         raw["ui"].setdefault("hub_order", self._default_ui().get("hub_order"))
         raw["ui"].setdefault("ha_devices", [])
         raw["ui"].setdefault("hub_links", [])
+        raw["ui"].setdefault("home_actions", [])
+        raw["ui"].setdefault("home2_order", [])
         raw["ui"].setdefault("hub_icons", self.default_hub_icons())
         raw["ui"].setdefault("hub_show", self.default_hub_show())
         raw["ui"].setdefault("proxy_targets", [])
@@ -291,6 +301,8 @@ class StateStore:
             ui["hub_links"] = []
         if not isinstance(ui.get("home_actions", []), list):
             ui["home_actions"] = []
+        if not isinstance(ui.get("home2_order", []), list):
+            ui["home2_order"] = []
         if not isinstance(ui.get("hub_icons", {}), dict):
             ui["hub_icons"] = self.default_hub_icons()
         if not isinstance(ui.get("hub_show", {}), dict):
@@ -953,6 +965,46 @@ class StateStore:
         raw = self.read_raw()
         ui = dict(raw.get("ui") or {})
         ui["hub_order"] = out
+        raw["ui"] = ui
+        self.write_raw(raw)
+        return out
+
+    def get_home2_order(self) -> list[str]:
+        raw = self.read_raw()
+        ui = raw.get("ui") or {}
+        order = ui.get("home2_order") or []
+        if not isinstance(order, list):
+            return []
+        out: list[str] = []
+        seen: set[str] = set()
+        for v in order:
+            token = str(v or "").strip().lower()
+            if not token or token in seen:
+                continue
+            if re.fullmatch(r"fixed:(lights|scenarios|covers|extra)", token) or re.fullmatch(
+                r"(action|link):[a-f0-9]{4,64}",
+                token,
+            ):
+                seen.add(token)
+                out.append(token)
+        return out
+
+    def set_home2_order(self, order: list[Any]) -> list[str]:
+        out: list[str] = []
+        seen: set[str] = set()
+        for v in order or []:
+            token = str(v or "").strip().lower()
+            if not token or token in seen:
+                continue
+            if re.fullmatch(r"fixed:(lights|scenarios|covers|extra)", token) or re.fullmatch(
+                r"(action|link):[a-f0-9]{4,64}",
+                token,
+            ):
+                seen.add(token)
+                out.append(token)
+        raw = self.read_raw()
+        ui = dict(raw.get("ui") or {})
+        ui["home2_order"] = out
         raw["ui"] = ui
         self.write_raw(raw)
         return out

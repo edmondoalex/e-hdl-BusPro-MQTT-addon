@@ -1144,6 +1144,34 @@
             </div>
           </details>
 
+          <details class="acc" data-acc="home2_order">
+            <summary>
+              <h2 style="margin:0;font-size:16px">Home2 ordine (misto)</h2>
+            </summary>
+            <div class="accBody">
+              <div class="muted" style="margin-top:6px">
+                Ordina liberamente le tile della Home2: icone fisse (Luci/Scenari/Cover/Extra) + pulsanti azione + link esterni.
+              </div>
+
+              <div class="flex" style="margin-top:10px">
+                <button class="btn secondary small" id="btnHome2OrderReset" type="button">Reset (default)</button>
+                <span class="muted" id="home2OrderMsg"></span>
+              </div>
+
+              <table id="home2OrderTable" aria-label="home2 order" style="margin-top:10px">
+                <thead>
+                  <tr>
+                    <th>Tile</th>
+                    <th>Tipo</th>
+                    <th>ID/Target</th>
+                    <th>Ordine</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </details>
+
           <details class="acc" data-acc="ha_devices">
             <summary>
               <h2 style="margin:0;font-size:16px">Home Assistant devices (UI utente)</h2>
@@ -2788,6 +2816,10 @@
               applyHomeActions(msg.data);
               return;
             }
+            if (msg.type === 'home2_order') {
+              applyHome2Order(msg.data);
+              return;
+            }
             if (msg.type === 'hub_config') {
               applyHubConfig(msg.data);
               return;
@@ -4062,6 +4094,7 @@
 
       let hubLinks = [];
       let homeActions = [];
+      let home2Order = [];
       let hubIcons = null;
       let hubShow = null;
       let hubOrder = null;
@@ -4297,8 +4330,8 @@
               ${icon ? `<span class="pill">${escapeHtml(icon)}</span>` : ''}
             </td>
             <td>
-              <button class="btn secondary small" data-act="up" ${idx===0?'disabled':''}>â–²</button>
-              <button class="btn secondary small" data-act="down" ${idx===hubLinks.length-1?'disabled':''}>â–¼</button>
+              <button class="btn secondary small" data-act="up" ${idx===0?'disabled':''}>&#9650;</button>
+              <button class="btn secondary small" data-act="down" ${idx===hubLinks.length-1?'disabled':''}>&#9660;</button>
             </td>
             <td>
               <button class="btn secondary small" data-act="edit">Modifica</button>
@@ -4369,6 +4402,7 @@
         const links = Array.isArray(data.links) ? data.links : [];
         hubLinks = links;
         renderHubLinks();
+        renderHome2Order();
       }
 
       function homeActionTarget(it) {
@@ -4461,8 +4495,8 @@
               ${icon ? `<span class="pill">${escapeHtml(icon)}</span>` : ''}
             </td>
             <td>
-              <button class="btn secondary small" data-act="up" ${idx===0?'disabled':''}>Ã¢â€“Â²</button>
-              <button class="btn secondary small" data-act="down" ${idx===items.length-1?'disabled':''}>Ã¢â€“Â¼</button>
+              <button class="btn secondary small" data-act="up" ${idx===0?'disabled':''}>&#9650;</button>
+              <button class="btn secondary small" data-act="down" ${idx===items.length-1?'disabled':''}>&#9660;</button>
             </td>
             <td>
               <button class="btn secondary small" data-act="edit">Modifica</button>
@@ -4506,6 +4540,7 @@
           homeActions = [];
         }
         renderHomeActions();
+        renderHome2Order();
       }
 
       async function moveHomeAction(index, delta) {
@@ -4534,6 +4569,157 @@
         const items = Array.isArray(data.items) ? data.items : [];
         homeActions = items;
         renderHomeActions();
+        renderHome2Order();
+      }
+
+      let home2OrderEffective = [];
+
+      function buildHome2OrderEffective() {
+        const fixed = normalizeHubOrder(hubOrder || []);
+        const fixedTokens = fixed.map(k => `fixed:${k}`);
+
+        const actions = Array.isArray(homeActions) ? homeActions : [];
+        const actionTokens = actions.map(a => `action:${String(a.id || '').trim().toLowerCase()}`).filter(Boolean);
+
+        const links = Array.isArray(hubLinks) ? hubLinks : [];
+        const linkTokens = links.map(l => `link:${String(l.id || '').trim().toLowerCase()}`).filter(Boolean);
+
+        const candidates = new Set([...fixedTokens, ...actionTokens, ...linkTokens]);
+        const order = Array.isArray(home2Order) ? home2Order : [];
+
+        const out = [];
+        const seen = new Set();
+        for (const t0 of order) {
+          const t = String(t0 || '').trim().toLowerCase();
+          if (!t || seen.has(t) || !candidates.has(t)) continue;
+          seen.add(t);
+          out.push(t);
+        }
+        for (const t of fixedTokens) if (!seen.has(t)) { seen.add(t); out.push(t); }
+        for (const t of actionTokens) if (!seen.has(t)) { seen.add(t); out.push(t); }
+        for (const t of linkTokens) if (!seen.has(t)) { seen.add(t); out.push(t); }
+        return out;
+      }
+
+      function tokenType(token) {
+        const t = String(token || '').toLowerCase();
+        if (t.startsWith('fixed:')) return 'fixed';
+        if (t.startsWith('action:')) return 'action';
+        if (t.startsWith('link:')) return 'link';
+        return 'unknown';
+      }
+
+      function tokenLabel(token) {
+        const t = String(token || '').toLowerCase();
+        if (t.startsWith('fixed:')) return hubKeyLabel(t.split(':', 2)[1] || '');
+        if (t.startsWith('action:')) {
+          const id = t.split(':', 2)[1] || '';
+          const it = (homeActions || []).find(x => String((x||{}).id||'').trim().toLowerCase() === id);
+          return it ? String(it.title || '').trim() : '(azione)';
+        }
+        if (t.startsWith('link:')) {
+          const id = t.split(':', 2)[1] || '';
+          const it = (hubLinks || []).find(x => String((x||{}).id||'').trim().toLowerCase() === id);
+          return it ? String(it.title || '').trim() : '(link)';
+        }
+        return t;
+      }
+
+      function tokenTarget(token) {
+        const t = String(token || '').toLowerCase();
+        if (t.startsWith('fixed:')) return '';
+        if (t.startsWith('action:')) {
+          const id = t.split(':', 2)[1] || '';
+          const it = (homeActions || []).find(x => String((x||{}).id||'').trim().toLowerCase() === id);
+          if (!it) return id;
+          return homeActionTarget(it) || id;
+        }
+        if (t.startsWith('link:')) {
+          const id = t.split(':', 2)[1] || '';
+          const it = (hubLinks || []).find(x => String((x||{}).id||'').trim().toLowerCase() === id);
+          if (!it) return id;
+          return String(it.url || '').trim() || id;
+        }
+        return '';
+      }
+
+      function renderHome2Order() {
+        const table = document.getElementById('home2OrderTable');
+        if (!table) return;
+        const body = table.querySelector('tbody');
+        body.innerHTML = '';
+
+        home2OrderEffective = buildHome2OrderEffective();
+
+        for (let idx = 0; idx < home2OrderEffective.length; idx++) {
+          const tok = home2OrderEffective[idx];
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${escapeHtml(tokenLabel(tok))}</td>
+            <td>${escapeHtml(tokenType(tok))}</td>
+            <td style="word-break:break-all"><code>${escapeHtml(tokenTarget(tok))}</code></td>
+            <td>
+              <button class="btn secondary small" data-act="up" ${idx===0?'disabled':''}>&#9650;</button>
+              <button class="btn secondary small" data-act="down" ${idx===home2OrderEffective.length-1?'disabled':''}>&#9660;</button>
+            </td>
+          `;
+          tr.querySelector('[data-act="up"]').addEventListener('click', async (ev) => {
+            ev.preventDefault();
+            await moveHome2Order(idx, -1);
+          });
+          tr.querySelector('[data-act="down"]').addEventListener('click', async (ev) => {
+            ev.preventDefault();
+            await moveHome2Order(idx, +1);
+          });
+          body.appendChild(tr);
+        }
+      }
+
+      async function refreshHome2Order() {
+        try {
+          const res = await getJson('api/home2_order');
+          home2Order = Array.isArray(res && res.order) ? res.order : [];
+        } catch (e) {
+          home2Order = [];
+        }
+        renderHome2Order();
+      }
+
+      async function saveHome2Order(tokens) {
+        qs('home2OrderMsg').textContent = '';
+        try {
+          const res = await getJson('api/home2_order', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order: Array.isArray(tokens) ? tokens : [] }),
+          });
+          home2Order = Array.isArray(res && res.order) ? res.order : (Array.isArray(tokens) ? tokens : []);
+          renderHome2Order();
+          qs('home2OrderMsg').textContent = 'Salvato';
+          setTimeout(() => { qs('home2OrderMsg').textContent = ''; }, 1400);
+        } catch (e) {
+          qs('home2OrderMsg').textContent = (e && e.message) ? e.message : 'Errore';
+        }
+      }
+
+      async function moveHome2Order(index, delta) {
+        const i = Number(index);
+        const j = i + Number(delta);
+        if (!Number.isFinite(i) || !Number.isFinite(j)) return;
+        if (i < 0 || j < 0) return;
+        if (i >= home2OrderEffective.length || j >= home2OrderEffective.length) return;
+        const arr = home2OrderEffective.slice();
+        const tmp = arr[i];
+        arr[i] = arr[j];
+        arr[j] = tmp;
+        await saveHome2Order(arr);
+      }
+
+      function applyHome2Order(data) {
+        if (!data) return;
+        const order = Array.isArray(data.order) ? data.order : [];
+        home2Order = order;
+        renderHome2Order();
       }
 
       function renderCoverGroupIdsDatalist() {
@@ -4578,6 +4764,10 @@
           hubShow = data.hub_show;
           renderHubShow();
         }
+        if (data.hub_order && Array.isArray(data.hub_order)) {
+          hubOrder = data.hub_order;
+        }
+        renderHome2Order();
       }
 
       function setHaEditing(item) {
@@ -4741,6 +4931,7 @@
       refreshHubConfig();
       refreshHubLinks();
       refreshHomeActions();
+      refreshHome2Order();
       refreshScenarioIdsDatalist();
       refreshHaDevices();
       refreshPwaConfig();
@@ -4887,6 +5078,11 @@
 
       qs('btnSavePwa').addEventListener('click', async () => {
         await savePwaConfig();
+      });
+
+      qs('btnHome2OrderReset').addEventListener('click', async () => {
+        const def = buildHome2OrderEffective();
+        await saveHome2Order(def);
       });
 
       qs('proxyForm').addEventListener('submit', async (ev) => {

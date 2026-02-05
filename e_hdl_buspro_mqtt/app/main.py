@@ -47,7 +47,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.259"
+ADDON_VERSION = "0.1.260"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -3302,6 +3302,7 @@ self.addEventListener('fetch', (event) => {{
             "group_order": store.get_group_order(),
             "hub_links": store.list_visible_hub_links(),
             "home_actions": store.list_visible_home_actions(),
+            "home2_order": store.get_home2_order(),
             "hub_icons": store.get_hub_icons(),
             "hub_show": store.get_hub_show(),
             "hub_order": store.get_hub_order(),
@@ -3338,6 +3339,11 @@ self.addEventListener('fetch', (event) => {{
     async def api_home_actions_list():
         # Admin-only via port gate
         return {"items": store.list_home_actions()}
+
+    @api.get("/api/home2_order")
+    async def api_home2_order_get():
+        # Admin-only via port gate
+        return {"order": store.get_home2_order()}
 
     @api.get("/api/proxy_targets")
     async def api_proxy_targets_list():
@@ -3485,6 +3491,16 @@ self.addEventListener('fetch', (event) => {{
         asyncio.create_task(_sync_icons_for_home_actions(cleaned))
         await hub.broadcast("home_actions", {"items": cleaned})
         return {"items": cleaned}
+
+    @api.put("/api/home2_order")
+    async def api_home2_order_set(payload: dict[str, Any]):
+        # Admin-only via port gate
+        order = payload.get("order", [])
+        if not isinstance(order, list):
+            raise HTTPException(status_code=400, detail="order must be a list")
+        cleaned = store.set_home2_order(order)
+        await hub.broadcast("home2_order", {"order": cleaned})
+        return {"order": cleaned}
 
     @api.delete("/api/hub_links/{link_id}")
     async def api_hub_links_delete(link_id: str):

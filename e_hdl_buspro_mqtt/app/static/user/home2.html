@@ -346,10 +346,11 @@
         for (const k of allowed) if (!seen.has(k)) order.push(k);
 
         const fixed = order.map((k) => fixedByKey[k]).filter(Boolean);
+        const fixedMap = new Map();
         for (const it of fixed) {
           if (show[it.key] === false) continue;
           const icon = String(icons[it.key] || '');
-          menu.appendChild(makeTile({
+          fixedMap.set(`fixed:${it.key}`, () => makeTile({
             title: it.title,
             href: it.href,
             icon: iconUrl(icon || `mdi:${it.fallback}`, it.fallback),
@@ -358,13 +359,14 @@
         }
 
         const actions = (meta && Array.isArray(meta.home_actions)) ? meta.home_actions : [];
+        const actionMap = new Map();
         for (const it of actions) {
-          const id = String(it.id || '').trim();
+          const id = String(it.id || '').trim().toLowerCase();
           const title = String(it.title || '').trim();
           if (!id || !title) continue;
           const icon = String(it.icon || '').trim();
           const confirm = !!it.confirm;
-          menu.appendChild(makeActionTile({
+          actionMap.set(`action:${id}`, () => makeActionTile({
             title,
             actionId: id,
             confirm,
@@ -373,17 +375,34 @@
         }
 
         const links = (meta && Array.isArray(meta.hub_links)) ? meta.hub_links : [];
+        const linkMap = new Map();
         for (const it of links) {
+          const id = String(it.id || '').trim().toLowerCase();
           const title = String(it.title || '').trim();
           const url = String(it.url || '').trim();
-          if (!title || !url) continue;
-          menu.appendChild(makeTile({
+          if (!id || !title || !url) continue;
+          linkMap.set(`link:${id}`, () => makeTile({
             title,
             href: url,
             icon: iconUrl(it.icon || 'mdi:link-variant', 'link-variant'),
             targetBlank: !!it.new_tab
           }));
         }
+
+        const order2 = (meta && Array.isArray(meta.home2_order)) ? meta.home2_order : [];
+        const used = new Set();
+        function addToken(tok0) {
+          const tok = String(tok0 || '').trim().toLowerCase();
+          if (!tok || used.has(tok)) return;
+          const fn = fixedMap.get(tok) || actionMap.get(tok) || linkMap.get(tok);
+          if (!fn) return;
+          used.add(tok);
+          menu.appendChild(fn());
+        }
+        for (const t of order2) addToken(t);
+        for (const t of fixedMap.keys()) addToken(t);
+        for (const t of actionMap.keys()) addToken(t);
+        for (const t of linkMap.keys()) addToken(t);
       }
 
       init();
