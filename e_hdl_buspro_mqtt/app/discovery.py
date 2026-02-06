@@ -149,6 +149,57 @@ def light_discovery(
     return topic, payload
 
 
+def switch_discovery(
+    *,
+    discovery_prefix: str,
+    base_topic: str,
+    gateway_host: str,
+    gateway_port: int,
+    device: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    subnet = int(device["subnet_id"])
+    dev = int(device["device_id"])
+    ch = int(device["channel"])
+    name = str(device.get("name") or f"Switch {subnet}.{dev}.{ch}")
+
+    nid = node_id(gateway_host, gateway_port)
+    oid = f"switch_{subnet}_{dev}_{ch}"
+    uid = f"{nid}_switch_{subnet}_{dev}_{ch}"
+
+    state_topic = f"{base_topic}/state/light/{subnet}/{dev}/{ch}"
+    cmd_topic = f"{base_topic}/cmd/light/{subnet}/{dev}/{ch}"
+    availability_topic = f"{base_topic}/availability"
+
+    category = str(device.get("category") or "Switch")
+    cat_slug = slugify(category)
+
+    payload: dict[str, Any] = {
+        "name": name,
+        "unique_id": uid,
+        "state_topic": state_topic,
+        "value_template": "{{ value_json.state }}",
+        "command_topic": cmd_topic,
+        "payload_on": "ON",
+        "payload_off": "OFF",
+        "availability_topic": availability_topic,
+        "payload_available": "online",
+        "payload_not_available": "offline",
+        "device": {
+            "identifiers": [f"buspro:category:{cat_slug}"],
+            "name": f"BusPro {category}",
+            "manufacturer": "HDL",
+            "model": "BusPro",
+        },
+    }
+
+    icon = device.get("icon")
+    if icon:
+        payload["icon"] = str(icon)
+
+    topic = f"{discovery_prefix}/switch/{nid}/{oid}/config"
+    return topic, payload
+
+
 def cover_discovery(
     *,
     discovery_prefix: str,

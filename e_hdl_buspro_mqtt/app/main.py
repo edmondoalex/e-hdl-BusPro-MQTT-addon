@@ -32,6 +32,7 @@ from .discovery import (
     air_quality_discovery,
     gas_percent_discovery,
     light_discovery,
+    switch_discovery,
     light_scenario_button_discovery,
     light_scenario_switch_discovery,
     slugify,
@@ -47,7 +48,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.263"
+ADDON_VERSION = "0.1.264"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -2109,14 +2110,51 @@ self.addEventListener('fetch', (event) => {{
                 )
                 mqtt.publish(topic2, payload2, retain=True)
             else:
-                topic, payload = light_discovery(
-                    discovery_prefix=settings.mqtt.discovery_prefix,
-                    base_topic=settings.mqtt.base_topic,
-                    gateway_host=settings.gateway.host,
-                    gateway_port=settings.gateway.port,
-                    device=dev,
-                )
-                mqtt.publish(topic, payload, retain=True)
+                # BusPro outputs can be published as HA switch if category is "Switch"
+                cat = str(dev.get("category") or "").strip().casefold()
+                is_switch = cat == "switch" or cat.startswith("switch ")
+                if is_switch:
+                    topic, payload = switch_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    mqtt.publish(topic, payload, retain=True)
+                    # cleanup previous light entity for the same address
+                    try:
+                        t_old, _ = light_discovery(
+                            discovery_prefix=settings.mqtt.discovery_prefix,
+                            base_topic=settings.mqtt.base_topic,
+                            gateway_host=settings.gateway.host,
+                            gateway_port=settings.gateway.port,
+                            device=dev,
+                        )
+                        mqtt.publish(t_old, "", retain=True)
+                    except Exception:
+                        pass
+                else:
+                    topic, payload = light_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    mqtt.publish(topic, payload, retain=True)
+                    # cleanup previous switch entity for the same address
+                    try:
+                        t_old, _ = switch_discovery(
+                            discovery_prefix=settings.mqtt.discovery_prefix,
+                            base_topic=settings.mqtt.base_topic,
+                            gateway_host=settings.gateway.host,
+                            gateway_port=settings.gateway.port,
+                            device=dev,
+                        )
+                        mqtt.publish(t_old, "", retain=True)
+                    except Exception:
+                        pass
 
         # Cover groups (group blinds) as MQTT cover entities + cleanup removed ones
         groups = store.list_cover_groups()
@@ -5544,7 +5582,14 @@ self.addEventListener('fetch', (event) => {{
                     gateway_port=gw_port,
                     device=dev,
                 )
-                topics.append(t1)
+                t2, _ = switch_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=gw_host,
+                    gateway_port=gw_port,
+                    device=dev,
+                )
+                topics.extend([t1, t2])
 
         if clear_state:
             if t == "cover":
@@ -5726,6 +5771,7 @@ self.addEventListener('fetch', (event) => {{
                     )
                     topics.extend([t1, t2])
                 else:
+                    # Clear both possible retained configs (light + switch) for the same addr.
                     t1, _ = light_discovery(
                         discovery_prefix=settings.mqtt.discovery_prefix,
                         base_topic=settings.mqtt.base_topic,
@@ -5733,7 +5779,14 @@ self.addEventListener('fetch', (event) => {{
                         gateway_port=settings.gateway.port,
                         device=dev,
                     )
-                    topics.append(t1)
+                    t2, _ = switch_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    topics.extend([t1, t2])
             except Exception:
                 continue
 
