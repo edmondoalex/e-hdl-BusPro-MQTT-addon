@@ -103,6 +103,63 @@
         <section class="card">
           <div id="err" class="error" style="margin-top:0"></div>
 
+          <details class="acc" data-acc="mqtt_cleanup">
+            <summary>
+              <h2 style="margin:0;font-size:16px">MQTT cleanup (device obsoleti)</h2>
+            </summary>
+            <div class="accBody">
+              <div class="muted" style="margin-top:6px">
+                Cancella dal broker MQTT i retained <code>.../config</code> e/o <code>.../state/...</code> per un device BusPro indicato (utile dopo cambio subnet/device/channel su HDL).
+              </div>
+              <div class="row3" style="margin-top:10px">
+                <div>
+                  <label>Tipo</label>
+                  <select id="mc_type">
+                    <option value="light">Light</option>
+                    <option value="cover">Cover</option>
+                    <option value="temp">Temp</option>
+                    <option value="humidity">Humidity</option>
+                    <option value="illuminance">Illuminance</option>
+                    <option value="air">Air (air_quality + gas_percent)</option>
+                    <option value="pir">PIR</option>
+                    <option value="ultrasonic">Ultrasonic</option>
+                    <option value="dry_contact">Dry contact</option>
+                  </select>
+                </div>
+                <div>
+                  <label>Subnet</label>
+                  <input id="mc_subnet" type="number" min="0" placeholder="1" />
+                </div>
+                <div>
+                  <label>Device</label>
+                  <input id="mc_device" type="number" min="0" placeholder="153" />
+                </div>
+              </div>
+              <div class="row3" style="margin-top:10px">
+                <div>
+                  <label>Channel</label>
+                  <input id="mc_channel" type="number" min="0" placeholder="3" />
+                </div>
+                <div style="display:flex;align-items:end;gap:10px">
+                  <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
+                    <input id="mc_clear_config" type="checkbox" checked />
+                    Cancella config
+                  </label>
+                </div>
+                <div style="display:flex;align-items:end;gap:10px">
+                  <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
+                    <input id="mc_clear_state" type="checkbox" checked />
+                    Cancella state
+                  </label>
+                </div>
+              </div>
+              <div class="flex" style="margin-top:10px">
+                <button class="btn danger small" id="btnMqttCleanup" type="button">Pulisci retained</button>
+                <span class="muted" id="mc_msg"></span>
+              </div>
+            </div>
+          </details>
+
           <details class="acc" data-acc="devices" open>
             <summary>
           <div class="flex"> 
@@ -5167,6 +5224,41 @@
               alert(`Reset completato. Config cancellati: ${n}`);
             } catch (e) {
               qs('err').textContent = e.message || String(e);
+            }
+          });
+        }
+      } catch (e) {}
+
+      // MQTT cleanup for a single (old) device address
+      try {
+        const btn = qs('btnMqttCleanup');
+        if (btn) {
+          btn.addEventListener('click', async () => {
+            qs('mc_msg').textContent = '';
+            try {
+              const type = String(qs('mc_type').value || '').trim();
+              const subnet_id = Number(qs('mc_subnet').value);
+              const device_id = Number(qs('mc_device').value);
+              const channel = Number(qs('mc_channel').value);
+              const clear_config = !!qs('mc_clear_config').checked;
+              const clear_state = !!qs('mc_clear_state').checked;
+              if (!Number.isFinite(subnet_id) || !Number.isFinite(device_id) || !Number.isFinite(channel)) {
+                qs('mc_msg').textContent = 'Inserisci subnet/device/channel';
+                return;
+              }
+              if (!confirm(`Pulire retained MQTT per ${type} ${subnet_id}.${device_id}.${channel}?`)) return;
+              const guard = (prompt('Scrivi PULISCI per confermare') || '').trim().toUpperCase();
+              if (guard !== 'PULISCI') return;
+              const res = await getJson('api/mqtt/clear_retained_device', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type, subnet_id, device_id, channel, clear_config, clear_state }),
+              });
+              const n = Number((res && res.cleared) || 0);
+              qs('mc_msg').textContent = `Ok (topics: ${n})`;
+              setTimeout(() => { qs('mc_msg').textContent = ''; }, 2200);
+            } catch (e) {
+              qs('mc_msg').textContent = (e && e.message) ? e.message : 'Errore';
             }
           });
         }

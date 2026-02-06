@@ -47,7 +47,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.261"
+ADDON_VERSION = "0.1.262"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -5317,7 +5317,27 @@ self.addEventListener('fetch', (event) => {{
         if not removed:
             raise HTTPException(status_code=404, detail="Not Found")
 
-        # Re-publish discovery (we don't delete retained discovery yet; we'll add cleanup later)
+        # Cleanup retained discovery + state to prevent ghost entities in Home Assistant
+        try:
+            topics = _topics_for_retained_cleanup(
+                dtype="light",
+                subnet_id=int(subnet_id),
+                device_id=int(device_id),
+                channel=int(channel),
+                clear_config=True,
+                clear_state=True,
+            )
+            for t in topics:
+                mqtt.publish(t, "", retain=True)
+        except Exception:
+            pass
+        try:
+            last_light: dict[str, Any] = getattr(api.state, "_last_light_state", {}) or {}
+            last_light.pop(f"{int(subnet_id)}.{int(device_id)}.{int(channel)}", None)
+            api.state._last_light_state = last_light
+        except Exception:
+            pass
+
         await _republish_discovery()
         await _broadcast_devices()
         return {"ok": True}
@@ -5327,6 +5347,27 @@ self.addEventListener('fetch', (event) => {{
         removed = store.remove_device_typed(type_="cover", subnet_id=subnet_id, device_id=device_id, channel=channel)
         if not removed:
             raise HTTPException(status_code=404, detail="Not Found")
+
+        # Cleanup retained discovery + state to prevent ghost entities in Home Assistant
+        try:
+            topics = _topics_for_retained_cleanup(
+                dtype="cover",
+                subnet_id=int(subnet_id),
+                device_id=int(device_id),
+                channel=int(channel),
+                clear_config=True,
+                clear_state=True,
+            )
+            for t in topics:
+                mqtt.publish(t, "", retain=True)
+        except Exception:
+            pass
+        try:
+            last_cover: dict[str, Any] = getattr(api.state, "_last_cover_state", {}) or {}
+            last_cover.pop(f"{int(subnet_id)}.{int(device_id)}.{int(channel)}", None)
+            api.state._last_cover_state = last_cover
+        except Exception:
+            pass
 
         await _republish_discovery()
         await _broadcast_devices()
@@ -5370,10 +5411,143 @@ self.addEventListener('fetch', (event) => {{
         st = mqtt.status()
         return {"connected": st.connected, "last_error": st.last_error}
 
+    def _topics_for_retained_cleanup(
+        *,
+        dtype: str,
+        subnet_id: int,
+        device_id: int,
+        channel: int,
+        clear_config: bool,
+        clear_state: bool,
+    ) -> list[str]:
+        t = str(dtype or "").strip().lower()
+        topics: list[str] = []
+
+        if clear_config:
+            if t == "cover":
+                dev = {
+                    "type": "cover",
+                    "subnet_id": int(subnet_id),
+                    "device_id": int(device_id),
+                    "channel": int(channel),
+                    "name": f"Cover {subnet_id}.{device_id}.{channel}",
+                }
+                t1, _ = cover_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=settings.gateway.host,
+                    gateway_port=settings.gateway.port,
+                    device=dev,
+                )
+                t2, _ = cover_no_pct_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=settings.gateway.host,
+                    gateway_port=settings.gateway.port,
+                    device=dev,
+                )
+                topics.extend([t1, t2])
+            elif t == "temp":
+                topics.append(_temp_config_topic(subnet_id=int(subnet_id), device_id=int(device_id), sensor_id=int(channel)))
+            elif t == "humidity":
+                topics.append(_humidity_config_topic(subnet_id=int(subnet_id), device_id=int(device_id), sensor_id=int(channel)))
+            elif t == "illuminance":
+                topics.append(_illuminance_config_topic(subnet_id=int(subnet_id), device_id=int(device_id), sensor_id=int(channel)))
+            elif t == "air":
+                topics.append(_air_quality_config_topic(subnet_id=int(subnet_id), device_id=int(device_id), sensor_id=int(channel)))
+                topics.append(_gas_percent_config_topic(subnet_id=int(subnet_id), device_id=int(device_id), sensor_id=int(channel)))
+            elif t == "pir":
+                topics.append(_pir_config_topic(subnet_id=int(subnet_id), device_id=int(device_id), sensor_id=int(channel)))
+            elif t == "ultrasonic":
+                topics.append(_ultrasonic_config_topic(subnet_id=int(subnet_id), device_id=int(device_id), sensor_id=int(channel)))
+            elif t == "dry_contact":
+                topics.append(_dry_contact_config_topic(subnet_id=int(subnet_id), device_id=int(device_id), input_id=int(channel)))
+            else:  # light default
+                dev = {
+                    "type": "light",
+                    "subnet_id": int(subnet_id),
+                    "device_id": int(device_id),
+                    "channel": int(channel),
+                    "dimmable": True,
+                    "name": f"Light {subnet_id}.{device_id}.{channel}",
+                }
+                t1, _ = light_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=settings.gateway.host,
+                    gateway_port=settings.gateway.port,
+                    device=dev,
+                )
+                topics.append(t1)
+
+        if clear_state:
+            if t == "cover":
+                topics.append(f"{settings.mqtt.base_topic}/state/cover_state/{subnet_id}/{device_id}/{channel}")
+                topics.append(f"{settings.mqtt.base_topic}/state/cover_pos/{subnet_id}/{device_id}/{channel}")
+            elif t == "temp":
+                topics.append(f"{settings.mqtt.base_topic}/state/temp/{subnet_id}/{device_id}/{channel}")
+            elif t == "humidity":
+                topics.append(f"{settings.mqtt.base_topic}/state/humidity/{subnet_id}/{device_id}/{channel}")
+            elif t == "illuminance":
+                topics.append(f"{settings.mqtt.base_topic}/state/illuminance/{subnet_id}/{device_id}/{channel}")
+            elif t == "air":
+                topics.append(f"{settings.mqtt.base_topic}/state/air_quality/{subnet_id}/{device_id}/{channel}")
+                topics.append(f"{settings.mqtt.base_topic}/state/gas_percent/{subnet_id}/{device_id}/{channel}")
+            elif t == "pir":
+                topics.append(f"{settings.mqtt.base_topic}/state/pir/{subnet_id}/{device_id}/{channel}")
+            elif t == "ultrasonic":
+                topics.append(f"{settings.mqtt.base_topic}/state/ultrasonic/{subnet_id}/{device_id}/{channel}")
+            elif t == "dry_contact":
+                topics.append(f"{settings.mqtt.base_topic}/state/dry_contact/{subnet_id}/{device_id}/{channel}")
+            else:
+                topics.append(f"{settings.mqtt.base_topic}/state/light/{subnet_id}/{device_id}/{channel}")
+
+        uniq: list[str] = []
+        seen: set[str] = set()
+        for x in topics:
+            xx = str(x or "").strip()
+            if not xx or xx in seen:
+                continue
+            seen.add(xx)
+            uniq.append(xx)
+        return uniq
+
     @api.post("/api/mqtt/republish")
     async def mqtt_republish():
         await _republish_discovery()
         return {"ok": True}
+
+    @api.post("/api/mqtt/clear_retained_device")
+    async def mqtt_clear_retained_device(payload: dict[str, Any]):
+        # Admin-only via port gate
+        st = mqtt.status()
+        if not st.connected:
+            raise HTTPException(status_code=503, detail=st.last_error or "MQTT not connected")
+
+        dtype = str(payload.get("type") or "").strip().lower() or "light"
+        try:
+            subnet_id = int(payload.get("subnet_id"))
+            device_id = int(payload.get("device_id"))
+            channel = int(payload.get("channel"))
+        except Exception:
+            raise HTTPException(status_code=400, detail="subnet_id/device_id/channel required")
+
+        clear_config = bool(payload.get("clear_config", True))
+        clear_state = bool(payload.get("clear_state", True))
+        if not clear_config and not clear_state:
+            raise HTTPException(status_code=400, detail="nothing to do (clear_config and clear_state are false)")
+
+        topics = _topics_for_retained_cleanup(
+            dtype=dtype,
+            subnet_id=subnet_id,
+            device_id=device_id,
+            channel=channel,
+            clear_config=clear_config,
+            clear_state=clear_state,
+        )
+        for t in topics:
+            mqtt.publish(t, "", retain=True)
+        return {"ok": True, "cleared": len(topics), "topics": topics}
 
     @api.post("/api/mqtt/discovery_reset")
     async def mqtt_discovery_reset():
