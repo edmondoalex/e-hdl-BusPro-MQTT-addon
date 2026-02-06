@@ -153,6 +153,17 @@
                   </label>
                 </div>
               </div>
+              <div class="row3" style="margin-top:10px">
+                <div>
+                  <label>Gateway host (opzionale, per node_id vecchio)</label>
+                  <input id="mc_gw_host" placeholder="Es: 192.168.1.10" />
+                </div>
+                <div>
+                  <label>Gateway port (opzionale)</label>
+                  <input id="mc_gw_port" type="number" min="1" max="65535" placeholder="6000" />
+                </div>
+                <div></div>
+              </div>
               <div class="flex" style="margin-top:10px">
                 <button class="btn danger small" id="btnMqttCleanup" type="button">Pulisci retained</button>
                 <span class="muted" id="mc_msg"></span>
@@ -5242,6 +5253,8 @@
               const channel = Number(qs('mc_channel').value);
               const clear_config = !!qs('mc_clear_config').checked;
               const clear_state = !!qs('mc_clear_state').checked;
+              const gateway_host = String((qs('mc_gw_host') && qs('mc_gw_host').value) || '').trim();
+              const gateway_port = String((qs('mc_gw_port') && qs('mc_gw_port').value) || '').trim();
               if (!Number.isFinite(subnet_id) || !Number.isFinite(device_id) || !Number.isFinite(channel)) {
                 qs('mc_msg').textContent = 'Inserisci subnet/device/channel';
                 return;
@@ -5252,7 +5265,11 @@
               const res = await getJson('api/mqtt/clear_retained_device', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type, subnet_id, device_id, channel, clear_config, clear_state }),
+                body: JSON.stringify({
+                  type, subnet_id, device_id, channel, clear_config, clear_state,
+                  gateway_host: gateway_host || undefined,
+                  gateway_port: gateway_port || undefined,
+                }),
               });
               const n = Number((res && res.cleared) || 0);
               qs('mc_msg').textContent = `Ok (topics: ${n})`;

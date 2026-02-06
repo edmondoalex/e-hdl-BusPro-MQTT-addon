@@ -47,7 +47,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.262"
+ADDON_VERSION = "0.1.263"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -5419,9 +5419,13 @@ self.addEventListener('fetch', (event) => {{
         channel: int,
         clear_config: bool,
         clear_state: bool,
+        gateway_host: str | None = None,
+        gateway_port: int | None = None,
     ) -> list[str]:
         t = str(dtype or "").strip().lower()
         topics: list[str] = []
+        gw_host = str(gateway_host or settings.gateway.host)
+        gw_port = int(gateway_port if gateway_port is not None else settings.gateway.port)
 
         if clear_config:
             if t == "cover":
@@ -5435,33 +5439,95 @@ self.addEventListener('fetch', (event) => {{
                 t1, _ = cover_discovery(
                     discovery_prefix=settings.mqtt.discovery_prefix,
                     base_topic=settings.mqtt.base_topic,
-                    gateway_host=settings.gateway.host,
-                    gateway_port=settings.gateway.port,
+                    gateway_host=gw_host,
+                    gateway_port=gw_port,
                     device=dev,
                 )
                 t2, _ = cover_no_pct_discovery(
                     discovery_prefix=settings.mqtt.discovery_prefix,
                     base_topic=settings.mqtt.base_topic,
-                    gateway_host=settings.gateway.host,
-                    gateway_port=settings.gateway.port,
+                    gateway_host=gw_host,
+                    gateway_port=gw_port,
                     device=dev,
                 )
                 topics.extend([t1, t2])
             elif t == "temp":
-                topics.append(_temp_config_topic(subnet_id=int(subnet_id), device_id=int(device_id), sensor_id=int(channel)))
+                dev = {"type": "temp", "subnet_id": int(subnet_id), "device_id": int(device_id), "channel": int(channel), "name": f"Temp {subnet_id}.{device_id}.{channel}"}
+                t1, _ = temperature_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=gw_host,
+                    gateway_port=gw_port,
+                    device=dev,
+                )
+                topics.append(t1)
             elif t == "humidity":
-                topics.append(_humidity_config_topic(subnet_id=int(subnet_id), device_id=int(device_id), sensor_id=int(channel)))
+                dev = {"type": "humidity", "subnet_id": int(subnet_id), "device_id": int(device_id), "channel": int(channel), "name": f"Humidity {subnet_id}.{device_id}.{channel}"}
+                t1, _ = humidity_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=gw_host,
+                    gateway_port=gw_port,
+                    device=dev,
+                )
+                topics.append(t1)
             elif t == "illuminance":
-                topics.append(_illuminance_config_topic(subnet_id=int(subnet_id), device_id=int(device_id), sensor_id=int(channel)))
+                dev = {"type": "illuminance", "subnet_id": int(subnet_id), "device_id": int(device_id), "channel": int(channel), "name": f"Illuminance {subnet_id}.{device_id}.{channel}"}
+                t1, _ = illuminance_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=gw_host,
+                    gateway_port=gw_port,
+                    device=dev,
+                )
+                topics.append(t1)
             elif t == "air":
-                topics.append(_air_quality_config_topic(subnet_id=int(subnet_id), device_id=int(device_id), sensor_id=int(channel)))
-                topics.append(_gas_percent_config_topic(subnet_id=int(subnet_id), device_id=int(device_id), sensor_id=int(channel)))
+                dev = {"type": "air", "subnet_id": int(subnet_id), "device_id": int(device_id), "channel": int(channel), "name": f"Air {subnet_id}.{device_id}.{channel}"}
+                t1, _ = air_quality_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=gw_host,
+                    gateway_port=gw_port,
+                    device=dev,
+                )
+                t2, _ = gas_percent_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=gw_host,
+                    gateway_port=gw_port,
+                    device=dev,
+                )
+                topics.extend([t1, t2])
             elif t == "pir":
-                topics.append(_pir_config_topic(subnet_id=int(subnet_id), device_id=int(device_id), sensor_id=int(channel)))
+                dev = {"type": "pir", "subnet_id": int(subnet_id), "device_id": int(device_id), "channel": int(channel), "name": f"PIR {subnet_id}.{device_id}.{channel}"}
+                t1, _ = pir_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=gw_host,
+                    gateway_port=gw_port,
+                    device=dev,
+                )
+                topics.append(t1)
             elif t == "ultrasonic":
-                topics.append(_ultrasonic_config_topic(subnet_id=int(subnet_id), device_id=int(device_id), sensor_id=int(channel)))
+                dev = {"type": "ultrasonic", "subnet_id": int(subnet_id), "device_id": int(device_id), "channel": int(channel), "name": f"Ultrasonic {subnet_id}.{device_id}.{channel}"}
+                t1, _ = ultrasonic_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=gw_host,
+                    gateway_port=gw_port,
+                    device=dev,
+                )
+                topics.append(t1)
             elif t == "dry_contact":
-                topics.append(_dry_contact_config_topic(subnet_id=int(subnet_id), device_id=int(device_id), input_id=int(channel)))
+                dev = {"type": "dry_contact", "subnet_id": int(subnet_id), "device_id": int(device_id), "channel": int(channel), "name": f"Dry {subnet_id}.{device_id}.{channel}"}
+                t1, _ = dry_contact_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=gw_host,
+                    gateway_port=gw_port,
+                    device=dev,
+                )
+                topics.append(t1)
             else:  # light default
                 dev = {
                     "type": "light",
@@ -5474,8 +5540,8 @@ self.addEventListener('fetch', (event) => {{
                 t1, _ = light_discovery(
                     discovery_prefix=settings.mqtt.discovery_prefix,
                     base_topic=settings.mqtt.base_topic,
-                    gateway_host=settings.gateway.host,
-                    gateway_port=settings.gateway.port,
+                    gateway_host=gw_host,
+                    gateway_port=gw_port,
                     device=dev,
                 )
                 topics.append(t1)
@@ -5537,6 +5603,15 @@ self.addEventListener('fetch', (event) => {{
         if not clear_config and not clear_state:
             raise HTTPException(status_code=400, detail="nothing to do (clear_config and clear_state are false)")
 
+        gw_host = payload.get("gateway_host")
+        gw_port_raw = payload.get("gateway_port")
+        gw_port: int | None = None
+        if gw_port_raw is not None and str(gw_port_raw).strip() != "":
+            try:
+                gw_port = int(gw_port_raw)
+            except Exception:
+                raise HTTPException(status_code=400, detail="gateway_port must be int")
+
         topics = _topics_for_retained_cleanup(
             dtype=dtype,
             subnet_id=subnet_id,
@@ -5544,6 +5619,8 @@ self.addEventListener('fetch', (event) => {{
             channel=channel,
             clear_config=clear_config,
             clear_state=clear_state,
+            gateway_host=str(gw_host).strip() if gw_host is not None and str(gw_host).strip() else None,
+            gateway_port=gw_port,
         )
         for t in topics:
             mqtt.publish(t, "", retain=True)
