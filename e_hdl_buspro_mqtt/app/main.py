@@ -48,7 +48,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.278"
+ADDON_VERSION = "0.1.279"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -562,6 +562,8 @@ def create_app() -> FastAPI:
         if path == "/api/guard_cameras" and request.method.upper() == "GET":
             return await call_next(request)
         if path == "/api/e_guard/snapshot" and request.method.upper() == "GET":
+            return await call_next(request)
+        if path == "/api/e_guard/diag" and request.method.upper() == "GET":
             return await call_next(request)
         if path == "/api/user/devices" and request.method.upper() == "GET":
             return await call_next(request)
@@ -3793,15 +3795,44 @@ self.addEventListener('fetch', (event) => {{
         try:
             eid_enc = urllib.parse.quote(eid, safe="")
             q = f"?time={urllib.parse.quote(str(t or ''), safe='')}" if t else ""
-            raw, ctype = _ha_fetch(f"/api/camera_proxy/{eid_enc}{q}", timeout_s=12)
+            path = f"/api/camera_proxy/{eid_enc}{q}"
+            raw, ctype = _ha_fetch(path, timeout_s=12)
             if not (ctype or "").lower().startswith("image/"):
                 _LOGGER.warning("e_guard snapshot non-image for %s: %s", eid, ctype)
             return Response(content=raw, media_type=ctype)
-        except HTTPException:
+        except HTTPException as e:
+            _LOGGER.warning("e_guard snapshot HTTP %s for %s: %s", e.status_code, eid, e.detail)
             raise
         except Exception as e:
             _LOGGER.exception("e_guard snapshot failed for %s: %s", eid, e)
             raise HTTPException(status_code=502, detail="snapshot fetch failed")
+
+    @api.get("/api/e_guard/diag")
+    async def api_guard_diag(entity_id: str):
+        if not _ha_enabled():
+            raise HTTPException(status_code=503, detail="Home Assistant not available")
+        eid = str(entity_id or "").strip().lower()
+        if not eid.startswith("camera."):
+            raise HTTPException(status_code=400, detail="entity_id must be camera.*")
+        diag: dict[str, Any] = {
+            "entity_id": eid,
+            "ha_enabled": _ha_enabled(),
+            "base_url": _ha_base_url(),
+            "state": None,
+            "snapshot": None,
+        }
+        try:
+            st = _ha_request("GET", f"/api/states/{urllib.parse.quote(eid, safe='')}", timeout_s=10)
+            diag["state"] = st
+        except HTTPException as e:
+            diag["state"] = {"error": True, "status": e.status_code, "detail": e.detail}
+        try:
+            path = f"/api/camera_proxy/{urllib.parse.quote(eid, safe='')}"
+            raw, ctype = _ha_fetch(path, timeout_s=10)
+            diag["snapshot"] = {"ok": True, "content_type": ctype, "bytes": len(raw)}
+        except HTTPException as e:
+            diag["snapshot"] = {"error": True, "status": e.status_code, "detail": e.detail}
+        return diag
 
     @api.post("/api/hub_links")
     async def api_hub_links_upsert(payload: dict[str, Any]):
