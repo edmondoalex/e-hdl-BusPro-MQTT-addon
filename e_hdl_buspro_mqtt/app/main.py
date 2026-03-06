@@ -48,7 +48,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.280"
+ADDON_VERSION = "0.1.281"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -306,6 +306,21 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=int(getattr(e, "code", 502) or 502), detail=body or str(e))
         except urllib.error.URLError as e:
             raise HTTPException(status_code=502, detail=str(e.reason or e))
+
+    def _ha_snapshot_via_service(eid: str, *, timeout_s: int = 10) -> tuple[bytes, str]:
+        slug = slugify(eid, allow_underscore=True) or "camera"
+        filename = f"/config/www/e_guard_{slug}.jpg"
+        _ha_request(
+            "POST",
+            "/api/services/camera/snapshot",
+            payload={"entity_id": eid, "filename": filename},
+            timeout_s=timeout_s,
+        )
+        local_path = f"/local/e_guard_{slug}.jpg"
+        raw, ctype = _ha_fetch(local_path, timeout_s=timeout_s)
+        if not ctype:
+            ctype = "image/jpeg"
+        return raw, ctype
 
     def _ha_state_str(v: Any) -> str:
         return str(v or "").strip().lower()
@@ -3822,7 +3837,12 @@ self.addEventListener('fetch', (event) => {{
             else:
                 path = f"/api/camera_proxy/{eid_enc}?{q.lstrip('&')}" if q else f"/api/camera_proxy/{eid_enc}"
 
-            raw, ctype = _ha_fetch(path, timeout_s=12)
+            try:
+                raw, ctype = _ha_fetch(path, timeout_s=12)
+            except HTTPException as e:
+                # Fallback to camera.snapshot service when stream proxy fails.
+                _LOGGER.warning("e_guard snapshot primary failed for %s: %s", eid, e.detail)
+                raw, ctype = _ha_snapshot_via_service(eid, timeout_s=12)
             if not (ctype or "").lower().startswith("image/"):
                 _LOGGER.warning("e_guard snapshot non-image for %s: %s", eid, ctype)
             return Response(content=raw, media_type=ctype)
@@ -3846,6 +3866,7 @@ self.addEventListener('fetch', (event) => {{
             "base_url": _ha_base_url(),
             "state": None,
             "snapshot": None,
+            "snapshot_service": None,
             "snapshot_url": None,
         }
         try:
@@ -3875,6 +3896,11 @@ self.addEventListener('fetch', (event) => {{
             diag["snapshot"] = {"ok": True, "content_type": ctype, "bytes": len(raw)}
         except HTTPException as e:
             diag["snapshot"] = {"error": True, "status": e.status_code, "detail": e.detail}
+        try:
+            raw, ctype = _ha_snapshot_via_service(eid, timeout_s=10)
+            diag["snapshot_service"] = {"ok": True, "content_type": ctype, "bytes": len(raw)}
+        except HTTPException as e:
+            diag["snapshot_service"] = {"error": True, "status": e.status_code, "detail": e.detail}
         return diag
 
     @api.post("/api/hub_links")
