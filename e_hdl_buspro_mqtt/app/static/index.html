@@ -1065,6 +1065,7 @@
                 </div>
                 <div class="flex" style="margin-top:10px">
                   <button class="btn secondary small" id="btnSaveHubIcons" type="button">Salva icone</button>
+                  <button class="btn secondary small" id="btnExportUiIcons" type="button">Esporta icone</button>
                   <span class="muted" id="hubIconsMsg"></span>
                 </div>
               </div>
@@ -5142,6 +5143,25 @@
 
       qs('btnSaveHubIcons').addEventListener('click', async () => {
         await saveHubIcons();
+      });
+
+      qs('btnExportUiIcons').addEventListener('click', async () => {
+        qs('hubIconsMsg').textContent = '';
+        try {
+          const res = await getJson('api/icons/export_ui', { method: 'POST' });
+          const main = res && res.main ? res.main : {};
+          const share = res && res.share ? res.share : null;
+          const downloaded = Number(main.downloaded || 0);
+          const failed = Number(main.failed || 0);
+          const msg = `Icone esportate: ${downloaded} ok, ${failed} fallite`;
+          qs('hubIconsMsg').textContent = msg;
+          if (share && share.export_dir) {
+            setTimeout(() => { qs('hubIconsMsg').textContent = `${msg} (share: ${share.export_dir})`; }, 100);
+          }
+          setTimeout(() => { qs('hubIconsMsg').textContent = ''; }, 2500);
+        } catch (e) {
+          qs('hubIconsMsg').textContent = (e && e.message) ? e.message : 'Errore export';
+        }
       });
 
       qs('btnSavePwa').addEventListener('click', async () => {
