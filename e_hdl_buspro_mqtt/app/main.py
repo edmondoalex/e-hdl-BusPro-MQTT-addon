@@ -47,7 +47,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.270"
+ADDON_VERSION = "0.1.271"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -418,6 +418,7 @@ def create_app() -> FastAPI:
     api.state.loop = None
     api.state.gateway = None
     api.state.sniffer = TelegramSniffer(share_dir="/share", maxlen=5000)
+    api.state.cover_sim_tasks = {}
 
     @api.middleware("http")
     async def ingress_path_middleware(request: Request, call_next):
@@ -1806,6 +1807,96 @@ self.addEventListener('fetch', (event) => {{
         except Exception:
             return None
 
+    def _cover_addr(subnet_id: int, device_id: int, channel: int) -> str:
+        return f"{int(subnet_id)}.{int(device_id)}.{int(channel)}"
+
+    def _find_cover_device(subnet_id: int, device_id: int, channel: int) -> dict[str, Any] | None:
+        try:
+            return store.find_device(type_="cover", subnet_id=int(subnet_id), device_id=int(device_id), channel=int(channel))
+        except Exception:
+            return None
+
+    def _cover_times(subnet_id: int, device_id: int, channel: int) -> tuple[float, float]:
+        dev = _find_cover_device(subnet_id, device_id, channel) or {}
+        up = float(dev.get("opening_time_up") or dev.get("opening_time") or 20)
+        down = float(dev.get("opening_time_down") or dev.get("opening_time") or 20)
+        if up <= 0:
+            up = 20.0
+        if down <= 0:
+            down = 20.0
+        return up, down
+
+    def _cancel_cover_sim(addr: str) -> None:
+        tasks: dict[str, asyncio.Task] = getattr(api.state, "cover_sim_tasks", {}) or {}
+        t = tasks.pop(addr, None)
+        if t and not t.done():
+            t.cancel()
+
+    async def _emit_cover_sim_state(subnet_id: int, device_id: int, channel: int, *, state: str, position: int | None) -> None:
+        dev = _find_cover_device(subnet_id, device_id, channel)
+        if not dev:
+            return
+        st = CoverState(state=str(state).upper(), position=int(position) if position is not None else None)
+        addr = _cover_addr(subnet_id, device_id, channel)
+        api.state._last_cover_state[addr] = (str(st.state).upper(), st.position)
+        _publish_cover_state(dev, st)
+        _publish_cover_groups_for_member(addr)
+        await _broadcast_cover_state(dev, st)
+
+    def _start_cover_sim(subnet_id: int, device_id: int, channel: int, cmd: str) -> None:
+        addr = _cover_addr(subnet_id, device_id, channel)
+        _cancel_cover_sim(addr)
+
+        cmd_u = str(cmd or "").upper()
+        if cmd_u == "STOP":
+            # Emit STOP at current position
+            pos = None
+            prev = api.state._last_cover_state.get(addr)
+            if prev and prev[1] is not None:
+                pos = int(prev[1])
+            asyncio.create_task(_emit_cover_sim_state(subnet_id, device_id, channel, state="STOP", position=pos))
+            return
+        if cmd_u not in ("OPEN", "CLOSE"):
+            return
+
+        up_s, down_s = _cover_times(subnet_id, device_id, channel)
+        prev = api.state._last_cover_state.get(addr)
+        start_pos: int
+        if prev and prev[1] is not None:
+            start_pos = int(prev[1])
+        else:
+            start_pos = 0 if cmd_u == "OPEN" else 100
+        end_pos = 100 if cmd_u == "OPEN" else 0
+        remaining = abs(end_pos - start_pos)
+        full_time = up_s if cmd_u == "OPEN" else down_s
+        duration = (remaining / 100.0) * float(full_time or 0)
+        if duration <= 0:
+            asyncio.create_task(_emit_cover_sim_state(subnet_id, device_id, channel, state=("OPEN" if cmd_u == "OPEN" else "CLOSED"), position=end_pos))
+            return
+
+        async def _task() -> None:
+            try:
+                start_t = time.monotonic()
+                state_move = "OPENING" if cmd_u == "OPEN" else "CLOSING"
+                while True:
+                    elapsed = time.monotonic() - start_t
+                    frac = min(1.0, elapsed / duration)
+                    pos_f = start_pos + (end_pos - start_pos) * frac
+                    pos_i = int(round(max(0, min(100, pos_f))))
+                    if frac >= 1.0:
+                        final_state = "OPEN" if cmd_u == "OPEN" else "CLOSED"
+                        await _emit_cover_sim_state(subnet_id, device_id, channel, state=final_state, position=end_pos)
+                        break
+                    await _emit_cover_sim_state(subnet_id, device_id, channel, state=state_move, position=pos_i)
+                    await asyncio.sleep(0.7)
+            except asyncio.CancelledError:
+                return
+
+        tasks = getattr(api.state, "cover_sim_tasks", {}) or {}
+        t = asyncio.create_task(_task())
+        tasks[addr] = t
+        api.state.cover_sim_tasks = tasks
+
     def _find_cover_group_by_gid(gid: str) -> dict[str, Any] | None:
         gid_s = str(gid or "").strip()
         if not gid_s:
@@ -1844,13 +1935,16 @@ self.addEventListener('fetch', (event) => {{
                     await gw.cover_open_raw(subnet_id=subnet, device_id=did, channel=ch)
                 else:
                     await gw.cover_open(subnet_id=subnet, device_id=did, channel=ch)
+                _start_cover_sim(subnet, did, ch, "OPEN")
             elif cmd == "CLOSE":
                 if raw:
                     await gw.cover_close_raw(subnet_id=subnet, device_id=did, channel=ch)
                 else:
                     await gw.cover_close(subnet_id=subnet, device_id=did, channel=ch)
+                _start_cover_sim(subnet, did, ch, "CLOSE")
             elif cmd == "STOP":
                 await gw.cover_stop(subnet_id=subnet, device_id=did, channel=ch)
+                _start_cover_sim(subnet, did, ch, "STOP")
             elif cmd == "SET_POSITION":
                 # Cover groups: ignore percentage-based commands (use OPEN/CLOSE/STOP only).
                 continue
@@ -2835,6 +2929,8 @@ self.addEventListener('fetch', (event) => {{
                     did = int(dev["device_id"])
                     ch = int(dev["channel"])
                     addr = f"{subnet}.{did}.{ch}"
+                    # Real bus update: stop any simulation for this cover.
+                    _cancel_cover_sim(addr)
                     state_s = str(st.state).upper()
                     pos = int(st.position) if st.position is not None else None
                     prev = api.state._last_cover_state.get(addr)
