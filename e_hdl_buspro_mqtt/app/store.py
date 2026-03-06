@@ -489,6 +489,15 @@ class StateStore:
                 out.append(dict(it))
         return out
 
+    def find_guard_camera_by_entity(self, entity_id: str) -> dict[str, Any] | None:
+        eid = str(entity_id or "").strip().lower()
+        if not eid:
+            return None
+        for it in self.list_guard_cameras():
+            if str(it.get("entity_id") or "").strip().lower() == eid:
+                return dict(it)
+        return None
+
     @staticmethod
     def _normalize_guard_camera(payload: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(payload, dict):
@@ -507,7 +516,33 @@ class StateStore:
         except Exception:
             refresh_s = 5
         refresh_s = max(1, min(60, refresh_s))
-        return {"entity_id": entity_id, "name": name, "refresh_s": refresh_s}
+        source = str(payload.get("source") or "ha").strip().lower()
+        if source not in ("ha", "dahua"):
+            source = "ha"
+        dahua_host = str(payload.get("dahua_host") or "").strip()
+        dahua_user = str(payload.get("dahua_user") or "").strip()
+        dahua_pass = str(payload.get("dahua_pass") or "").strip()
+        dahua_channel = payload.get("dahua_channel")
+        if dahua_channel is None or dahua_channel == "":
+            dahua_channel = 1
+        try:
+            dahua_channel = int(dahua_channel)
+        except Exception:
+            dahua_channel = 1
+        dahua_channel = max(1, min(256, dahua_channel))
+        if source == "dahua":
+            if not (dahua_host and dahua_user and dahua_pass):
+                raise ValueError("dahua_host/dahua_user/dahua_pass required for source=dahua")
+        return {
+            "entity_id": entity_id,
+            "name": name,
+            "refresh_s": refresh_s,
+            "source": source,
+            "dahua_host": dahua_host,
+            "dahua_user": dahua_user,
+            "dahua_pass": dahua_pass,
+            "dahua_channel": dahua_channel,
+        }
 
     def add_guard_camera(self, payload: dict[str, Any]) -> dict[str, Any]:
         cleaned = self._normalize_guard_camera(payload)

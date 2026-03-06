@@ -49,7 +49,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.291"
+ADDON_VERSION = "0.1.292"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -343,6 +343,36 @@ def create_app() -> FastAPI:
         if not ctype:
             ctype = "image/jpeg"
         return raw, ctype
+
+    def _dahua_snapshot_fetch(host: str, user: str, password: str, channel: int, *, timeout_s: int = 8) -> tuple[bytes, str]:
+        base = str(host or "").strip()
+        if not base:
+            raise HTTPException(status_code=400, detail="dahua_host missing")
+        if base.startswith("http://") or base.startswith("https://"):
+            base_url = base.rstrip("/")
+        else:
+            base_url = "http://" + base
+        url = f"{base_url}/cgi-bin/snapshot.cgi?channel={int(channel)}&stream=0"
+        mgr = urllib.request.HTTPPasswordMgrWithDefaultRealm()
+        mgr.add_password(None, base_url, user, password)
+        handler = urllib.request.HTTPDigestAuthHandler(mgr)
+        opener = urllib.request.build_opener(handler)
+        req = urllib.request.Request(url=url, method="GET")
+        try:
+            with opener.open(req, timeout=timeout_s) as resp:
+                raw = resp.read()
+                ctype = resp.headers.get("Content-Type") or "image/jpeg"
+                return raw, ctype
+        except urllib.error.HTTPError as e:
+            try:
+                body = e.read().decode("utf-8", errors="replace")
+            except Exception:
+                body = ""
+            raise HTTPException(status_code=int(getattr(e, "code", 502) or 502), detail=body or str(e))
+        except (socket.timeout, TimeoutError):
+            raise HTTPException(status_code=504, detail="timeout")
+        except urllib.error.URLError as e:
+            raise HTTPException(status_code=502, detail=str(e.reason or e))
 
     def _ha_snapshot_trigger(eid: str, *, timeout_s: int = 10) -> None:
         slug = (slugify(eid) or "camera").replace("-", "_")
@@ -3840,6 +3870,23 @@ self.addEventListener('fetch', (event) => {{
         if not eid.startswith("camera."):
             raise HTTPException(status_code=400, detail="entity_id must be camera.*")
         try:
+            try:
+                cam = store.find_guard_camera_by_entity(eid)
+            except Exception:
+                cam = None
+            if isinstance(cam, dict) and str(cam.get("source") or "").strip().lower() == "dahua":
+                try:
+                    raw, ctype = _dahua_snapshot_fetch(
+                        host=str(cam.get("dahua_host") or "").strip(),
+                        user=str(cam.get("dahua_user") or "").strip(),
+                        password=str(cam.get("dahua_pass") or "").strip(),
+                        channel=int(cam.get("dahua_channel") or 1),
+                        timeout_s=10,
+                    )
+                    return Response(content=raw, media_type=ctype or "image/jpeg")
+                except HTTPException as e:
+                    _LOGGER.warning("e_guard dahua snapshot failed for %s: %s", eid, e.detail)
+
             eid_enc = urllib.parse.quote(eid, safe="")
             q = f"&time={urllib.parse.quote(str(t or ''), safe='')}" if t else ""
             # Fast path: serve cached snapshot if available, and refresh in background.
