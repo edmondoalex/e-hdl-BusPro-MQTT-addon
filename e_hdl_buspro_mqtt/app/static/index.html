@@ -1372,6 +1372,14 @@
                 </div>
                 <div class="row3" style="margin-top:10px">
                   <div>
+                    <label>URL Dahua (override)</label>
+                    <input id="guard_dahua_url" placeholder="http://192.168.2.27/cgi-bin/snapshot.cgi?channel=3" />
+                  </div>
+                  <div></div>
+                  <div></div>
+                </div>
+                <div class="row3" style="margin-top:10px">
+                  <div>
                     <label>Utente Dahua</label>
                     <input id="guard_dahua_user" autocomplete="username" />
                   </div>
@@ -5026,6 +5034,7 @@
         qs('guard_dahua_user').value = isEdit ? String(item.dahua_user || '') : '';
         qs('guard_dahua_pass').value = isEdit ? String(item.dahua_pass || '') : '';
         qs('guard_dahua_channel').value = isEdit ? String(item.dahua_channel || 1) : '1';
+        qs('guard_dahua_url').value = isEdit ? String(item.dahua_url || '') : '';
         qs('guard_btnSubmit').textContent = isEdit ? 'Salva' : 'Aggiungi';
         qs('guard_btnCancel').style.display = isEdit ? '' : 'none';
         qs('guard_formMsg').textContent = '';
@@ -5034,7 +5043,7 @@
 
       function updateGuardSourceUI() {
         const isDahua = String(qs('guard_source').value || '') === 'dahua';
-        const ids = ['guard_dahua_host', 'guard_dahua_user', 'guard_dahua_pass', 'guard_dahua_channel', 'guard_dahua_mode'];
+        const ids = ['guard_dahua_host', 'guard_dahua_user', 'guard_dahua_pass', 'guard_dahua_channel', 'guard_dahua_mode', 'guard_dahua_url'];
         const rows = new Set();
         for (const id of ids) {
           const el = qs(id);
@@ -5050,6 +5059,7 @@
         qs('guard_dahua_pass').required = isDahua;
         const isCamera = isDahua && String(qs('guard_dahua_mode').value || '') === 'camera';
         qs('guard_dahua_channel').disabled = !isDahua || isCamera;
+        qs('guard_dahua_url').disabled = !isDahua;
       }
 
       function renderGuardCameras() {
@@ -5298,7 +5308,8 @@
           const dahua_user = String(qs('guard_dahua_user').value || '').trim();
           const dahua_pass = String(qs('guard_dahua_pass').value || '').trim();
           const dahua_channel = Number(qs('guard_dahua_channel').value || 1);
-          const payload = { entity_id, name, refresh_s, source, dahua_mode, dahua_host, dahua_user, dahua_pass, dahua_channel };
+          const dahua_url = String(qs('guard_dahua_url').value || '').trim();
+          const payload = { entity_id, name, refresh_s, source, dahua_mode, dahua_host, dahua_user, dahua_pass, dahua_channel, dahua_url };
           let saved = null;
           if (id) {
             saved = await getJson(`api/guard_cameras/${encodeURIComponent(id)}`, {

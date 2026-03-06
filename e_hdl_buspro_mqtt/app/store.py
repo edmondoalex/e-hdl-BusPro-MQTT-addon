@@ -523,6 +523,7 @@ class StateStore:
         dahua_mode = str(payload.get("dahua_mode") or "nvr").strip().lower()
         if dahua_mode not in ("nvr", "camera"):
             dahua_mode = "nvr"
+        dahua_url = str(payload.get("dahua_url") or "").strip()
         dahua_channel = payload.get("dahua_channel")
         if dahua_channel is None or dahua_channel == "":
             dahua_channel = 1
@@ -551,6 +552,7 @@ class StateStore:
             "dahua_user": dahua_user,
             "dahua_pass": dahua_pass,
             "dahua_channel": dahua_channel,
+            "dahua_url": dahua_url,
         }
 
     def add_guard_camera(self, payload: dict[str, Any]) -> dict[str, Any]:

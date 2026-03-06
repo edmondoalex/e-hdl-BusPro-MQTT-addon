@@ -49,7 +49,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.296"
+ADDON_VERSION = "0.1.297"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -344,15 +344,34 @@ def create_app() -> FastAPI:
             ctype = "image/jpeg"
         return raw, ctype
 
-    def _dahua_snapshot_fetch(host: str, user: str, password: str, channel: int, *, timeout_s: int = 8) -> tuple[bytes, str]:
-        base = str(host or "").strip()
-        if not base:
-            raise HTTPException(status_code=400, detail="dahua_host missing")
-        if base.startswith("http://") or base.startswith("https://"):
-            base_url = base.rstrip("/")
+    def _dahua_snapshot_fetch(
+        host: str,
+        user: str,
+        password: str,
+        channel: int,
+        *,
+        url_override: str | None = None,
+        timeout_s: int = 8,
+    ) -> tuple[bytes, str]:
+        if url_override:
+            raw_url = str(url_override).strip()
+            if not raw_url:
+                raise HTTPException(status_code=400, detail="dahua_url empty")
+            if raw_url.startswith("http://") or raw_url.startswith("https://"):
+                url = raw_url
+            else:
+                url = "http://" + raw_url
+            parsed = urllib.parse.urlparse(url)
+            base_url = f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
         else:
-            base_url = "http://" + base
-        url = f"{base_url}/cgi-bin/snapshot.cgi?channel={int(channel)}"
+            base = str(host or "").strip()
+            if not base:
+                raise HTTPException(status_code=400, detail="dahua_host missing")
+            if base.startswith("http://") or base.startswith("https://"):
+                base_url = base.rstrip("/")
+            else:
+                base_url = "http://" + base
+            url = f"{base_url}/cgi-bin/snapshot.cgi?channel={int(channel)}"
         mgr = urllib.request.HTTPPasswordMgrWithDefaultRealm()
         mgr.add_password(None, base_url, user, password)
         handler = urllib.request.HTTPDigestAuthHandler(mgr)
@@ -3883,6 +3902,7 @@ self.addEventListener('fetch', (event) => {{
                         user=str(cam.get("dahua_user") or "").strip(),
                         password=str(cam.get("dahua_pass") or "").strip(),
                         channel=channel,
+                        url_override=str(cam.get("dahua_url") or "").strip() or None,
                         timeout_s=10,
                     )
                     return Response(content=raw, media_type=ctype or "image/jpeg")
