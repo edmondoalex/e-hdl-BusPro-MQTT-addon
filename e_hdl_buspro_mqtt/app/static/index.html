@@ -1363,6 +1363,7 @@
                     <select id="guard_dahua_mode">
                       <option value="nvr">NVR</option>
                       <option value="camera">Camera</option>
+                      <option value="custom">Custom URL</option>
                     </select>
                   </div>
                   <div>
@@ -1373,7 +1374,7 @@
                 <div class="row3" style="margin-top:10px">
                   <div>
                     <label>URL Dahua (override)</label>
-                    <input id="guard_dahua_url" placeholder="http://192.168.2.27/cgi-bin/snapshot.cgi?channel=3" />
+                    <input id="guard_dahua_url" placeholder="http://user:pass@192.168.2.27/cgi-bin/snapshot.cgi?channel=3" />
                   </div>
                   <div></div>
                   <div></div>
@@ -5054,12 +5055,18 @@
         }
         for (const row of rows) row.style.display = isDahua ? '' : 'none';
         qs('guard_entity').required = !isDahua;
-        qs('guard_dahua_host').required = isDahua;
-        qs('guard_dahua_user').required = isDahua;
-        qs('guard_dahua_pass').required = isDahua;
-        const isCamera = isDahua && String(qs('guard_dahua_mode').value || '') === 'camera';
-        qs('guard_dahua_channel').disabled = !isDahua || isCamera;
-        qs('guard_dahua_url').disabled = !isDahua;
+        qs('guard_dahua_host').required = isDahua && mode !== 'custom';
+        qs('guard_dahua_user').required = isDahua && mode !== 'custom';
+        qs('guard_dahua_pass').required = isDahua && mode !== 'custom';
+        qs('guard_dahua_url').required = isDahua && mode === 'custom';
+        const mode = String(qs('guard_dahua_mode').value || '').toLowerCase();
+        const isCamera = isDahua && mode === 'camera';
+        const isCustom = isDahua && mode === 'custom';
+        qs('guard_dahua_channel').disabled = !isDahua || isCamera || isCustom;
+        qs('guard_dahua_host').disabled = !isDahua || isCustom;
+        qs('guard_dahua_user').disabled = !isDahua || isCustom;
+        qs('guard_dahua_pass').disabled = !isDahua || isCustom;
+        qs('guard_dahua_url').disabled = !isDahua || !isCustom;
       }
 
       function renderGuardCameras() {

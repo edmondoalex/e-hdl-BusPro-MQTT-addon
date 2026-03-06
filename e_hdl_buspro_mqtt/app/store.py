@@ -521,7 +521,7 @@ class StateStore:
         dahua_user = str(payload.get("dahua_user") or "").strip()
         dahua_pass = str(payload.get("dahua_pass") or "").strip()
         dahua_mode = str(payload.get("dahua_mode") or "nvr").strip().lower()
-        if dahua_mode not in ("nvr", "camera"):
+        if dahua_mode not in ("nvr", "camera", "custom"):
             dahua_mode = "nvr"
         dahua_url = str(payload.get("dahua_url") or "").strip()
         dahua_channel = payload.get("dahua_channel")
@@ -537,8 +537,12 @@ class StateStore:
         if source == "dahua":
             if not entity_id:
                 entity_id = f"dahua.{uuid.uuid4()}"
-            if not (dahua_host and dahua_user and dahua_pass):
-                raise ValueError("dahua_host/dahua_user/dahua_pass required for source=dahua")
+            if dahua_mode == "custom":
+                if not dahua_url:
+                    raise ValueError("dahua_url required for source=dahua mode=custom")
+            else:
+                if not (dahua_host and dahua_user and dahua_pass):
+                    raise ValueError("dahua_host/dahua_user/dahua_pass required for source=dahua")
         if source == "ha":
             if not entity_id.startswith("camera."):
                 raise ValueError("entity_id must be a camera.* entity")

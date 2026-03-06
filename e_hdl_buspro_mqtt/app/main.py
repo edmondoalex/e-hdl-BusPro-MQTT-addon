@@ -49,7 +49,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.298"
+ADDON_VERSION = "0.1.299"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -357,6 +357,8 @@ def create_app() -> FastAPI:
             raw_url = str(url_override).strip()
             if not raw_url:
                 raise HTTPException(status_code=400, detail="dahua_url empty")
+            if "{channel}" in raw_url:
+                raw_url = raw_url.replace("{channel}", str(int(channel)))
             if raw_url.startswith("http://") or raw_url.startswith("https://"):
                 url = raw_url
             else:
@@ -369,6 +371,16 @@ def create_app() -> FastAPI:
                 base_url = f"{parsed.scheme}://{host}:{parsed.port}".rstrip("/")
             else:
                 base_url = f"{parsed.scheme}://{host}".rstrip("/")
+            if (not user) and parsed.username:
+                user = urllib.parse.unquote(parsed.username)
+            if (not password) and parsed.password:
+                password = urllib.parse.unquote(parsed.password)
+            # Strip userinfo from URL to avoid leaking credentials in logs/proxies.
+            if parsed.username or parsed.password:
+                netloc = f"{host}:{parsed.port}" if parsed.port else host
+                url = urllib.parse.urlunparse(
+                    (parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment)
+                )
         else:
             base = str(host or "").strip()
             if not base:
