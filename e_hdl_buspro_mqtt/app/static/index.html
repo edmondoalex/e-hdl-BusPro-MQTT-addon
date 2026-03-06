@@ -5218,21 +5218,38 @@
           const name = String(qs('guard_name').value || '').trim();
           const refresh_s = Number(qs('guard_refresh').value || 5);
           const payload = { entity_id, name, refresh_s };
+          let saved = null;
           if (id) {
-            await getJson(`api/guard_cameras/${encodeURIComponent(id)}`, {
+            saved = await getJson(`api/guard_cameras/${encodeURIComponent(id)}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
             });
           } else {
-            await getJson('api/guard_cameras', {
+            saved = await getJson('api/guard_cameras', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
             });
           }
+          if (saved && typeof saved === 'object') {
+            const savedId = String(saved.id || '').trim();
+            const savedEntity = String(saved.entity_id || entity_id).trim().toLowerCase();
+            const items = Array.isArray(guardCameras) ? guardCameras.slice() : [];
+            const next = items.filter((it) => {
+              if (!it || typeof it !== 'object') return false;
+              const itId = String(it.id || '').trim();
+              const itEntity = String(it.entity_id || '').trim().toLowerCase();
+              if (savedId && itId === savedId) return false;
+              if (savedEntity && itEntity === savedEntity) return false;
+              return true;
+            });
+            next.push(saved);
+            guardCameras = next;
+            renderGuardCameras();
+          }
           setGuardEditing(null);
-          await refreshGuardCameras();
+          refreshGuardCameras();
           qs('guard_formMsg').textContent = 'Salvato';
           setTimeout(() => { qs('guard_formMsg').textContent = ''; }, 1400);
         } catch (e) {
