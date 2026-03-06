@@ -248,6 +248,7 @@
       let groupOrder = [];
       let activeAddr = null; 
       let activeReverse = false; 
+      let activeIsGroup = false;
       let showActiveOnly = false;
       let collapsedGroups = new Set();
       let renderQueued = false;
@@ -310,8 +311,6 @@
       }
       async function sendCoverPos(addr, position) {
         if (String(addr || '').startsWith('group:')) {
-          const gid = String(addr || '').slice('group:'.length);
-          await getJson(`api/control/cover_group/${encodeURIComponent(gid)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command:'SET_POSITION', position}) });
           return;
         }
         if (String(addr || '').startsWith('cover.')) {
@@ -472,7 +471,7 @@
         row.classList.toggle('moving', moving);
         try {
           const sub = row.querySelector('.sub');
-          if (sub) sub.textContent = `${state} \u00B7 ${Math.round(pos)}%`;
+          if (sub) sub.textContent = `${state}`;
         } catch (e) {}
         try {
           const ico = row.querySelector('.coverIco');
@@ -590,6 +589,12 @@
       function openModal(addr, name) {
         activeAddr = addr;
         activeReverse = false;
+        activeIsGroup = String(addr || '').startsWith('group:');
+        try {
+          const pillWrap = document.querySelector('.pillWrap');
+          if (pillWrap) pillWrap.style.display = activeIsGroup ? 'none' : '';
+        } catch (e) {}
+        try { qs('mPctTop').style.display = activeIsGroup ? 'none' : ''; } catch (e) {}
         if (!String(addr || '').startsWith('group:')) {
           try {
             const d = (lastDevices || []).find(x => String(x.type || '') === 'cover' && addrOf(x) === addr);
@@ -598,27 +603,26 @@
         }
         qs('mTitle').textContent = name || 'Cover';
         let pos = 0;
-        if (String(addr || '').startsWith('group:')) {
-          const gid = String(addr || '').slice('group:'.length);
-          const g = (coverGroups || []).find(x => groupIdFromGroup(x) === gid);
-          const agg = g ? aggregateGroupState(g) : { position: 0 };
-          pos = Math.max(0, Math.min(100, Number(agg.position ?? 0)));
-        } else {
+        if (!activeIsGroup) {
           const st = coverByAddr.get(addr) || { state:'?', position:0 };
           pos = Math.max(0, Math.min(100, Number((st.position === null || st.position === undefined) ? 0 : st.position)));
+          setModalPos(pos, false);
         }
-        setModalPos(pos, false);
         qs('modalBack').style.display = 'flex';
         // Ensure handle is placed after the modal is actually laid out
-        try { requestAnimationFrame(() => setModalPos(pos, false)); } catch (e) {}
+        if (!activeIsGroup) {
+          try { requestAnimationFrame(() => setModalPos(pos, false)); } catch (e) {}
+        }
       }
       function closeModal() {
         qs('modalBack').style.display = 'none';
         activeAddr = null;
         activeReverse = false;
+        activeIsGroup = false;
       }
 
       function setModalPos(pos, send) { 
+        if (activeIsGroup) return;
         const p = Math.max(0, Math.min(100, Number(pos))); 
         const ratio = p / 100; 
         const visual = activeReverse ? (1 - ratio) : ratio; 
@@ -728,7 +732,7 @@
               row.innerHTML = `
                 <div class="content">
                   <div class="name">${escapeHtml(name)}</div>
-                  <div class="sub">${escapeHtml(String(state))} &#183; ${Math.round(pos)}%</div>
+                  <div class="sub">${escapeHtml(String(state))}</div>
                 </div>
                 <div class="actions">
                   <button class="iconBtn" data-act="open" aria-label="Apri">

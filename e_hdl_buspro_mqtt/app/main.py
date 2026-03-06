@@ -21,7 +21,6 @@ from fastapi.staticfiles import StaticFiles
 from .buspro_gateway import BusproGateway, CoverKey, CoverState, LightKey, LightState
 from .discovery import (
     cover_discovery,
-    cover_group_discovery,
     cover_group_no_pct_discovery,
     cover_no_pct_discovery,
     dry_contact_discovery,
@@ -48,7 +47,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.264"
+ADDON_VERSION = "0.1.265"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -1612,8 +1611,6 @@ self.addEventListener('fetch', (event) => {{
         pos_i = int(position) if position is not None else None
         store.set_cover_group_state(group_id=gid, state=state_u, position=pos_i)
         mqtt.publish(f"{settings.mqtt.base_topic}/state/cover_group_state/{gid}", state_u, retain=True)
-        if pos_i is not None:
-            mqtt.publish(f"{settings.mqtt.base_topic}/state/cover_group_pos/{gid}", str(pos_i), retain=True)
 
     def _rebuild_cover_group_index() -> None:
         groups = store.list_cover_groups()
@@ -1854,8 +1851,9 @@ self.addEventListener('fetch', (event) => {{
                     await gw.cover_close(subnet_id=subnet, device_id=did, channel=ch)
             elif cmd == "STOP":
                 await gw.cover_stop(subnet_id=subnet, device_id=did, channel=ch)
-            elif cmd == "SET_POSITION" and pos is not None:
-                await gw.cover_set_position(subnet_id=subnet, device_id=did, channel=ch, position=int(pos))
+            elif cmd == "SET_POSITION":
+                # Cover groups: ignore percentage-based commands (use OPEN/CLOSE/STOP only).
+                continue
 
     async def _broadcast_light_state(dev: dict[str, Any], st: LightState) -> None:
         subnet = int(dev["subnet_id"])
@@ -2177,15 +2175,11 @@ self.addEventListener('fetch', (event) => {{
 
         for g in groups:
             try:
-                topic, payload = cover_group_discovery(
-                    discovery_prefix=settings.mqtt.discovery_prefix,
-                    base_topic=settings.mqtt.base_topic,
-                    gateway_host=settings.gateway.host,
-                    gateway_port=settings.gateway.port,
-                    group=g,
-                    category="Cover",
-                )
-                mqtt.publish(topic, payload, retain=True)
+                # Remove percentage-based group entity (if previously published).
+                name = str(g.get("name") or "").strip()
+                gid = str(g.get("id") or "").strip() or slugify(name)
+                if gid:
+                    mqtt.publish(_cover_group_config_topic(gid=gid), "", retain=True)
                 topic2, payload2 = cover_group_no_pct_discovery(
                     discovery_prefix=settings.mqtt.discovery_prefix,
                     base_topic=settings.mqtt.base_topic,
@@ -3072,8 +3066,6 @@ self.addEventListener('fetch', (event) => {{
                     if isinstance(st, dict):
                         if "state" in st:
                             mqtt.publish(f"{settings.mqtt.base_topic}/state/cover_group_state/{gid}", str(st.get("state") or ""), retain=True)
-                        if st.get("position") is not None:
-                            mqtt.publish(f"{settings.mqtt.base_topic}/state/cover_group_pos/{gid}", str(int(st.get("position"))), retain=True)
                 if isinstance(k, str) and k.startswith("temp:"):
                     addr = k.split(":", 1)[1]
                     subnet_s, dev_s, ch_s = addr.split(".")
@@ -3128,7 +3120,7 @@ self.addEventListener('fetch', (event) => {{
         mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/cover_pos/+/+/+")
         mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/cover_group/+")
         mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/cover_group_raw/+")
-        mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/cover_group_pos/+")
+        # cover_group_pos disabled: groups use OPEN/CLOSE/STOP only
 
         # Build scenario membership index for state updates on light changes
         try:
@@ -3165,16 +3157,7 @@ self.addEventListener('fetch', (event) => {{
                     if cmd in ("OPEN", "CLOSE", "STOP"):
                         asyncio.run_coroutine_threadsafe(_run_cover_group_command(gid, cmd, raw=True), loop)
                     return
-                if kind2 == "cover_group_pos":
-                    gid = parts[-1]
-                    s = payload.strip()
-                    if s and s[0] == "{":
-                        obj = json.loads(s)
-                        pos = int(obj.get("position"))
-                    else:
-                        pos = int(float(s))
-                    asyncio.run_coroutine_threadsafe(_run_cover_group_command(gid, "SET_POSITION", pos=pos), loop)
-                    return
+                # cover_group_pos disabled: ignore percentage commands for groups
 
                 # topic: base/cmd/light/subnet/device/channel
                 if len(parts) < 6:
@@ -3923,14 +3906,9 @@ self.addEventListener('fetch', (event) => {{
     @api.post("/api/control/cover_group/{gid}")
     async def api_control_cover_group(gid: str, payload: dict[str, Any]):
         cmd = str(payload.get("command") or payload.get("cmd") or "").strip().upper()
-        if cmd not in ("OPEN", "CLOSE", "STOP", "SET_POSITION"):
-            raise HTTPException(status_code=400, detail="command must be OPEN/CLOSE/STOP/SET_POSITION")
+        if cmd not in ("OPEN", "CLOSE", "STOP"):
+            raise HTTPException(status_code=400, detail="command must be OPEN/CLOSE/STOP")
         pos: int | None = None
-        if cmd == "SET_POSITION":
-            try:
-                pos = int(payload.get("position"))
-            except Exception:
-                raise HTTPException(status_code=400, detail="position required for SET_POSITION")
 
         gw: BusproGateway | None = api.state.gateway
         if gw is None:
@@ -6019,10 +5997,7 @@ self.addEventListener('fetch', (event) => {{
                         if not gid:
                             continue
                         try:
-                            if cmd == "SET_POSITION":
-                                pos = int(it.get("position"))
-                                await _run_cover_group_command(gid, "SET_POSITION", pos=pos)
-                            else:
+                            if cmd != "SET_POSITION":
                                 await _run_cover_group_command(gid, cmd)
                             cover_sent += 1
                         except Exception:
@@ -6283,19 +6258,6 @@ self.addEventListener('fetch', (event) => {{
             cmd = action
             if cmd in ("OPEN", "CLOSE", "STOP"):
                 await _run_cover_group_command(gid, cmd, pos=None)
-                return {"ok": True}
-            if cmd == "SET_POSITION":
-                pos = None
-                if isinstance(payload, dict) and payload.get("position") is not None:
-                    pos = payload.get("position")
-                else:
-                    pos = data.get("position")
-                try:
-                    pos_i = int(pos)
-                except Exception:
-                    raise HTTPException(status_code=400, detail="position required")
-                pos_i = max(0, min(100, pos_i))
-                await _run_cover_group_command(gid, "SET_POSITION", pos=pos_i)
                 return {"ok": True}
             raise HTTPException(status_code=400, detail="Invalid action")
 

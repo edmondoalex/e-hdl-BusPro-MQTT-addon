@@ -384,7 +384,7 @@ def cover_group_no_pct_discovery(
 ) -> tuple[str, dict[str, Any]]:
     """Clone group cover entity for HA: open/stop/close only (no position, optimistic)."""
     name0 = str(group.get("name") or "").strip() or "Cover Group"
-    name = name0 + " no%"
+    name = name0
     nid = node_id(gateway_host, gateway_port)
     gid = str(group.get("id") or "").strip() or slugify(name0)
     oid = f"group_{gid}_no_pct"
