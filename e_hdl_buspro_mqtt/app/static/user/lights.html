@@ -609,10 +609,13 @@
           .filter(it => it && typeof it === 'object')
           .map(it => {
             const kind = String(it.kind || 'single').toLowerCase();
-            const cmd = String(it.command || '').toUpperCase();
+            let cmd = String(it.command || '').toUpperCase();
             const pos = (it.position === null || it.position === undefined) ? null : Math.max(0, Math.min(100, Number(it.position)));
+            if (cmd === 'SET_POSITION') {
+              cmd = 'STOP';
+            }
             if (kind === 'group') {
-              return { kind: 'group', group_id: String(it.group_id || it.id || '').trim(), command: cmd, position: Number.isFinite(pos) ? Math.round(pos) : null };
+              return { kind: 'group', group_id: String(it.group_id || it.id || '').trim(), command: cmd, position: null };
             }
             return {
               kind: 'single',
@@ -620,11 +623,11 @@
               device_id: Number(it.device_id),
               channel: Number(it.channel),
               command: cmd,
-              position: Number.isFinite(pos) ? Math.round(pos) : null,
+              position: null,
             };
           })
           .filter(it => (it.kind === 'group' ? !!it.group_id : (Number.isFinite(it.subnet_id) && Number.isFinite(it.device_id) && Number.isFinite(it.channel))))
-          .filter(it => ['OPEN','CLOSE','STOP','SET_POSITION'].includes(String(it.command||'')));
+          .filter(it => ['OPEN','CLOSE','STOP'].includes(String(it.command||'')));
 
         const nameInput = qs('scNameInput');
         if (nameInput) nameInput.value = editingScenarioName;
@@ -724,7 +727,7 @@
 
         const header = document.createElement('div');
         header.className = 'scItem';
-        header.innerHTML = `<div class="scItemLeft"><div class="scItemTitle">Tapparelle scenario</div><div class="scItemSub">Su / Gi&#249; / Stop / %</div></div>`;
+        header.innerHTML = `<div class="scItemLeft"><div class="scItemTitle">Tapparelle scenario</div><div class="scItemSub">Su / Gi&#249; / Stop</div></div>`;
         root.appendChild(header);
 
         if (!items.length) {
@@ -739,7 +742,6 @@
           const key = coverKeyFromItem(it);
           const kind = String(it.kind || 'single');
           const cmd = String(it.command || '').toUpperCase();
-          const pos = (it.position === null || it.position === undefined) ? 0 : Math.max(0, Math.min(100, Number(it.position)));
           const isGroup = kind === 'group';
           const title = isGroup
             ? String(((grpMap.get(String(it.group_id||''))||{}).name) || it.group_id || key)
@@ -761,8 +763,6 @@
               <button class="btn ${cmd==='OPEN' ? 'primary':''}" type="button" data-act="c_open" data-key="${escapeHtml(key)}">Su</button>
               <button class="btn ${cmd==='CLOSE' ? 'primary':''}" type="button" data-act="c_close" data-key="${escapeHtml(key)}">Gi&#249;</button>
               <button class="btn ${cmd==='STOP' ? 'primary':''}" type="button" data-act="c_stop" data-key="${escapeHtml(key)}">Stop</button>
-              <input class="scRange" type="range" min="0" max="100" value="${Math.round(pos)}" data-act="c_pos" data-key="${escapeHtml(key)}" />
-              <span class="scMeta" style="margin-left:6px">${Math.round(pos)}%</span>
               <button class="btn danger" type="button" data-act="c_del" data-key="${escapeHtml(key)}">Rimuovi</button>
             </div>
           `;
@@ -796,17 +796,6 @@
             const key = b.getAttribute('data-key') || '';
             for (const it of (editingScenarioCovers || [])) if (coverKeyFromItem(it) === key) { it.command = 'STOP'; it.position = null; }
             renderScenarioEditorCovers();
-          });
-        });
-        root.querySelectorAll('input[data-act="c_pos"]').forEach((el) => {
-          el.addEventListener('input', () => {
-            const key = el.getAttribute('data-key') || '';
-            const v = Math.max(0, Math.min(100, Number(el.value || 0)));
-            for (const it of (editingScenarioCovers || [])) if (coverKeyFromItem(it) === key) { it.command = 'SET_POSITION'; it.position = Math.round(v); }
-            try {
-              const meta = el.parentElement && el.parentElement.querySelector('.scMeta');
-              if (meta) meta.textContent = `${Math.round(v)}%`;
-            } catch (e) {}
           });
         });
       }
@@ -1046,9 +1035,8 @@
           const covers = (editingScenarioCovers || []).map((it) => {
             const kind = String(it.kind || 'single') === 'group' ? 'group' : 'single';
             const cmd = String(it.command || '').toUpperCase();
-            const pos = (it.position === null || it.position === undefined) ? null : Math.max(0, Math.min(100, Number(it.position)));
             if (kind === 'group') {
-              return { kind: 'group', group_id: String(it.group_id || '').trim(), command: cmd, position: (cmd === 'SET_POSITION') ? Math.round(pos || 0) : null };
+              return { kind: 'group', group_id: String(it.group_id || '').trim(), command: cmd, position: null };
             }
             return {
               kind: 'single',
@@ -1056,7 +1044,7 @@
               device_id: Number(it.device_id),
               channel: Number(it.channel),
               command: cmd,
-              position: (cmd === 'SET_POSITION') ? Math.round(pos || 0) : null,
+              position: null,
             };
           });
           await getJson(`api/user/light_scenarios/${encodeURIComponent(sid)}`, {
