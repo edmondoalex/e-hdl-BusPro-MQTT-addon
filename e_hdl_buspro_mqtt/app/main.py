@@ -49,7 +49,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.287"
+ADDON_VERSION = "0.1.288"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -321,6 +321,17 @@ def create_app() -> FastAPI:
             payload={"entity_id": eid, "filename": filename},
             timeout_s=timeout_s,
         )
+        # Prefer direct filesystem read (avoids HA /local auth issues).
+        try:
+            for _ in range(3):
+                try:
+                    with open(filename, "rb") as f:
+                        raw = f.read()
+                    return raw, "image/jpeg"
+                except FileNotFoundError:
+                    time.sleep(0.2)
+        except Exception:
+            pass
         local_path = f"/local/e_guard_{slug}.jpg"
         try:
             raw, ctype = _ha_fetch(local_path, timeout_s=timeout_s, use_auth=True)
