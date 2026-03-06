@@ -47,7 +47,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.265"
+ADDON_VERSION = "0.1.266"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -3149,7 +3149,8 @@ self.addEventListener('fetch', (event) => {{
                     gid = parts[-1]
                     cmd = payload.strip().upper()
                     if cmd in ("OPEN", "CLOSE", "STOP"):
-                        asyncio.run_coroutine_threadsafe(_run_cover_group_command(gid, cmd), loop)
+                        # Always use raw commands for groups (direct UP/DOWN/STOP).
+                        asyncio.run_coroutine_threadsafe(_run_cover_group_command(gid, cmd, raw=True), loop)
                     return
                 if kind2 == "cover_group_raw":
                     gid = parts[-1]
@@ -3915,7 +3916,7 @@ self.addEventListener('fetch', (event) => {{
             raise HTTPException(status_code=503, detail="gateway not ready")
 
         t0 = time.time()
-        await _run_cover_group_command(str(gid or "").strip(), cmd, pos=pos)
+        await _run_cover_group_command(str(gid or "").strip(), cmd, pos=pos, raw=True)
         _LOGGER.debug("cover_group control gid=%s cmd=%s took=%.3fs", gid, cmd, time.time() - t0)
         return {"ok": True}
 
@@ -5998,7 +5999,7 @@ self.addEventListener('fetch', (event) => {{
                             continue
                         try:
                             if cmd != "SET_POSITION":
-                                await _run_cover_group_command(gid, cmd)
+                                await _run_cover_group_command(gid, cmd, raw=True)
                             cover_sent += 1
                         except Exception:
                             continue
@@ -6257,7 +6258,7 @@ self.addEventListener('fetch', (event) => {{
                 raise HTTPException(status_code=400, detail="Invalid action: data.group_id required")
             cmd = action
             if cmd in ("OPEN", "CLOSE", "STOP"):
-                await _run_cover_group_command(gid, cmd, pos=None)
+                await _run_cover_group_command(gid, cmd, pos=None, raw=True)
                 return {"ok": True}
             raise HTTPException(status_code=400, detail="Invalid action")
 
