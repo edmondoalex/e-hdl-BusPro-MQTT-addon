@@ -13,6 +13,7 @@ import urllib.request
 import urllib.error
 from typing import Any
 import re
+import shutil
 
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
@@ -47,7 +48,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.273"
+ADDON_VERSION = "0.1.274"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -174,6 +175,13 @@ def create_app() -> FastAPI:
 
     static_dir = os.path.join(os.path.dirname(__file__), "static")
     api.mount("/static", StaticFiles(directory=static_dir), name="static")
+    ui_icons_dir = os.environ.get("BUSPRO_UI_ICONS", "/data/ui_icons")
+    api.state.ui_icons_dir = ui_icons_dir
+    try:
+        os.makedirs(os.path.join(ui_icons_dir, "mdi"), exist_ok=True)
+        api.mount("/static/ui-icons", StaticFiles(directory=os.path.join(ui_icons_dir, "mdi")), name="ui-icons")
+    except Exception:
+        pass
 
     def _resolve_www_dir() -> str | None:
         candidates: list[str] = []
@@ -3924,6 +3932,46 @@ self.addEventListener('fetch', (event) => {{
             except Exception:
                 return
 
+    def _export_ui_icons_payload() -> dict[str, Any]:
+        icons = store.get_hub_icons()
+        links = store.list_hub_links()
+        actions = store.list_home_actions()
+        names = (
+            _mdi_names_from_hub_config({"hub_icons": icons})
+            + _mdi_names_from_hub_links(links)
+            + _mdi_names_from_home_actions(actions)
+        )
+        # build mapping
+        link_map = {str(it.get("id") or "").strip(): str(it.get("icon") or "").strip() for it in links if isinstance(it, dict)}
+        action_map = {str(it.get("id") or "").strip(): str(it.get("icon") or "").strip() for it in actions if isinstance(it, dict)}
+        return {
+            "hub_icons": icons,
+            "hub_links": link_map,
+            "home_actions": action_map,
+            "mdi_names": sorted({n for n in names if n}),
+        }
+
+    def _write_ui_icons_export(dst_dir: str, payload: dict[str, Any]) -> dict[str, Any]:
+        os.makedirs(os.path.join(dst_dir, "mdi"), exist_ok=True)
+        names = list(payload.get("mdi_names") or [])
+        res = ensure_mdi_icons(dst_dir, names)
+        out = dict(payload)
+        out.update(
+            {
+                "export_dir": dst_dir,
+                "export_url": "/static/ui-icons",
+                "downloaded": res.downloaded,
+                "failed": res.failed,
+                "missing": res.missing,
+            }
+        )
+        try:
+            with open(os.path.join(dst_dir, "icons.json"), "w", encoding="utf-8") as f:
+                json.dump(out, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+        return out
+
     @api.get("/api/icons/mdi/{name}.svg") 
     async def mdi_icon(name: str): 
         # Always return something (placeholder if missing/offline)
@@ -4173,6 +4221,26 @@ self.addEventListener('fetch', (event) => {{
             "failed": res.failed,
             "missing": res.missing,
         }
+
+    @api.post("/api/icons/export_ui")
+    async def export_ui_icons():
+        payload = _export_ui_icons_payload()
+        out_main = {}
+        try:
+            out_main = _write_ui_icons_export(api.state.ui_icons_dir, payload)
+        except Exception:
+            out_main = {"error": "export_failed"}
+
+        # Optional export to /share for easy access on host
+        out_share = None
+        try:
+            if os.path.isdir("/share"):
+                share_dir = os.path.join("/share", "ui_icons")
+                out_share = _write_ui_icons_export(share_dir, payload)
+        except Exception:
+            out_share = {"error": "share_export_failed"}
+
+        return {"main": out_main, "share": out_share}
 
     @api.get("/api/devices")
     async def list_devices():
