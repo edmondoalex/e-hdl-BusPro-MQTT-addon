@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio 
 import base64
@@ -48,7 +48,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.283"
+ADDON_VERSION = "0.1.284"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -317,7 +317,13 @@ def create_app() -> FastAPI:
             timeout_s=timeout_s,
         )
         local_path = f"/local/e_guard_{slug}.jpg"
-        raw, ctype = _ha_fetch(local_path, timeout_s=timeout_s)
+        try:
+            raw, ctype = _ha_fetch(local_path, timeout_s=timeout_s, use_auth=True)
+        except HTTPException as e:
+            if e.status_code in (401, 403):
+                raw, ctype = _ha_fetch(local_path, timeout_s=timeout_s, use_auth=False)
+            else:
+                raise
         if not ctype:
             ctype = "image/jpeg"
         return raw, ctype
@@ -2658,7 +2664,7 @@ self.addEventListener('fetch', (event) => {{
             if not isinstance(payload, (list, tuple)) or len(payload) != 2:
                 return None
 
-            # Default for "auto" on 2-byte payloads: many HDL sensors encode in 0.5°C steps.
+            # Default for "auto" on 2-byte payloads: many HDL sensors encode in 0.5Â°C steps.
             scale: float | None = None
             if fmt in ("short_half", "half", "0.5", "x0.5"):
                 scale = 0.5
@@ -3552,7 +3558,7 @@ self.addEventListener('fetch', (event) => {{
 
     @api.get("/index.html", response_class=HTMLResponse)
     async def index_html(request: Request):
-        # Used by Ingress entry to avoid double-slash URLs (…/hassio_ingress/<token>//).
+        # Used by Ingress entry to avoid double-slash URLs (â€¦/hassio_ingress/<token>//).
         index_path = os.path.join(static_dir, "index.html")
         with open(index_path, "r", encoding="utf-8") as f:
             html = f.read()
@@ -3810,40 +3816,55 @@ self.addEventListener('fetch', (event) => {{
         try:
             eid_enc = urllib.parse.quote(eid, safe="")
             q = f"&time={urllib.parse.quote(str(t or ''), safe='')}" if t else ""
-            # Prefer entity_picture/access_token if HA returns them for the camera
-            pic_path = ""
+            # Prefer entity_picture/access_token if HA returns them for the camera,
+            # but fall back across multiple candidate paths before using snapshot service.
+            paths: list[str] = []
             try:
                 st = _ha_request("GET", f"/api/states/{eid_enc}", timeout_s=10)
                 attrs = st.get("attributes") if isinstance(st, dict) else {}
                 if isinstance(attrs, dict):
                     pic = str(attrs.get("entity_picture") or "").strip()
-                    if pic.startswith("/"):
-                        pic_path = pic
-                    elif pic:
-                        pic_path = "/" + pic.lstrip("/")
-                    if not pic_path:
-                        tok = str(attrs.get("access_token") or "").strip()
-                        if tok:
-                            pic_path = f"/api/camera_proxy/{eid_enc}?token={urllib.parse.quote(tok, safe='')}"
+                    if pic:
+                        pic_path = pic if pic.startswith("/") else "/" + pic.lstrip("/")
+                        paths.append(pic_path)
+                        if "/api/camera_proxy_stream/" in pic_path:
+                            paths.append(pic_path.replace("/api/camera_proxy_stream/", "/api/camera_proxy/"))
+                    tok = str(attrs.get("access_token") or "").strip()
+                    if tok:
+                        paths.append(f"/api/camera_proxy/{eid_enc}?token={urllib.parse.quote(tok, safe='')}")
             except Exception:
-                pic_path = ""
+                pass
+            if not paths:
+                paths.append(f"/api/camera_proxy/{eid_enc}")
 
-            if pic_path:
-                path = pic_path
+            last_err: HTTPException | None = None
+            tried: set[str] = set()
+            for p in paths:
+                path = p if p.startswith("/") else "/" + p.lstrip("/")
                 if "?" in path:
                     path = f"{path}{q}" if q else path
                 else:
                     path = f"{path}?{q.lstrip('&')}" if q else path
-            else:
-                path = f"/api/camera_proxy/{eid_enc}?{q.lstrip('&')}" if q else f"/api/camera_proxy/{eid_enc}"
+                if path in tried:
+                    continue
+                tried.add(path)
+                try:
+                    use_auth = "token=" not in path
+                    raw, ctype = _ha_fetch(path, timeout_s=12, use_auth=use_auth)
+                    if not (ctype or "").lower().startswith("image/"):
+                        _LOGGER.warning("e_guard snapshot non-image for %s: %s", eid, ctype)
+                    return Response(content=raw, media_type=ctype)
+                except HTTPException as e:
+                    last_err = e
+                    _LOGGER.warning("e_guard snapshot primary failed for %s via %s: %s", eid, path, e.detail)
 
+            # Fallback to camera.snapshot service when proxy paths fail.
             try:
-                use_auth = "token=" not in path
-                raw, ctype = _ha_fetch(path, timeout_s=12, use_auth=use_auth)
-            except HTTPException as e:
-                # Fallback to camera.snapshot service when stream proxy fails.
-                _LOGGER.warning("e_guard snapshot primary failed for %s: %s", eid, e.detail)
                 raw, ctype = _ha_snapshot_via_service(eid, timeout_s=12)
+            except HTTPException as e:
+                if last_err is not None:
+                    raise last_err
+                raise e
             if not (ctype or "").lower().startswith("image/"):
                 _LOGGER.warning("e_guard snapshot non-image for %s: %s", eid, ctype)
             return Response(content=raw, media_type=ctype)
@@ -6946,3 +6967,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
