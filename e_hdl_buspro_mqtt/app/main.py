@@ -47,7 +47,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.268"
+ADDON_VERSION = "0.1.269"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -2261,6 +2261,14 @@ self.addEventListener('fetch', (event) => {{
         api.state.air_index = {}
         api.state.pir_index = {}
         api.state.ultrasonic_index = {}
+
+        # Cleanup: remove SET_POSITION from scenario covers (direct-only).
+        try:
+            res = store.cleanup_light_scenarios_no_pct()
+            if res.get("changed"):
+                _LOGGER.info("Cleaned scenario covers (no %%): updated=%s", res.get("updated"))
+        except Exception:
+            pass
 
         # Prefill last-known states from persistent store to avoid broadcasting unchanged states.
         try:

@@ -161,6 +161,52 @@ class StateStore:
             raw["ui"]["pwa"] = self._default_ui().get("pwa")
         return raw
 
+    def cleanup_light_scenarios_no_pct(self) -> dict[str, Any]:
+        """
+        Remove SET_POSITION from scenario covers and clear any stored position.
+        This enforces direct-only commands (OPEN/CLOSE/STOP) for scenarios.
+        """
+        raw = self.read_raw()
+        ui = dict(raw.get("ui") or {})
+        items = ui.get("light_scenarios") or []
+        if not isinstance(items, list):
+            return {"changed": False, "updated": 0}
+
+        changed = False
+        updated = 0
+        out_items: list[dict[str, Any]] = []
+        for sc in items:
+            if not isinstance(sc, dict):
+                continue
+            cur = dict(sc)
+            covers = cur.get("covers") or []
+            if isinstance(covers, list):
+                new_covers: list[dict[str, Any]] = []
+                for it in covers:
+                    if not isinstance(it, dict):
+                        continue
+                    c = dict(it)
+                    cmd = str(c.get("command") or "").strip().upper()
+                    if cmd == "SET_POSITION":
+                        c["command"] = "STOP"
+                        c["position"] = None
+                        changed = True
+                    else:
+                        if c.get("position") is not None:
+                            c["position"] = None
+                            changed = True
+                    new_covers.append(c)
+                if new_covers != covers:
+                    cur["covers"] = new_covers
+                    changed = True
+            out_items.append(cur)
+        if changed:
+            ui["light_scenarios"] = out_items
+            raw["ui"] = ui
+            self.write_raw(raw)
+            updated = len(out_items)
+        return {"changed": changed, "updated": updated}
+
     def get_pwa_config(self) -> dict[str, Any]:
         ui = self.read_raw().get("ui", {}) or {}
         pwa = ui.get("pwa", {}) if isinstance(ui, dict) else {}
