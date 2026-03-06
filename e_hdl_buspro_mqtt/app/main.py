@@ -47,7 +47,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.266"
+ADDON_VERSION = "0.1.267"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -6012,15 +6012,16 @@ self.addEventListener('fetch', (event) => {{
                     except Exception:
                         continue
                     try:
+                        # Scenario single covers: use direct (raw) commands only; ignore SET_POSITION.
                         if cmd == "OPEN":
-                            await gw.cover_open(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                            await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
                         elif cmd == "CLOSE":
-                            await gw.cover_close(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                            await gw.cover_close_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
                         elif cmd == "STOP":
                             await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
                         else:
-                            pos = int(it.get("position"))
-                            await gw.cover_set_position(subnet_id=subnet_id, device_id=device_id, channel=channel, position=pos)
+                            # Ignore SET_POSITION for scenarios on single covers
+                            continue
                         cover_sent += 1
                     except Exception:
                         continue
