@@ -48,7 +48,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.276"
+ADDON_VERSION = "0.1.277"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -3784,14 +3784,24 @@ self.addEventListener('fetch', (event) => {{
         return {"ok": True}
 
     @api.get("/api/e_guard/snapshot")
-    async def api_guard_snapshot(entity_id: str):
+    async def api_guard_snapshot(entity_id: str, t: str | None = None):
         if not _ha_enabled():
             raise HTTPException(status_code=503, detail="Home Assistant not available")
         eid = str(entity_id or "").strip().lower()
         if not eid.startswith("camera."):
             raise HTTPException(status_code=400, detail="entity_id must be camera.*")
-        raw, ctype = _ha_fetch(f"/api/camera_proxy/{eid}", timeout_s=10)
-        return Response(content=raw, media_type=ctype)
+        try:
+            eid_enc = urllib.parse.quote(eid, safe="")
+            q = f"?time={urllib.parse.quote(str(t or ''), safe='')}" if t else ""
+            raw, ctype = _ha_fetch(f"/api/camera_proxy/{eid_enc}{q}", timeout_s=12)
+            if not (ctype or "").lower().startswith("image/"):
+                _LOGGER.warning("e_guard snapshot non-image for %s: %s", eid, ctype)
+            return Response(content=raw, media_type=ctype)
+        except HTTPException:
+            raise
+        except Exception as e:
+            _LOGGER.exception("e_guard snapshot failed for %s: %s", eid, e)
+            raise HTTPException(status_code=502, detail="snapshot fetch failed")
 
     @api.post("/api/hub_links")
     async def api_hub_links_upsert(payload: dict[str, Any]):
