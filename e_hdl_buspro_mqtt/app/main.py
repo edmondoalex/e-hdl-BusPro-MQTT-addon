@@ -49,7 +49,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.295"
+ADDON_VERSION = "0.1.296"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -352,7 +352,7 @@ def create_app() -> FastAPI:
             base_url = base.rstrip("/")
         else:
             base_url = "http://" + base
-        url = f"{base_url}/cgi-bin/snapshot.cgi?channel={int(channel)}&stream=0"
+        url = f"{base_url}/cgi-bin/snapshot.cgi?channel={int(channel)}"
         mgr = urllib.request.HTTPPasswordMgrWithDefaultRealm()
         mgr.add_password(None, base_url, user, password)
         handler = urllib.request.HTTPDigestAuthHandler(mgr)
