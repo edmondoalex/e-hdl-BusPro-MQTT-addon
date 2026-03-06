@@ -48,7 +48,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.284"
+ADDON_VERSION = "0.1.285"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -3834,8 +3834,9 @@ self.addEventListener('fetch', (event) => {{
                         paths.append(f"/api/camera_proxy/{eid_enc}?token={urllib.parse.quote(tok, safe='')}")
             except Exception:
                 pass
-            if not paths:
-                paths.append(f"/api/camera_proxy/{eid_enc}")
+            # Always include auth-based proxy endpoints as fallbacks (token can be stale).
+            paths.append(f"/api/camera_proxy/{eid_enc}")
+            paths.append(f"/api/camera_proxy_stream/{eid_enc}")
 
             last_err: HTTPException | None = None
             tried: set[str] = set()
