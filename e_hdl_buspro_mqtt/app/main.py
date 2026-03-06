@@ -5,6 +5,7 @@ import base64
 import json
 import logging
 import os 
+import socket
 import struct
 import time
 import threading
@@ -48,7 +49,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.285"
+ADDON_VERSION = "0.1.286"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -283,6 +284,8 @@ def create_app() -> FastAPI:
             except Exception:
                 body = ""
             raise HTTPException(status_code=int(getattr(e, "code", 502) or 502), detail=body or str(e))
+        except (socket.timeout, TimeoutError):
+            raise HTTPException(status_code=504, detail="timeout")
         except urllib.error.URLError as e:
             raise HTTPException(status_code=502, detail=str(e.reason or e))
 
@@ -304,6 +307,8 @@ def create_app() -> FastAPI:
             except Exception:
                 body = ""
             raise HTTPException(status_code=int(getattr(e, "code", 502) or 502), detail=body or str(e))
+        except (socket.timeout, TimeoutError):
+            raise HTTPException(status_code=504, detail="timeout")
         except urllib.error.URLError as e:
             raise HTTPException(status_code=502, detail=str(e.reason or e))
 
@@ -3863,8 +3868,7 @@ self.addEventListener('fetch', (event) => {{
             try:
                 raw, ctype = _ha_snapshot_via_service(eid, timeout_s=12)
             except HTTPException as e:
-                if last_err is not None:
-                    raise last_err
+                _LOGGER.warning("e_guard snapshot service failed for %s: %s", eid, e.detail)
                 raise e
             if not (ctype or "").lower().startswith("image/"):
                 _LOGGER.warning("e_guard snapshot non-image for %s: %s", eid, ctype)
