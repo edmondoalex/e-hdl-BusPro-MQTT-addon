@@ -49,7 +49,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.297"
+ADDON_VERSION = "0.1.298"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -362,7 +362,13 @@ def create_app() -> FastAPI:
             else:
                 url = "http://" + raw_url
             parsed = urllib.parse.urlparse(url)
-            base_url = f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+            host = parsed.hostname or ""
+            if not host:
+                raise HTTPException(status_code=400, detail="dahua_url invalid host")
+            if parsed.port:
+                base_url = f"{parsed.scheme}://{host}:{parsed.port}".rstrip("/")
+            else:
+                base_url = f"{parsed.scheme}://{host}".rstrip("/")
         else:
             base = str(host or "").strip()
             if not base:
