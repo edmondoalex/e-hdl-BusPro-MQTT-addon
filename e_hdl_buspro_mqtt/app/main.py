@@ -48,7 +48,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.282"
+ADDON_VERSION = "0.1.283"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -286,10 +286,10 @@ def create_app() -> FastAPI:
         except urllib.error.URLError as e:
             raise HTTPException(status_code=502, detail=str(e.reason or e))
 
-    def _ha_fetch(path: str, *, timeout_s: int = 8) -> tuple[bytes, str]:
+    def _ha_fetch(path: str, *, timeout_s: int = 8, use_auth: bool = True) -> tuple[bytes, str]:
         base = _ha_base_url().rstrip("/")
         url = base + "/" + path.lstrip("/")
-        headers = _ha_headers()
+        headers = _ha_headers() if use_auth else {}
         req = urllib.request.Request(url=url, method="GET")
         for k, v in headers.items():
             req.add_header(k, v)
@@ -3838,7 +3838,8 @@ self.addEventListener('fetch', (event) => {{
                 path = f"/api/camera_proxy/{eid_enc}?{q.lstrip('&')}" if q else f"/api/camera_proxy/{eid_enc}"
 
             try:
-                raw, ctype = _ha_fetch(path, timeout_s=12)
+                use_auth = "token=" not in path
+                raw, ctype = _ha_fetch(path, timeout_s=12, use_auth=use_auth)
             except HTTPException as e:
                 # Fallback to camera.snapshot service when stream proxy fails.
                 _LOGGER.warning("e_guard snapshot primary failed for %s: %s", eid, e.detail)
@@ -3892,7 +3893,8 @@ self.addEventListener('fetch', (event) => {{
                 pic_path = f"/api/camera_proxy/{urllib.parse.quote(eid, safe='')}"
 
             diag["snapshot_url"] = pic_path
-            raw, ctype = _ha_fetch(pic_path, timeout_s=10)
+            use_auth = "token=" not in pic_path
+            raw, ctype = _ha_fetch(pic_path, timeout_s=10, use_auth=use_auth)
             diag["snapshot"] = {"ok": True, "content_type": ctype, "bytes": len(raw)}
         except HTTPException as e:
             diag["snapshot"] = {"error": True, "status": e.status_code, "detail": e.detail}
