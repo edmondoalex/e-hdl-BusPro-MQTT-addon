@@ -53,6 +53,10 @@
         display:block;
         object-fit:cover;
       }
+      .thumb[data-err="1"]{
+        filter:grayscale(1);
+        opacity:.6;
+      }
       .card .meta{
         padding:10px 12px;
         display:flex;align-items:center;justify-content:space-between;gap:8px;
@@ -122,27 +126,60 @@
         return absUrl(`api/e_guard/snapshot?entity_id=${encodeURIComponent(entity_id)}&t=${t}`);
       }
 
+      function stopLoop(key) {
+        const stop = timers.get(key);
+        if (typeof stop === 'function') stop();
+        timers.delete(key);
+      }
+
       function clearTimers() {
-        for (const t of timers.values()) clearInterval(t);
-        timers.clear();
+        for (const k of Array.from(timers.keys())) stopLoop(k);
+      }
+
+      function attachSnapshotLoop(img, entity_id, refresh_s, key) {
+        const baseMs = Math.max(2000, Math.floor(Number(refresh_s || 5) * 1000));
+        const state = { timer: null, backoffMs: baseMs, stopped: false };
+        function schedule(delay) {
+          if (state.stopped) return;
+          if (state.timer) clearTimeout(state.timer);
+          state.timer = setTimeout(() => {
+            if (state.stopped) return;
+            img.src = snapshotUrl(entity_id);
+          }, delay);
+        }
+        img.addEventListener('load', () => {
+          img.dataset.err = '';
+          state.backoffMs = baseMs;
+          schedule(baseMs);
+        });
+        img.addEventListener('error', () => {
+          img.dataset.err = '1';
+          const next = Math.min(Math.max(baseMs, 5000) * 2, 60000);
+          state.backoffMs = Math.max(state.backoffMs, next);
+          schedule(state.backoffMs);
+        });
+        img.src = snapshotUrl(entity_id);
+        return () => {
+          state.stopped = true;
+          if (state.timer) clearTimeout(state.timer);
+        };
       }
 
       function openOverlay(name, entity_id, refresh_s) {
         ovLabel.textContent = name || entity_id;
         overlay.classList.add('show');
-        ovImg.src = snapshotUrl(entity_id);
+        stopLoop(`ov:${entity_id}`);
         if (refresh_s > 0) {
           const key = `ov:${entity_id}`;
-          if (timers.has(key)) clearInterval(timers.get(key));
-          const h = setInterval(() => { ovImg.src = snapshotUrl(entity_id); }, refresh_s * 1000);
-          timers.set(key, h);
+          const stop = attachSnapshotLoop(ovImg, entity_id, refresh_s, key);
+          timers.set(key, stop);
         }
       }
 
       function closeOverlay() {
         overlay.classList.remove('show');
-        for (const [k, v] of timers.entries()) {
-          if (String(k).startsWith('ov:')) { clearInterval(v); timers.delete(k); }
+        for (const [k] of timers.entries()) {
+          if (String(k).startsWith('ov:')) stopLoop(k);
         }
       }
 
@@ -179,8 +216,6 @@
           const img = document.createElement('img');
           img.className = 'thumb';
           img.alt = name;
-          img.src = snapshotUrl(entity_id);
-
           const meta = document.createElement('div');
           meta.className = 'meta';
           meta.innerHTML = `<div class="name">${name}</div><div class="tag">${refresh_s}s</div>`;
@@ -191,8 +226,8 @@
           grid.appendChild(card);
 
           const key = `card:${entity_id}`;
-          const h = setInterval(() => { img.src = snapshotUrl(entity_id); }, refresh_s * 1000);
-          timers.set(key, h);
+          const stop = attachSnapshotLoop(img, entity_id, refresh_s, key);
+          timers.set(key, stop);
         }
       }
 
