@@ -47,7 +47,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.269"
+ADDON_VERSION = "0.1.270"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -5896,6 +5896,17 @@ self.addEventListener('fetch', (event) => {{
             if v in ("ON", "OFF"):
                 desired = v
 
+        def _invert_state(st: str) -> str:
+            return "OFF" if str(st).upper() == "ON" else "ON"
+
+        def _invert_cover_cmd(cmd: str) -> str:
+            c = str(cmd or "").upper()
+            if c == "OPEN":
+                return "CLOSE"
+            if c == "CLOSE":
+                return "OPEN"
+            return "STOP"
+
         items = sc.get("items") or []
         if not isinstance(items, list) or not items:
             items = []
@@ -5908,7 +5919,14 @@ self.addEventListener('fetch', (event) => {{
             eid = str(it.get("entity_id") or "").strip().lower()
             if eid and "." in eid:
                 dom = str(it.get("domain") or eid.split(".", 1)[0]).strip().lower()
-                state = desired or str(it.get("state") or "").strip().upper()
+                base_state = str(it.get("state") or "").strip().upper()
+                state = base_state
+                if desired == "OFF":
+                    state = _invert_state(base_state)
+                elif desired == "ON":
+                    state = base_state
+                elif desired is None:
+                    state = base_state
                 if state not in ("ON", "OFF"):
                     continue
                 try:
@@ -5942,7 +5960,14 @@ self.addEventListener('fetch', (event) => {{
                 channel = int(it.get("channel"))
             except Exception:
                 continue
-            state = desired or str(it.get("state") or "").strip().upper()
+            base_state = str(it.get("state") or "").strip().upper()
+            state = base_state
+            if desired == "OFF":
+                state = _invert_state(base_state)
+            elif desired == "ON":
+                state = base_state
+            elif desired is None:
+                state = base_state
             if state not in ("ON", "OFF"):
                 continue
             on = state == "ON"
@@ -5959,80 +5984,73 @@ self.addEventListener('fetch', (event) => {{
                 continue
 
         cover_sent = 0
-        # Covers are applied only when scenario is turned ON (not on OFF toggle).
-        apply_covers = (desired is None) or (desired == "ON")
-        if apply_covers:
-            covers = sc.get("covers") or []
-            if isinstance(covers, list):
-                for it in covers:
-                    if not isinstance(it, dict):
+        covers = sc.get("covers") or []
+        if isinstance(covers, list):
+            for it in covers:
+                if not isinstance(it, dict):
+                    continue
+                cmd = str(it.get("command") or "").strip().upper()
+                if cmd not in ("OPEN", "CLOSE", "STOP", "SET_POSITION"):
+                    continue
+                cmd_eff = cmd
+                if desired == "OFF":
+                    cmd_eff = _invert_cover_cmd(cmd)
+                elif desired == "ON":
+                    cmd_eff = cmd
+                elif desired is None:
+                    cmd_eff = cmd
+                if cmd_eff == "SET_POSITION":
+                    continue
+                kind = str(it.get("kind") or "single").strip().lower()
+                if kind == "ha":
+                    if not _ha_enabled():
                         continue
-                    cmd = str(it.get("command") or "").strip().upper()
-                    if cmd not in ("OPEN", "CLOSE", "STOP", "SET_POSITION"):
-                        continue
-                    kind = str(it.get("kind") or "single").strip().lower()
-                    if kind == "ha":
-                        if not _ha_enabled():
-                            continue
-                        eid = str(it.get("entity_id") or "").strip().lower()
-                        if not eid.startswith("cover."):
-                            continue
-                        try:
-                            if cmd == "SET_POSITION":
-                                pos = int(it.get("position"))
-                                pos = max(0, min(100, pos))
-                                await asyncio.to_thread(
-                                    _ha_request,
-                                    "POST",
-                                    "/api/services/cover/set_cover_position",
-                                    payload={"entity_id": eid, "position": pos},
-                                    timeout_s=10,
-                                )
-                            else:
-                                svc = "open_cover" if cmd == "OPEN" else ("close_cover" if cmd == "CLOSE" else "stop_cover")
-                                await asyncio.to_thread(
-                                    _ha_request,
-                                    "POST",
-                                    f"/api/services/cover/{svc}",
-                                    payload={"entity_id": eid},
-                                    timeout_s=10,
-                                )
-                            cover_sent += 1
-                        except Exception:
-                            continue
-                        continue
-                    if kind == "group":
-                        gid = str(it.get("group_id") or "").strip()
-                        if not gid:
-                            continue
-                        try:
-                            if cmd != "SET_POSITION":
-                                await _run_cover_group_command(gid, cmd, raw=True)
-                            cover_sent += 1
-                        except Exception:
-                            continue
-                        continue
-
-                    try:
-                        subnet_id = int(it.get("subnet_id"))
-                        device_id = int(it.get("device_id"))
-                        channel = int(it.get("channel"))
-                    except Exception:
+                    eid = str(it.get("entity_id") or "").strip().lower()
+                    if not eid.startswith("cover."):
                         continue
                     try:
-                        # Scenario single covers: use direct (raw) commands only; ignore SET_POSITION.
-                        if cmd == "OPEN":
-                            await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
-                        elif cmd == "CLOSE":
-                            await gw.cover_close_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
-                        elif cmd == "STOP":
-                            await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
-                        else:
-                            # Ignore SET_POSITION for scenarios on single covers
-                            continue
+                        svc = "open_cover" if cmd_eff == "OPEN" else ("close_cover" if cmd_eff == "CLOSE" else "stop_cover")
+                        await asyncio.to_thread(
+                            _ha_request,
+                            "POST",
+                            f"/api/services/cover/{svc}",
+                            payload={"entity_id": eid},
+                            timeout_s=10,
+                        )
                         cover_sent += 1
                     except Exception:
                         continue
+                    continue
+                if kind == "group":
+                    gid = str(it.get("group_id") or "").strip()
+                    if not gid:
+                        continue
+                    try:
+                        await _run_cover_group_command(gid, cmd_eff, raw=True)
+                        cover_sent += 1
+                    except Exception:
+                        continue
+                    continue
+
+                try:
+                    subnet_id = int(it.get("subnet_id"))
+                    device_id = int(it.get("device_id"))
+                    channel = int(it.get("channel"))
+                except Exception:
+                    continue
+                try:
+                    # Scenario single covers: use direct (raw) commands only.
+                    if cmd_eff == "OPEN":
+                        await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                    elif cmd_eff == "CLOSE":
+                        await gw.cover_close_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                    elif cmd_eff == "STOP":
+                        await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                    else:
+                        continue
+                    cover_sent += 1
+                except Exception:
+                    continue
 
         # Best-effort: publish scenario switch state (optimistic)
         try:
