@@ -1328,7 +1328,7 @@
                 <div class="row3">
                   <div>
                     <label>entity_id</label>
-                    <input id="guard_entity" required placeholder="Es: camera.nvr_32ch_ext_ch1" />
+                    <input id="guard_entity" placeholder="Es: camera.nvr_32ch_ext_ch1" />
                   </div>
                   <div>
                     <label>Nome (override)</label>
@@ -5044,6 +5044,7 @@
           el.disabled = !isDahua;
         }
         for (const row of rows) row.style.display = isDahua ? '' : 'none';
+        qs('guard_entity').required = !isDahua;
         qs('guard_dahua_host').required = isDahua;
         qs('guard_dahua_user').required = isDahua;
         qs('guard_dahua_pass').required = isDahua;

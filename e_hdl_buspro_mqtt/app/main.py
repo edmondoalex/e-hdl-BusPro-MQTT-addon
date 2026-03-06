@@ -49,7 +49,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.294"
+ADDON_VERSION = "0.1.295"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -3867,8 +3867,6 @@ self.addEventListener('fetch', (event) => {{
         if not _ha_enabled():
             raise HTTPException(status_code=503, detail="Home Assistant not available")
         eid = str(entity_id or "").strip().lower()
-        if not eid.startswith("camera."):
-            raise HTTPException(status_code=400, detail="entity_id must be camera.*")
         try:
             try:
                 cam = store.find_guard_camera_by_entity(eid)
@@ -3890,6 +3888,8 @@ self.addEventListener('fetch', (event) => {{
                     return Response(content=raw, media_type=ctype or "image/jpeg")
                 except HTTPException as e:
                     _LOGGER.warning("e_guard dahua snapshot failed for %s: %s", eid, e.detail)
+            if not eid.startswith("camera."):
+                raise HTTPException(status_code=400, detail="entity_id must be camera.*")
 
             eid_enc = urllib.parse.quote(eid, safe="")
             q = f"&time={urllib.parse.quote(str(t or ''), safe='')}" if t else ""

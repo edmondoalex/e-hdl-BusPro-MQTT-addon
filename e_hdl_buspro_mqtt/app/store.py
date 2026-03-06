@@ -503,8 +503,6 @@ class StateStore:
         if not isinstance(payload, dict):
             raise ValueError("payload must be an object")
         entity_id = str(payload.get("entity_id") or "").strip().lower()
-        if not entity_id.startswith("camera."):
-            raise ValueError("entity_id must be a camera.* entity")
         name = str(payload.get("name") or "").strip()
         if not name:
             name = entity_id
@@ -536,8 +534,13 @@ class StateStore:
         if dahua_mode == "camera":
             dahua_channel = 1
         if source == "dahua":
+            if not entity_id:
+                entity_id = f"dahua.{uuid.uuid4()}"
             if not (dahua_host and dahua_user and dahua_pass):
                 raise ValueError("dahua_host/dahua_user/dahua_pass required for source=dahua")
+        if source == "ha":
+            if not entity_id.startswith("camera."):
+                raise ValueError("entity_id must be a camera.* entity")
         return {
             "entity_id": entity_id,
             "name": name,
