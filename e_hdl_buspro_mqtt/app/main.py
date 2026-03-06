@@ -48,7 +48,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.275"
+ADDON_VERSION = "0.1.276"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -277,6 +277,27 @@ def create_app() -> FastAPI:
                     return json.loads(raw.decode("utf-8", errors="replace"))
                 except Exception:
                     return raw.decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as e:
+            try:
+                body = e.read().decode("utf-8", errors="replace")
+            except Exception:
+                body = ""
+            raise HTTPException(status_code=int(getattr(e, "code", 502) or 502), detail=body or str(e))
+        except urllib.error.URLError as e:
+            raise HTTPException(status_code=502, detail=str(e.reason or e))
+
+    def _ha_fetch(path: str, *, timeout_s: int = 8) -> tuple[bytes, str]:
+        base = _ha_base_url().rstrip("/")
+        url = base + "/" + path.lstrip("/")
+        headers = _ha_headers()
+        req = urllib.request.Request(url=url, method="GET")
+        for k, v in headers.items():
+            req.add_header(k, v)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+                raw = resp.read()
+                ctype = resp.headers.get("Content-Type") or "application/octet-stream"
+                return raw, ctype
         except urllib.error.HTTPError as e:
             try:
                 body = e.read().decode("utf-8", errors="replace")
@@ -528,7 +549,7 @@ def create_app() -> FastAPI:
             return await call_next(request)
 
         # User pages
-        if path in ("/", "/home", "/home2", "/lights", "/covers", "/extra", "/scenarios"): 
+        if path in ("/", "/home", "/home2", "/lights", "/covers", "/extra", "/scenarios", "/e-guard"):
             return await call_next(request) 
 
         # User allowed APIs (read-only + control)
@@ -537,6 +558,10 @@ def create_app() -> FastAPI:
         if path.startswith("/api/user/light_scenarios"):
             return await call_next(request)
         if path == "/api/user/light_scenarios_status" and request.method.upper() == "GET":
+            return await call_next(request)
+        if path == "/api/guard_cameras" and request.method.upper() == "GET":
+            return await call_next(request)
+        if path == "/api/e_guard/snapshot" and request.method.upper() == "GET":
             return await call_next(request)
         if path == "/api/user/devices" and request.method.upper() == "GET":
             return await call_next(request)
@@ -3559,6 +3584,12 @@ self.addEventListener('fetch', (event) => {{
         with open(p, "r", encoding="utf-8") as f:
             return f.read()
 
+    @api.get("/e-guard", response_class=HTMLResponse)
+    async def user_guard():
+        p = os.path.join(static_dir, "user", "e_guard.html")
+        with open(p, "r", encoding="utf-8") as f:
+            return f.read()
+
     @api.get("/api/options")
     async def api_options():
         return read_options()
@@ -3716,6 +3747,52 @@ self.addEventListener('fetch', (event) => {{
         await _broadcast_devices()
         return {"ok": True}
 
+    @api.get("/api/guard_cameras")
+    async def api_guard_cameras_list():
+        # Admin-only via port gate
+        return {"items": store.list_guard_cameras()}
+
+    @api.post("/api/guard_cameras")
+    async def api_guard_cameras_add(payload: dict[str, Any]):
+        # Admin-only via port gate
+        try:
+            item = store.add_guard_camera(payload)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        await hub.broadcast("guard_cameras", {"items": store.list_guard_cameras()})
+        return item
+
+    @api.put("/api/guard_cameras/{camera_id}")
+    async def api_guard_cameras_update(camera_id: str, payload: dict[str, Any]):
+        # Admin-only via port gate
+        try:
+            item = store.update_guard_camera(camera_id=camera_id, payload=payload)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        if not item:
+            raise HTTPException(status_code=404, detail="Not Found")
+        await hub.broadcast("guard_cameras", {"items": store.list_guard_cameras()})
+        return item
+
+    @api.delete("/api/guard_cameras/{camera_id}")
+    async def api_guard_cameras_delete(camera_id: str):
+        # Admin-only via port gate
+        ok = store.delete_guard_camera(camera_id=camera_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Not Found")
+        await hub.broadcast("guard_cameras", {"items": store.list_guard_cameras()})
+        return {"ok": True}
+
+    @api.get("/api/e_guard/snapshot")
+    async def api_guard_snapshot(entity_id: str):
+        if not _ha_enabled():
+            raise HTTPException(status_code=503, detail="Home Assistant not available")
+        eid = str(entity_id or "").strip().lower()
+        if not eid.startswith("camera."):
+            raise HTTPException(status_code=400, detail="entity_id must be camera.*")
+        raw, ctype = _ha_fetch(f"/api/camera_proxy/{eid}", timeout_s=10)
+        return Response(content=raw, media_type=ctype)
+
     @api.post("/api/hub_links")
     async def api_hub_links_upsert(payload: dict[str, Any]):
         try:
@@ -3846,7 +3923,7 @@ self.addEventListener('fetch', (event) => {{
         icons = cfg.get("hub_icons") if "hub_icons" in cfg else cfg
         if not isinstance(icons, dict):
             return names
-        for k in ("lights", "scenarios", "covers", "extra"):
+        for k in ("lights", "scenarios", "covers", "extra", "guard"):
             mdi = parse_mdi_icon(str(icons.get(k) or ""))
             if mdi:
                 names.append(mdi)

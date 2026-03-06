@@ -334,8 +334,9 @@
           scenarios: { key: 'scenarios', title: 'Scenari', href: absUrl('scenarios'), fallback: 'star' },
           covers: { key: 'covers', title: 'Cover', href: absUrl('covers'), fallback: 'window-shutter' },
           extra: { key: 'extra', title: 'Extra', href: absUrl('extra'), fallback: 'shape' },
+          guard: { key: 'guard', title: 'e-Guard', href: absUrl('e-guard'), fallback: 'cctv' },
         };
-        const allowed = ['lights','scenarios','covers','extra'];
+        const allowed = ['lights','scenarios','covers','extra','guard'];
         const orderRaw = (meta && Array.isArray(meta.hub_order)) ? meta.hub_order : [];
         const order = [];
         const seen = new Set();

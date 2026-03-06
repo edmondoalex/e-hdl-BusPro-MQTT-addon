@@ -1,0 +1,202 @@
+﻿<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>e-Guard</title>
+    <style>
+      :root{
+        --bg0:#0a0c10;
+        --bg1:#12151d;
+        --card:#1a1f2a;
+        --line:rgba(255,255,255,.08);
+        --text:#e9eef7;
+        --muted:rgba(233,238,247,.65);
+        --accent:#8fb6ff;
+      }
+      *{box-sizing:border-box}
+      body{
+        margin:0;
+        font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial;
+        background:radial-gradient(900px 600px at 50% 0%, #1b2230 0%, #0a0c10 60%);
+        color:var(--text);
+      }
+      header{
+        position:sticky;top:0;z-index:10;
+        backdrop-filter:blur(8px);
+        background:linear-gradient(180deg, rgba(10,12,16,.92), rgba(10,12,16,.65));
+        border-bottom:1px solid var(--line);
+        padding:14px 16px;
+        display:flex;align-items:center;gap:12px;
+      }
+      header h1{margin:0;font-size:18px;letter-spacing:.04em}
+      header .muted{font-size:12px;color:var(--muted)}
+      .wrap{padding:16px;max-width:1200px;margin:0 auto}
+      .grid{
+        display:grid;
+        grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
+        gap:14px;
+      }
+      .card{
+        background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(0,0,0,.05));
+        border:1px solid var(--line);
+        border-radius:12px;
+        overflow:hidden;
+        cursor:pointer;
+        transition:transform .12s ease, box-shadow .12s ease;
+      }
+      .card:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(0,0,0,.35)}
+      .thumb{
+        width:100%;
+        aspect-ratio:16/9;
+        background:#0e1118;
+        display:block;
+        object-fit:cover;
+      }
+      .card .meta{
+        padding:10px 12px;
+        display:flex;align-items:center;justify-content:space-between;gap:8px;
+      }
+      .name{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .tag{font-size:11px;color:var(--muted)}
+      #err{margin-top:12px;color:#ff8e8e}
+      .empty{color:var(--muted);text-align:center;padding:28px;border:1px dashed var(--line);border-radius:12px}
+
+      /* fullscreen */
+      .overlay{
+        position:fixed;inset:0;background:rgba(0,0,0,.9);
+        display:none;align-items:center;justify-content:center;z-index:100;
+      }
+      .overlay.show{display:flex}
+      .overlay img{
+        max-width:96vw;max-height:90vh;object-fit:contain;border:1px solid var(--line);
+        background:#0b0f15;border-radius:10px;
+      }
+      .overlay .label{
+        position:absolute;top:16px;left:16px;color:var(--text);
+        font-size:14px;background:rgba(0,0,0,.5);padding:6px 10px;border-radius:8px;border:1px solid var(--line)
+      }
+      .overlay .close{
+        position:absolute;top:16px;right:16px;
+        background:rgba(255,255,255,.1);border:1px solid var(--line);
+        color:var(--text);padding:6px 10px;border-radius:8px;cursor:pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>e-Guard</h1>
+      <div class="muted">Snapshot auto-aggiornante</div>
+    </header>
+    <div class="wrap">
+      <div id="grid" class="grid"></div>
+      <div id="err"></div>
+    </div>
+
+    <div id="overlay" class="overlay" role="dialog" aria-modal="true">
+      <div class="label" id="ovLabel"></div>
+      <button class="close" id="ovClose" type="button">Chiudi</button>
+      <img id="ovImg" alt="camera" />
+    </div>
+
+    <script>
+      const grid = document.getElementById('grid');
+      const err = document.getElementById('err');
+      const overlay = document.getElementById('overlay');
+      const ovImg = document.getElementById('ovImg');
+      const ovLabel = document.getElementById('ovLabel');
+      const ovClose = document.getElementById('ovClose');
+      const timers = new Map();
+
+      function absUrl(path) { return new URL(path, window.location.href).toString(); }
+      async function getJson(path, opts) {
+        const r = await fetch(absUrl(path), opts);
+        if (!r.ok) throw new Error(await r.text());
+        const ct = (r.headers.get('content-type')||'').toLowerCase();
+        if (ct.includes('application/json')) return r.json();
+        return r.text();
+      }
+
+      function snapshotUrl(entity_id) {
+        const t = Date.now();
+        return absUrl(`api/e_guard/snapshot?entity_id=${encodeURIComponent(entity_id)}&t=${t}`);
+      }
+
+      function clearTimers() {
+        for (const t of timers.values()) clearInterval(t);
+        timers.clear();
+      }
+
+      function openOverlay(name, entity_id, refresh_s) {
+        ovLabel.textContent = name || entity_id;
+        overlay.classList.add('show');
+        ovImg.src = snapshotUrl(entity_id);
+        if (refresh_s > 0) {
+          const key = `ov:${entity_id}`;
+          if (timers.has(key)) clearInterval(timers.get(key));
+          const h = setInterval(() => { ovImg.src = snapshotUrl(entity_id); }, refresh_s * 1000);
+          timers.set(key, h);
+        }
+      }
+
+      function closeOverlay() {
+        overlay.classList.remove('show');
+        for (const [k, v] of timers.entries()) {
+          if (String(k).startsWith('ov:')) { clearInterval(v); timers.delete(k); }
+        }
+      }
+
+      ovClose.addEventListener('click', closeOverlay);
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) closeOverlay(); });
+
+      async function load() {
+        err.textContent = '';
+        clearTimers();
+        grid.replaceChildren();
+        let items = [];
+        try {
+          const res = await getJson('api/guard_cameras');
+          items = Array.isArray(res && res.items) ? res.items : [];
+        } catch (e) {
+          err.textContent = (e && e.message) ? e.message : 'Errore caricamento';
+          return;
+        }
+        if (!items.length) {
+          const empty = document.createElement('div');
+          empty.className = 'empty';
+          empty.textContent = 'Nessuna camera configurata';
+          grid.appendChild(empty);
+          return;
+        }
+        for (const it of items) {
+          const entity_id = String(it.entity_id || '').trim();
+          const name = String(it.name || entity_id).trim();
+          const refresh_s = Number(it.refresh_s || 5);
+
+          const card = document.createElement('div');
+          card.className = 'card';
+
+          const img = document.createElement('img');
+          img.className = 'thumb';
+          img.alt = name;
+          img.src = snapshotUrl(entity_id);
+
+          const meta = document.createElement('div');
+          meta.className = 'meta';
+          meta.innerHTML = `<div class="name">${name}</div><div class="tag">${refresh_s}s</div>`;
+
+          card.appendChild(img);
+          card.appendChild(meta);
+          card.addEventListener('click', () => openOverlay(name, entity_id, refresh_s));
+          grid.appendChild(card);
+
+          const key = `card:${entity_id}`;
+          const h = setInterval(() => { img.src = snapshotUrl(entity_id); }, refresh_s * 1000);
+          timers.set(key, h);
+        }
+      }
+
+      load();
+    </script>
+  </body>
+</html>

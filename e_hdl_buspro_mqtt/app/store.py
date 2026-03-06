@@ -33,6 +33,7 @@ class StateStore:
             "scenarios": "mdi:star",
             "covers": "mdi:window-shutter",
             "extra": "mdi:shape",
+            "guard": "mdi:cctv",
         }
 
     @staticmethod
@@ -42,6 +43,7 @@ class StateStore:
             "scenarios": True,
             "covers": True,
             "extra": True,
+            "guard": True,
         }
 
     @staticmethod
@@ -52,11 +54,12 @@ class StateStore:
             "cover_groups_published": [],
             "light_scenarios": [],
             "light_scenarios_published": [],
-            "hub_order": ["lights", "scenarios", "covers", "extra"],
+            "hub_order": ["lights", "scenarios", "covers", "extra", "guard"],
             "ha_devices": [],
             "hub_links": [],
             "home_actions": [],
             "home2_order": [],
+            "guard_cameras": [],
             "hub_icons": StateStore.default_hub_icons(),
             "hub_show": StateStore.default_hub_show(),
             "proxy_targets": [],
@@ -112,6 +115,7 @@ class StateStore:
         raw["ui"].setdefault("hub_links", [])
         raw["ui"].setdefault("home_actions", [])
         raw["ui"].setdefault("home2_order", [])
+        raw["ui"].setdefault("guard_cameras", [])
         raw["ui"].setdefault("hub_icons", self.default_hub_icons())
         raw["ui"].setdefault("hub_show", self.default_hub_show())
         raw["ui"].setdefault("proxy_targets", [])
@@ -469,6 +473,110 @@ class StateStore:
         if len(kept) == before:
             return False
         ui["ha_devices"] = kept
+        raw["ui"] = ui
+        self.write_raw(raw)
+        return True
+
+    def list_guard_cameras(self) -> list[dict[str, Any]]:
+        raw = self.read_raw()
+        ui = raw.get("ui") or {}
+        items = ui.get("guard_cameras") or []
+        if not isinstance(items, list):
+            return []
+        out: list[dict[str, Any]] = []
+        for it in items:
+            if isinstance(it, dict):
+                out.append(dict(it))
+        return out
+
+    @staticmethod
+    def _normalize_guard_camera(payload: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be an object")
+        entity_id = str(payload.get("entity_id") or "").strip().lower()
+        if not entity_id.startswith("camera."):
+            raise ValueError("entity_id must be a camera.* entity")
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            name = entity_id
+        refresh_s = payload.get("refresh_s")
+        if refresh_s is None or refresh_s == "":
+            refresh_s = 5
+        try:
+            refresh_s = int(refresh_s)
+        except Exception:
+            refresh_s = 5
+        refresh_s = max(1, min(60, refresh_s))
+        return {"entity_id": entity_id, "name": name, "refresh_s": refresh_s}
+
+    def add_guard_camera(self, payload: dict[str, Any]) -> dict[str, Any]:
+        cleaned = self._normalize_guard_camera(payload)
+        item = {"id": str(uuid.uuid4()), **cleaned}
+        raw = self.read_raw()
+        ui = dict(raw.get("ui") or {})
+        items = ui.get("guard_cameras") or []
+        if not isinstance(items, list):
+            items = []
+        items2 = [dict(it) for it in items if isinstance(it, dict)]
+        # de-dupe by entity_id: keep last
+        items2 = [it for it in items2 if str(it.get("entity_id") or "").strip().lower() != cleaned["entity_id"]]
+        items2.append(item)
+        ui["guard_cameras"] = items2
+        raw["ui"] = ui
+        self.write_raw(raw)
+        return item
+
+    def update_guard_camera(self, *, camera_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+        cid = str(camera_id or "").strip()
+        if not cid:
+            return None
+        cleaned = self._normalize_guard_camera(payload)
+        raw = self.read_raw()
+        ui = dict(raw.get("ui") or {})
+        items = ui.get("guard_cameras") or []
+        if not isinstance(items, list):
+            return None
+        out: list[dict[str, Any]] = []
+        updated: dict[str, Any] | None = None
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            if str(it.get("id") or "").strip() != cid:
+                out.append(dict(it))
+                continue
+            updated = {"id": cid, **cleaned}
+            out.append(updated)
+        if updated is None:
+            return None
+        # de-dupe by entity_id (keep last)
+        deduped: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for it in reversed(out):
+            eid = str(it.get("entity_id") or "").strip().lower()
+            if not eid or eid in seen:
+                continue
+            seen.add(eid)
+            deduped.append(it)
+        deduped.reverse()
+        ui["guard_cameras"] = deduped
+        raw["ui"] = ui
+        self.write_raw(raw)
+        return updated
+
+    def delete_guard_camera(self, *, camera_id: str) -> bool:
+        cid = str(camera_id or "").strip()
+        if not cid:
+            return False
+        raw = self.read_raw()
+        ui = dict(raw.get("ui") or {})
+        items = ui.get("guard_cameras") or []
+        if not isinstance(items, list):
+            return False
+        before = len([it for it in items if isinstance(it, dict)])
+        kept = [dict(it) for it in items if isinstance(it, dict) and str(it.get("id") or "").strip() != cid]
+        if len(kept) == before:
+            return False
+        ui["guard_cameras"] = kept
         raw["ui"] = ui
         self.write_raw(raw)
         return True
@@ -990,7 +1098,7 @@ class StateStore:
         order = ui.get("hub_order") or []
         if not isinstance(order, list):
             order = []
-        allowed = ["lights", "scenarios", "covers", "extra"]
+        allowed = ["lights", "scenarios", "covers", "extra", "guard"]
         out: list[str] = []
         seen: set[str] = set()
         for v in order:
@@ -1004,7 +1112,7 @@ class StateStore:
         return out
 
     def set_hub_order(self, order: list[Any]) -> list[str]:
-        allowed = ["lights", "scenarios", "covers", "extra"]
+        allowed = ["lights", "scenarios", "covers", "extra", "guard"]
         out: list[str] = []
         seen: set[str] = set()
         for v in order or []:
@@ -1034,7 +1142,7 @@ class StateStore:
             token = str(v or "").strip().lower()
             if not token or token in seen:
                 continue
-            if re.fullmatch(r"fixed:(lights|scenarios|covers|extra)", token) or re.fullmatch(
+            if re.fullmatch(r"fixed:(lights|scenarios|covers|extra|guard)", token) or re.fullmatch(
                 r"(action|link):[a-f0-9]{4,64}",
                 token,
             ):
@@ -1049,7 +1157,7 @@ class StateStore:
             token = str(v or "").strip().lower()
             if not token or token in seen:
                 continue
-            if re.fullmatch(r"fixed:(lights|scenarios|covers|extra)", token) or re.fullmatch(
+            if re.fullmatch(r"fixed:(lights|scenarios|covers|extra|guard)", token) or re.fullmatch(
                 r"(action|link):[a-f0-9]{4,64}",
                 token,
             ):

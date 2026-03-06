@@ -1030,7 +1030,10 @@
                     <label>Extra (mdi)</label>
                     <input id="hubIconExtra" list="usedIcons" placeholder="Es: mdi:shape" />
                   </div>
-                  <div></div>
+                  <div>
+                    <label>Guard (mdi)</label>
+                    <input id="hubIconGuard" list="usedIcons" placeholder="Es: mdi:cctv" />
+                  </div>
                   <div></div>
                 </div>
                 <div class="row3" style="margin-top:10px">
@@ -1060,7 +1063,12 @@
                       Mostra Extra
                     </label>
                   </div>
-                  <div></div>
+                  <div style="display:flex;align-items:end;gap:10px">
+                    <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
+                      <input id="hubShowGuard" type="checkbox" checked />
+                      Mostra Guard
+                    </label>
+                  </div>
                   <div></div>
                 </div>
                 <div class="flex" style="margin-top:10px">
@@ -1305,6 +1313,53 @@
             </div>
           </details>
 
+          <details class="acc" data-acc="guard_cameras">
+            <summary>
+              <h2 style="margin:0;font-size:16px">e-Guard (camere)</h2>
+            </summary>
+            <div class="accBody">
+              <div class="muted" style="margin-top:6px">
+                Aggiungi telecamere di Home Assistant (camera.*) per la pagina <code>/e-guard</code>.
+                Snapshot auto-aggiornante.
+              </div>
+
+              <form id="guardForm" style="margin-top:10px">
+                <input id="guard_id" type="hidden" />
+                <div class="row3">
+                  <div>
+                    <label>entity_id</label>
+                    <input id="guard_entity" required placeholder="Es: camera.nvr_32ch_ext_ch1" />
+                  </div>
+                  <div>
+                    <label>Nome (override)</label>
+                    <input id="guard_name" placeholder="(vuoto = entity_id)" />
+                  </div>
+                  <div>
+                    <label>Refresh (s)</label>
+                    <input id="guard_refresh" type="number" min="1" max="60" value="5" />
+                  </div>
+                </div>
+                <div class="flex" style="margin-top:10px">
+                  <button class="btn" id="guard_btnSubmit" type="submit">Aggiungi</button>
+                  <button class="btn secondary" id="guard_btnCancel" type="button" style="display:none">Annulla</button>
+                  <span id="guard_formMsg" class="muted"></span>
+                </div>
+              </form>
+
+              <table id="guardTable" aria-label="guard cameras" style="margin-top:10px">
+                <thead>
+                  <tr>
+                    <th>entity_id</th>
+                    <th>Nome</th>
+                    <th>Refresh</th>
+                    <th>Azioni</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </details>
+
           <details class="acc" data-acc="pwa">
             <summary>
               <h2 style="margin:0;font-size:16px">WebApp (PWA) - Home2</h2>
@@ -1499,6 +1554,7 @@
        let coverGroups = [];
        let lastDevices = []; 
       let haDevices = [];
+      let guardCameras = [];
       let calibTicker = null; 
       let userFilter = 'all'; // all|light|cover 
       let groupOrder = [];
@@ -4178,6 +4234,7 @@
         qs('hubIconScenarios').value = String(hubIcons.scenarios || '');
         qs('hubIconCovers').value = String(hubIcons.covers || '');
         qs('hubIconExtra').value = String(hubIcons.extra || '');
+        qs('hubIconGuard').value = String(hubIcons.guard || '');
       }
 
       function renderHubShow() {
@@ -4186,6 +4243,7 @@
         qs('hubShowScenarios').checked = !!hubShow.scenarios;
         qs('hubShowCovers').checked = !!hubShow.covers;
         qs('hubShowExtra').checked = !!hubShow.extra;
+        qs('hubShowGuard').checked = !!hubShow.guard;
       }
 
       function hubKeyLabel(k) {
@@ -4194,11 +4252,12 @@
         if (key === 'scenarios') return 'Scenari';
         if (key === 'covers') return 'Cover';
         if (key === 'extra') return 'Extra';
+        if (key === 'guard') return 'Guard';
         return key;
       }
 
       function normalizeHubOrder(order) {
-        const allowed = ['lights', 'scenarios', 'covers', 'extra'];
+        const allowed = ['lights', 'scenarios', 'covers', 'extra', 'guard'];
         const out = [];
         const seen = new Set();
         const arr = Array.isArray(order) ? order : [];
@@ -4293,12 +4352,14 @@
             scenarios: String(qs('hubIconScenarios').value || '').trim(),
             covers: String(qs('hubIconCovers').value || '').trim(),
             extra: String(qs('hubIconExtra').value || '').trim(),
+            guard: String(qs('hubIconGuard').value || '').trim(),
           },
           hub_show: {
             lights: !!qs('hubShowLights').checked,
             scenarios: !!qs('hubShowScenarios').checked,
             covers: !!qs('hubShowCovers').checked,
             extra: !!qs('hubShowExtra').checked,
+            guard: !!qs('hubShowGuard').checked,
           },
           hub_order: normalizeHubOrder(hubOrder || []),
         };
@@ -4910,6 +4971,66 @@
         renderHaDevices();
       }
 
+      function setGuardEditing(item) {
+        const isEdit = !!(item && item.id);
+        qs('guard_id').value = isEdit ? String(item.id || '') : '';
+        qs('guard_entity').value = isEdit ? String(item.entity_id || '') : '';
+        qs('guard_name').value = isEdit ? String(item.name || '') : '';
+        qs('guard_refresh').value = isEdit ? String(item.refresh_s || 5) : '5';
+        qs('guard_btnSubmit').textContent = isEdit ? 'Salva' : 'Aggiungi';
+        qs('guard_btnCancel').style.display = isEdit ? '' : 'none';
+        qs('guard_formMsg').textContent = '';
+      }
+
+      function renderGuardCameras() {
+        const table = document.getElementById('guardTable');
+        if (!table) return;
+        const body = table.querySelector('tbody');
+        body.innerHTML = '';
+        const items = Array.isArray(guardCameras) ? guardCameras : [];
+        for (const it of items) {
+          const id = String(it.id || '').trim();
+          const entity_id = String(it.entity_id || '').trim();
+          const name = String(it.name || '').trim();
+          const refresh = Number(it.refresh_s || 5);
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><code>${escapeHtml(entity_id)}</code></td>
+            <td>${escapeHtml(name)}</td>
+            <td>${escapeHtml(String(refresh))}s</td>
+            <td>
+              <button class="btn secondary small" data-act="edit">Modifica</button>
+              <button class="btn danger small" data-act="del">Elimina</button>
+            </td>
+          `;
+          tr.querySelector('[data-act=\"edit\"]').addEventListener('click', (ev) => {
+            ev.preventDefault();
+            setGuardEditing(it);
+          });
+          tr.querySelector('[data-act=\"del\"]').addEventListener('click', async (ev) => {
+            ev.preventDefault();
+            try {
+              if (!confirm(`Eliminare \"${entity_id}\"?`)) return;
+              await getJson(`api/guard_cameras/${encodeURIComponent(id)}`, { method: 'DELETE' });
+              await refreshGuardCameras();
+            } catch (e) {
+              qs('guard_formMsg').textContent = 'Errore';
+            }
+          });
+          body.appendChild(tr);
+        }
+      }
+
+      async function refreshGuardCameras() {
+        try {
+          const res = await getJson('api/guard_cameras');
+          guardCameras = Array.isArray(res && res.items) ? res.items : [];
+        } catch (e) {
+          guardCameras = [];
+        }
+        renderGuardCameras();
+      }
+
       let proxyTargets = [];
       function setProxyEditing(t) {
         const isEdit = !!(t && t.name);
@@ -5003,6 +5124,7 @@
       refreshHome2Order();
       refreshScenarioIdsDatalist();
       refreshHaDevices();
+      refreshGuardCameras();
       refreshPwaConfig();
       refreshProxyTargets();
       setHomeActionEditing(null);
@@ -5085,6 +5207,42 @@
       qs('ha_btnCancel').addEventListener('click', (ev) => {
         ev.preventDefault();
         setHaEditing(null);
+      });
+
+      qs('guardForm').addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        qs('guard_formMsg').textContent = '';
+        try {
+          const id = String(qs('guard_id').value || '').trim();
+          const entity_id = String(qs('guard_entity').value || '').trim();
+          const name = String(qs('guard_name').value || '').trim();
+          const refresh_s = Number(qs('guard_refresh').value || 5);
+          const payload = { entity_id, name, refresh_s };
+          if (id) {
+            await getJson(`api/guard_cameras/${encodeURIComponent(id)}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+          } else {
+            await getJson('api/guard_cameras', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+          }
+          setGuardEditing(null);
+          await refreshGuardCameras();
+          qs('guard_formMsg').textContent = 'Salvato';
+          setTimeout(() => { qs('guard_formMsg').textContent = ''; }, 1400);
+        } catch (e) {
+          qs('guard_formMsg').textContent = (e && e.message) ? e.message : 'Errore';
+        }
+      });
+
+      qs('guard_btnCancel').addEventListener('click', (ev) => {
+        ev.preventDefault();
+        setGuardEditing(null);
       });
 
       qs('haction_kind').addEventListener('change', () => {
