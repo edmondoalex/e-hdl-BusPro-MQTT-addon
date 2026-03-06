@@ -522,6 +522,9 @@ class StateStore:
         dahua_host = str(payload.get("dahua_host") or "").strip()
         dahua_user = str(payload.get("dahua_user") or "").strip()
         dahua_pass = str(payload.get("dahua_pass") or "").strip()
+        dahua_mode = str(payload.get("dahua_mode") or "nvr").strip().lower()
+        if dahua_mode not in ("nvr", "camera"):
+            dahua_mode = "nvr"
         dahua_channel = payload.get("dahua_channel")
         if dahua_channel is None or dahua_channel == "":
             dahua_channel = 1
@@ -530,6 +533,8 @@ class StateStore:
         except Exception:
             dahua_channel = 1
         dahua_channel = max(1, min(256, dahua_channel))
+        if dahua_mode == "camera":
+            dahua_channel = 1
         if source == "dahua":
             if not (dahua_host and dahua_user and dahua_pass):
                 raise ValueError("dahua_host/dahua_user/dahua_pass required for source=dahua")
@@ -538,6 +543,7 @@ class StateStore:
             "name": name,
             "refresh_s": refresh_s,
             "source": source,
+            "dahua_mode": dahua_mode,
             "dahua_host": dahua_host,
             "dahua_user": dahua_user,
             "dahua_pass": dahua_pass,

@@ -1352,6 +1352,13 @@
                     <input id="guard_dahua_host" placeholder="192.168.3.10" />
                   </div>
                   <div>
+                    <label>Tipo Dahua</label>
+                    <select id="guard_dahua_mode">
+                      <option value="nvr">NVR</option>
+                      <option value="camera">Camera</option>
+                    </select>
+                  </div>
+                  <div>
                     <label>Canale Dahua</label>
                     <input id="guard_dahua_channel" type="number" min="1" max="256" value="1" />
                   </div>
@@ -5007,6 +5014,7 @@
         qs('guard_name').value = isEdit ? String(item.name || '') : '';
         qs('guard_refresh').value = isEdit ? String(item.refresh_s || 5) : '5';
         qs('guard_source').value = isEdit ? String(item.source || 'ha') : 'ha';
+        qs('guard_dahua_mode').value = isEdit ? String(item.dahua_mode || 'nvr') : 'nvr';
         qs('guard_dahua_host').value = isEdit ? String(item.dahua_host || '') : '';
         qs('guard_dahua_user').value = isEdit ? String(item.dahua_user || '') : '';
         qs('guard_dahua_pass').value = isEdit ? String(item.dahua_pass || '') : '';
@@ -5019,7 +5027,7 @@
 
       function updateGuardSourceUI() {
         const isDahua = String(qs('guard_source').value || '') === 'dahua';
-        const ids = ['guard_dahua_host', 'guard_dahua_user', 'guard_dahua_pass', 'guard_dahua_channel'];
+        const ids = ['guard_dahua_host', 'guard_dahua_user', 'guard_dahua_pass', 'guard_dahua_channel', 'guard_dahua_mode'];
         const rows = new Set();
         for (const id of ids) {
           const el = qs(id);
@@ -5032,6 +5040,8 @@
         qs('guard_dahua_host').required = isDahua;
         qs('guard_dahua_user').required = isDahua;
         qs('guard_dahua_pass').required = isDahua;
+        const isCamera = isDahua && String(qs('guard_dahua_mode').value || '') === 'camera';
+        qs('guard_dahua_channel').disabled = !isDahua || isCamera;
       }
 
       function renderGuardCameras() {
@@ -5046,7 +5056,8 @@
           const name = String(it.name || '').trim();
           const refresh = Number(it.refresh_s || 5);
           const source = String(it.source || 'ha').trim().toLowerCase();
-          const sourceLabel = source === 'dahua' ? 'Dahua' : 'HA';
+          const mode = String(it.dahua_mode || 'nvr').trim().toLowerCase();
+          const sourceLabel = source === 'dahua' ? (mode === 'camera' ? 'Dahua Cam' : 'Dahua NVR') : 'HA';
           const tr = document.createElement('tr');
           tr.innerHTML = `
             <td><code>${escapeHtml(entity_id)}</code></td>
@@ -5274,11 +5285,12 @@
           const name = String(qs('guard_name').value || '').trim();
           const refresh_s = Number(qs('guard_refresh').value || 5);
           const source = String(qs('guard_source').value || 'ha').trim();
+          const dahua_mode = String(qs('guard_dahua_mode').value || 'nvr').trim();
           const dahua_host = String(qs('guard_dahua_host').value || '').trim();
           const dahua_user = String(qs('guard_dahua_user').value || '').trim();
           const dahua_pass = String(qs('guard_dahua_pass').value || '').trim();
           const dahua_channel = Number(qs('guard_dahua_channel').value || 1);
-          const payload = { entity_id, name, refresh_s, source, dahua_host, dahua_user, dahua_pass, dahua_channel };
+          const payload = { entity_id, name, refresh_s, source, dahua_mode, dahua_host, dahua_user, dahua_pass, dahua_channel };
           let saved = null;
           if (id) {
             saved = await getJson(`api/guard_cameras/${encodeURIComponent(id)}`, {
@@ -5323,6 +5335,7 @@
         setGuardEditing(null);
       });
       qs('guard_source').addEventListener('change', updateGuardSourceUI);
+      qs('guard_dahua_mode').addEventListener('change', updateGuardSourceUI);
 
       qs('haction_kind').addEventListener('change', () => {
         renderHomeActionFormUI();

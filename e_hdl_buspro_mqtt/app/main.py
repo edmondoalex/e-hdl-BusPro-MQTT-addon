@@ -49,7 +49,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.292"
+ADDON_VERSION = "0.1.293"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -3876,11 +3876,15 @@ self.addEventListener('fetch', (event) => {{
                 cam = None
             if isinstance(cam, dict) and str(cam.get("source") or "").strip().lower() == "dahua":
                 try:
+                    mode = str(cam.get("dahua_mode") or "nvr").strip().lower()
+                    channel = int(cam.get("dahua_channel") or 1)
+                    if mode == "camera":
+                        channel = 1
                     raw, ctype = _dahua_snapshot_fetch(
                         host=str(cam.get("dahua_host") or "").strip(),
                         user=str(cam.get("dahua_user") or "").strip(),
                         password=str(cam.get("dahua_pass") or "").strip(),
-                        channel=int(cam.get("dahua_channel") or 1),
+                        channel=channel,
                         timeout_s=10,
                     )
                     return Response(content=raw, media_type=ctype or "image/jpeg")
