@@ -49,7 +49,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.288"
+ADDON_VERSION = "0.1.289"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -3832,6 +3832,15 @@ self.addEventListener('fetch', (event) => {{
         try:
             eid_enc = urllib.parse.quote(eid, safe="")
             q = f"&time={urllib.parse.quote(str(t or ''), safe='')}" if t else ""
+            # Prefer snapshot service first (more reliable for some cameras).
+            try:
+                raw, ctype = _ha_snapshot_via_service(eid, timeout_s=12)
+                if not (ctype or "").lower().startswith("image/"):
+                    _LOGGER.warning("e_guard snapshot non-image for %s: %s", eid, ctype)
+                return Response(content=raw, media_type=ctype)
+            except HTTPException as e:
+                _LOGGER.warning("e_guard snapshot service failed for %s: %s", eid, e.detail)
+
             # Prefer entity_picture/access_token if HA returns them for the camera,
             # but fall back across multiple candidate paths before using snapshot service.
             paths: list[str] = []
@@ -3875,15 +3884,9 @@ self.addEventListener('fetch', (event) => {{
                     last_err = e
                     _LOGGER.warning("e_guard snapshot primary failed for %s via %s: %s", eid, path, e.detail)
 
-            # Fallback to camera.snapshot service when proxy paths fail.
-            try:
-                raw, ctype = _ha_snapshot_via_service(eid, timeout_s=12)
-            except HTTPException as e:
-                _LOGGER.warning("e_guard snapshot service failed for %s: %s", eid, e.detail)
-                raise e
-            if not (ctype or "").lower().startswith("image/"):
-                _LOGGER.warning("e_guard snapshot non-image for %s: %s", eid, ctype)
-            return Response(content=raw, media_type=ctype)
+            if last_err is not None:
+                raise last_err
+            raise HTTPException(status_code=502, detail="snapshot fetch failed")
         except HTTPException as e:
             _LOGGER.warning("e_guard snapshot HTTP %s for %s: %s", e.status_code, eid, e.detail)
             raise
