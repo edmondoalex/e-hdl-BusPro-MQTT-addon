@@ -49,7 +49,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.289"
+ADDON_VERSION = "0.1.290"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -343,6 +343,16 @@ def create_app() -> FastAPI:
         if not ctype:
             ctype = "image/jpeg"
         return raw, ctype
+
+    def _ha_snapshot_trigger(eid: str, *, timeout_s: int = 10) -> None:
+        slug = (slugify(eid) or "camera").replace("-", "_")
+        filename = f"/config/www/e_guard_{slug}.jpg"
+        _ha_request(
+            "POST",
+            "/api/services/camera/snapshot",
+            payload={"entity_id": eid, "filename": filename},
+            timeout_s=timeout_s,
+        )
 
     def _ha_state_str(v: Any) -> str:
         return str(v or "").strip().lower()
@@ -3832,7 +3842,45 @@ self.addEventListener('fetch', (event) => {{
         try:
             eid_enc = urllib.parse.quote(eid, safe="")
             q = f"&time={urllib.parse.quote(str(t or ''), safe='')}" if t else ""
-            # Prefer snapshot service first (more reliable for some cameras).
+            # Fast path: serve cached snapshot if available, and refresh in background.
+            slug = (slugify(eid) or "camera").replace("-", "_")
+            cache_path = f"/config/www/e_guard_{slug}.jpg"
+            try:
+                if os.path.isfile(cache_path):
+                    with open(cache_path, "rb") as f:
+                        raw_cached = f.read()
+                    if raw_cached:
+                        # Kick off background refresh (throttled per camera).
+                        now = time.time()
+                        if not hasattr(api.state, "e_guard_snap"):
+                            api.state.e_guard_snap = {"inflight": set(), "last": {}}
+                        snap = api.state.e_guard_snap
+                        inflight = snap.get("inflight") or set()
+                        last = snap.get("last") or {}
+                        snap["inflight"] = inflight
+                        snap["last"] = last
+                        last_ts = float(last.get(eid) or 0.0)
+                        if eid not in inflight and (now - last_ts) >= 1.5:
+                            inflight.add(eid)
+                            last[eid] = now
+
+                            async def _bg():
+                                try:
+                                    await asyncio.to_thread(_ha_snapshot_trigger, eid, timeout_s=12)
+                                except Exception:
+                                    pass
+                                finally:
+                                    try:
+                                        inflight.discard(eid)
+                                    except Exception:
+                                        pass
+
+                            asyncio.create_task(_bg())
+                        return Response(content=raw_cached, media_type="image/jpeg")
+            except Exception:
+                pass
+
+            # If no cache, run snapshot service and return it.
             try:
                 raw, ctype = _ha_snapshot_via_service(eid, timeout_s=12)
                 if not (ctype or "").lower().startswith("image/"):
