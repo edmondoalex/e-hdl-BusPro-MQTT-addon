@@ -47,7 +47,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.271"
+ADDON_VERSION = "0.1.272"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -1525,19 +1525,54 @@ self.addEventListener('fetch', (event) => {{
 
     def _rebuild_light_scenario_index() -> None:
         membership: dict[str, set[str]] = {}
+        cover_groups = store.list_cover_groups()
+        cover_groups_by_gid = {str(g.get("id") or "").strip(): g for g in cover_groups if isinstance(g, dict)}
         for sc in store.list_light_scenarios():
             sid = str(sc.get("id") or "").strip()
             if not sid:
                 continue
+            # Lights/switches
             items = sc.get("items") or []
-            if not isinstance(items, list):
+            if isinstance(items, list):
+                for it in items:
+                    if not isinstance(it, dict):
+                        continue
+                    eid = str(it.get("entity_id") or "").strip()
+                    if eid:
+                        membership.setdefault(eid, set()).add(sid)
+                        continue
+                    try:
+                        subnet_id = int(it.get("subnet_id"))
+                        device_id = int(it.get("device_id"))
+                        channel = int(it.get("channel"))
+                    except Exception:
+                        continue
+                    addr = f"{subnet_id}.{device_id}.{channel}"
+                    membership.setdefault(addr, set()).add(sid)
+            # Covers
+            covers = sc.get("covers") or []
+            if not isinstance(covers, list):
                 continue
-            for it in items:
+            for it in covers:
                 if not isinstance(it, dict):
                     continue
-                eid = str(it.get("entity_id") or "").strip()
-                if eid:
-                    membership.setdefault(eid, set()).add(sid)
+                kind = str(it.get("kind") or "single").strip().lower()
+                if kind == "ha":
+                    eid = str(it.get("entity_id") or "").strip().lower()
+                    if eid:
+                        membership.setdefault(eid, set()).add(sid)
+                    continue
+                if kind == "group":
+                    gid = str(it.get("group_id") or "").strip()
+                    if not gid:
+                        continue
+                    g = cover_groups_by_gid.get(gid)
+                    if not g:
+                        continue
+                    for m in (g.get("members") or []):
+                        addr = str(m or "").strip()
+                        if addr:
+                            membership.setdefault(addr, set()).add(sid)
                     continue
                 try:
                     subnet_id = int(it.get("subnet_id"))
@@ -1550,12 +1585,47 @@ self.addEventListener('fetch', (event) => {{
         api.state.light_scenario_membership = membership
 
     def _scenario_switch_state(sc: dict[str, Any]) -> str:
-        # Rule (user choice #1): ON iff all scenario lights are currently ON.
+        # Rule (user choice #2): ON iff all scenario items (lights + covers) match configured state.
         items = sc.get("items") or []
-        if not isinstance(items, list) or not items:
+        covers = sc.get("covers") or []
+        if not isinstance(items, list):
+            items = []
+        if not isinstance(covers, list):
+            covers = []
+        if not items and not covers:
             return "OFF"
         states = store.get_states()
         ha_states: dict[str, Any] = getattr(api.state, "ha_states", {}) or {}
+
+        def _normalize_cover_state(val: str) -> str:
+            v = str(val or "").strip().upper()
+            if v in ("OPEN", "OPENING", "CLOSE", "CLOSED", "CLOSING", "STOP", "STOPPED"):
+                return "CLOSED" if v == "CLOSE" else ("STOP" if v == "STOPPED" else v)
+            if v in ("OPENING", "CLOSING"):
+                return v
+            if v in ("OPEN", "OPENED"):
+                return "OPEN"
+            if v in ("CLOSED", "CLOSE"):
+                return "CLOSED"
+            return v
+
+        def _cover_matches(cmd: str, st_state: str | None, st_pos: int | None) -> bool:
+            cmd_u = str(cmd or "").upper()
+            st_u = _normalize_cover_state(st_state or "")
+            pos_i = int(st_pos) if st_pos is not None else None
+            if cmd_u == "OPEN":
+                if pos_i is not None:
+                    return pos_i >= 95
+                return st_u in ("OPEN", "OPENING")
+            if cmd_u == "CLOSE":
+                if pos_i is not None:
+                    return pos_i <= 5
+                return st_u in ("CLOSED", "CLOSING")
+            # STOP: consider OK if not moving
+            if st_u in ("OPENING", "CLOSING"):
+                return False
+            return True
+
         for it in items:
             if not isinstance(it, dict):
                 continue
@@ -1564,7 +1634,10 @@ self.addEventListener('fetch', (event) => {{
                 st = ha_states.get(eid) if isinstance(ha_states, dict) else None
                 if not isinstance(st, dict):
                     return "OFF"
-                if str(st.get("state") or "").upper() != "ON":
+                desired = str(it.get("state") or "").strip().upper()
+                if desired not in ("ON", "OFF"):
+                    return "OFF"
+                if str(st.get("state") or "").upper() != desired:
                     return "OFF"
                 continue
             try:
@@ -1577,8 +1650,64 @@ self.addEventListener('fetch', (event) => {{
             st = states.get(f"light:{addr}") or {}
             if not isinstance(st, dict):
                 return "OFF"
-            if str(st.get("state") or "").upper() != "ON":
+            desired = str(it.get("state") or "").strip().upper()
+            if desired not in ("ON", "OFF"):
                 return "OFF"
+            if str(st.get("state") or "").upper() != desired:
+                return "OFF"
+
+        # Covers
+        if covers:
+            for it in covers:
+                if not isinstance(it, dict):
+                    continue
+                cmd = str(it.get("command") or "").strip().upper()
+                if cmd not in ("OPEN", "CLOSE", "STOP"):
+                    continue
+                kind = str(it.get("kind") or "single").strip().lower()
+                if kind == "ha":
+                    eid = str(it.get("entity_id") or "").strip().lower()
+                    if not eid:
+                        return "OFF"
+                    st = ha_states.get(eid) if isinstance(ha_states, dict) else None
+                    if not isinstance(st, dict):
+                        return "OFF"
+                    st_state = str(st.get("state") or "")
+                    if not _cover_matches(cmd, st_state, None):
+                        return "OFF"
+                    continue
+                if kind == "group":
+                    gid = str(it.get("group_id") or "").strip()
+                    if not gid:
+                        return "OFF"
+                    gstate = states.get(f"cover_group:{gid}") or {}
+                    if isinstance(gstate, dict) and gstate.get("state"):
+                        st_state = str(gstate.get("state") or "")
+                        st_pos = gstate.get("position")
+                        if not _cover_matches(cmd, st_state, st_pos):
+                            return "OFF"
+                        continue
+                    agg = _aggregate_cover_group_state(gid)
+                    if not agg:
+                        return "OFF"
+                    st_state, st_pos = agg
+                    if not _cover_matches(cmd, st_state, st_pos):
+                        return "OFF"
+                    continue
+                try:
+                    subnet_id = int(it.get("subnet_id"))
+                    device_id = int(it.get("device_id"))
+                    channel = int(it.get("channel"))
+                except Exception:
+                    continue
+                addr = f"{subnet_id}.{device_id}.{channel}"
+                st = states.get(f"cover:{addr}") or {}
+                if not isinstance(st, dict):
+                    return "OFF"
+                st_state = str(st.get("state") or "")
+                st_pos = st.get("position")
+                if not _cover_matches(cmd, st_state, st_pos):
+                    return "OFF"
         return "ON"
 
     async def _publish_light_scenario_state(sc: dict[str, Any]) -> str:
@@ -1841,6 +1970,10 @@ self.addEventListener('fetch', (event) => {{
         api.state._last_cover_state[addr] = (str(st.state).upper(), st.position)
         _publish_cover_state(dev, st)
         _publish_cover_groups_for_member(addr)
+        try:
+            await _publish_light_scenario_states_for_member(addr)
+        except Exception:
+            pass
         await _broadcast_cover_state(dev, st)
 
     def _start_cover_sim(subnet_id: int, device_id: int, channel: int, cmd: str) -> None:
@@ -2940,6 +3073,7 @@ self.addEventListener('fetch', (event) => {{
                     api.state._last_cover_state[addr] = cur
                     _publish_cover_state(dev, st)
                     _publish_cover_groups_for_member(addr)
+                    asyncio.run_coroutine_threadsafe(_publish_light_scenario_states_for_member(addr), loop)
                     asyncio.run_coroutine_threadsafe(_broadcast_cover_state(dev, st), loop)
                     break
 
