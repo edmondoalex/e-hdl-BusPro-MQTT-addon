@@ -48,7 +48,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.281"
+ADDON_VERSION = "0.1.282"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -308,7 +308,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail=str(e.reason or e))
 
     def _ha_snapshot_via_service(eid: str, *, timeout_s: int = 10) -> tuple[bytes, str]:
-        slug = slugify(eid, allow_underscore=True) or "camera"
+        slug = (slugify(eid) or "camera").replace("-", "_")
         filename = f"/config/www/e_guard_{slug}.jpg"
         _ha_request(
             "POST",
