@@ -47,7 +47,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.272"
+ADDON_VERSION = "0.1.273"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -6272,10 +6272,13 @@ self.addEventListener('fetch', (event) => {{
                     # Scenario single covers: use direct (raw) commands only.
                     if cmd_eff == "OPEN":
                         await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                        _start_cover_sim(subnet_id, device_id, channel, "OPEN")
                     elif cmd_eff == "CLOSE":
                         await gw.cover_close_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                        _start_cover_sim(subnet_id, device_id, channel, "CLOSE")
                     elif cmd_eff == "STOP":
                         await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                        _start_cover_sim(subnet_id, device_id, channel, "STOP")
                     else:
                         continue
                     cover_sent += 1
