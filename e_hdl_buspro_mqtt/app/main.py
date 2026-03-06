@@ -48,7 +48,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.279"
+ADDON_VERSION = "0.1.280"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -3794,8 +3794,34 @@ self.addEventListener('fetch', (event) => {{
             raise HTTPException(status_code=400, detail="entity_id must be camera.*")
         try:
             eid_enc = urllib.parse.quote(eid, safe="")
-            q = f"?time={urllib.parse.quote(str(t or ''), safe='')}" if t else ""
-            path = f"/api/camera_proxy/{eid_enc}{q}"
+            q = f"&time={urllib.parse.quote(str(t or ''), safe='')}" if t else ""
+            # Prefer entity_picture/access_token if HA returns them for the camera
+            pic_path = ""
+            try:
+                st = _ha_request("GET", f"/api/states/{eid_enc}", timeout_s=10)
+                attrs = st.get("attributes") if isinstance(st, dict) else {}
+                if isinstance(attrs, dict):
+                    pic = str(attrs.get("entity_picture") or "").strip()
+                    if pic.startswith("/"):
+                        pic_path = pic
+                    elif pic:
+                        pic_path = "/" + pic.lstrip("/")
+                    if not pic_path:
+                        tok = str(attrs.get("access_token") or "").strip()
+                        if tok:
+                            pic_path = f"/api/camera_proxy/{eid_enc}?token={urllib.parse.quote(tok, safe='')}"
+            except Exception:
+                pic_path = ""
+
+            if pic_path:
+                path = pic_path
+                if "?" in path:
+                    path = f"{path}{q}" if q else path
+                else:
+                    path = f"{path}?{q.lstrip('&')}" if q else path
+            else:
+                path = f"/api/camera_proxy/{eid_enc}?{q.lstrip('&')}" if q else f"/api/camera_proxy/{eid_enc}"
+
             raw, ctype = _ha_fetch(path, timeout_s=12)
             if not (ctype or "").lower().startswith("image/"):
                 _LOGGER.warning("e_guard snapshot non-image for %s: %s", eid, ctype)
@@ -3820,6 +3846,7 @@ self.addEventListener('fetch', (event) => {{
             "base_url": _ha_base_url(),
             "state": None,
             "snapshot": None,
+            "snapshot_url": None,
         }
         try:
             st = _ha_request("GET", f"/api/states/{urllib.parse.quote(eid, safe='')}", timeout_s=10)
@@ -3827,8 +3854,24 @@ self.addEventListener('fetch', (event) => {{
         except HTTPException as e:
             diag["state"] = {"error": True, "status": e.status_code, "detail": e.detail}
         try:
-            path = f"/api/camera_proxy/{urllib.parse.quote(eid, safe='')}"
-            raw, ctype = _ha_fetch(path, timeout_s=10)
+            pic_path = ""
+            if isinstance(diag["state"], dict):
+                attrs = diag["state"].get("attributes") or {}
+                if isinstance(attrs, dict):
+                    pic = str(attrs.get("entity_picture") or "").strip()
+                    if pic.startswith("/"):
+                        pic_path = pic
+                    elif pic:
+                        pic_path = "/" + pic.lstrip("/")
+                    if not pic_path:
+                        tok = str(attrs.get("access_token") or "").strip()
+                        if tok:
+                            pic_path = f"/api/camera_proxy/{urllib.parse.quote(eid, safe='')}?token={urllib.parse.quote(tok, safe='')}"
+            if not pic_path:
+                pic_path = f"/api/camera_proxy/{urllib.parse.quote(eid, safe='')}"
+
+            diag["snapshot_url"] = pic_path
+            raw, ctype = _ha_fetch(pic_path, timeout_s=10)
             diag["snapshot"] = {"ok": True, "content_type": ctype, "bytes": len(raw)}
         except HTTPException as e:
             diag["snapshot"] = {"error": True, "status": e.status_code, "detail": e.detail}
