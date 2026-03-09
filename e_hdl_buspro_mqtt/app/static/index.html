@@ -1458,6 +1458,19 @@
                   <input id="pwa_start" placeholder="/home2" />
                 </div>
               </div>
+              <div class="row3" style="margin-top:10px">
+                <div style="display:flex;align-items:end;gap:10px">
+                  <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
+                    <input id="ui_backGesture" type="checkbox" checked />
+                    Back gesture (angolo alto sx)
+                  </label>
+                </div>
+                <div></div>
+                <div class="flex" style="align-items:end;gap:10px">
+                  <button class="btn secondary small" id="btnSaveUiOpts" type="button">Salva UI</button>
+                  <span class="muted" id="uiOptsMsg"></span>
+                </div>
+              </div>
               <div class="flex" style="margin-top:10px">
                 <button class="btn secondary small" id="btnSavePwa" type="button">Salva WebApp</button>
                 <span class="muted" id="pwaMsg"></span>
@@ -4299,6 +4312,7 @@
       let hubShow = null;
       let hubOrder = null;
       let pwaCfg = null;
+      let uiOpts = null;
       let guardEnabled = true;
 
       const airByAddr = new Map(); // addr -> { state, ts }
@@ -4499,6 +4513,41 @@
           pwaCfg = null;
         }
         if (pwaCfg) renderPwaConfig();
+      }
+
+      function renderUiOpts() {
+        const opts = (uiOpts && typeof uiOpts === 'object') ? uiOpts : null;
+        if (!opts) return;
+        const v = (opts.back_gesture_enabled === undefined) ? true : !!opts.back_gesture_enabled;
+        qs('ui_backGesture').checked = v;
+      }
+
+      async function refreshUiOpts() {
+        try {
+          uiOpts = await getJson('api/options');
+        } catch (e) {
+          uiOpts = null;
+        }
+        renderUiOpts();
+      }
+
+      async function saveUiOpts() {
+        qs('uiOptsMsg').textContent = '';
+        try {
+          const enabled = !!qs('ui_backGesture').checked;
+          const res = await getJson('api/options/back_gesture', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled })
+          });
+          if (res && typeof res === 'object') {
+            uiOpts = { ...(uiOpts || {}), back_gesture_enabled: !!res.back_gesture_enabled };
+          }
+          qs('uiOptsMsg').textContent = 'Salvato';
+          setTimeout(() => { qs('uiOptsMsg').textContent = ''; }, 1400);
+        } catch (e) {
+          qs('uiOptsMsg').textContent = (e && e.message) ? e.message : 'Errore';
+        }
       }
 
       async function savePwaConfig() {
@@ -5265,6 +5314,7 @@
       refreshHome2Order();
       refreshScenarioIdsDatalist();
       refreshHaDevices();
+      refreshUiOpts();
       refreshPwaConfig();
       refreshProxyTargets();
       setHomeActionEditing(null);
@@ -5487,6 +5537,10 @@
         } catch (e) {
           qs('hubIconsMsg').textContent = (e && e.message) ? e.message : 'Errore export';
         }
+      });
+
+      qs('btnSaveUiOpts').addEventListener('click', async () => {
+        await saveUiOpts();
       });
 
       qs('btnSavePwa').addEventListener('click', async () => {

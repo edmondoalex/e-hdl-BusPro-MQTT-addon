@@ -49,7 +49,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.311"
+ADDON_VERSION = "0.1.312"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -3766,6 +3766,21 @@ self.addEventListener('fetch', (event) => {{
     @api.get("/api/options")
     async def api_options():
         return read_options()
+
+    @api.put("/api/options/back_gesture")
+    async def api_options_back_gesture(payload: dict[str, Any]):
+        enabled = bool(payload.get("enabled", True))
+        path = os.environ.get("BUSPRO_OPTIONS", "/data/options.json")
+        opts = read_options()
+        if not isinstance(opts, dict):
+            opts = {}
+        opts["back_gesture_enabled"] = bool(enabled)
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(opts, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"options write failed: {e}")
+        return {"ok": True, "back_gesture_enabled": bool(enabled)}
 
     @api.get("/api/meta")
     async def api_meta(): 
