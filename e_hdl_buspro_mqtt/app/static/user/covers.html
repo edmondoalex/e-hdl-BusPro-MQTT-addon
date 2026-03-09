@@ -539,10 +539,11 @@
         if (!row) return;
         const d = deviceByAddr.get(addr);
         const st = coverByAddr.get(addr) || { state: '?', position: 0 };
+        const usePos = coverUsesPosition(addr);
         const pos = Math.max(0, Math.min(100, Number((st.position === null || st.position === undefined) ? 0 : st.position)));
         const state = String(st.state || '?').toUpperCase();
         const moving = (state === 'OPENING' || state === 'CLOSING');
-        const openRatio = Math.max(0, Math.min(1, pos / 100));
+        const openRatio = usePos ? Math.max(0, Math.min(1, pos / 100)) : (state === 'OPEN' ? 1 : (state === 'CLOSED' ? 0 : 0.5));
         const visualRatio = d && d.reverse_icon ? (1 - openRatio) : openRatio;
         const t = easeOpen(visualRatio);
 
@@ -550,7 +551,7 @@
         row.style.setProperty('--open', String(openRatio));
         try {
           const sub = row.querySelector('.sub');
-          if (sub) sub.textContent = `${state} \u00B7 ${Math.round(pos)}%`;
+          if (sub) sub.textContent = usePos ? `${state} \u00B7 ${Math.round(pos)}%` : `${state}`;
         } catch (e) {}
         try {
           const ico = row.querySelector('.coverIco');
