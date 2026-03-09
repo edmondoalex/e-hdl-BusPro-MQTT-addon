@@ -237,6 +237,7 @@
     <script>
       const qs = (id) => document.getElementById(id); 
       const coverByAddr = new Map(); 
+      const coverMetaByAddr = new Map();
       const deviceByAddr = new Map();
       const rowByAddr = new Map();
       const groupRowByGid = new Map();
@@ -266,6 +267,21 @@
           Math.round(lerp(c1[1], c2[1], t)),
           Math.round(lerp(c1[2], c2[2], t)),
         ];
+      }
+
+      function rebuildCoverMeta() {
+        coverMetaByAddr.clear();
+        for (const d of (lastDevices || [])) {
+          if (String(d.type || '').toLowerCase() !== 'cover') continue;
+          const addr = addrOf(d);
+          const usePos = (String(d.origin || '') === 'ha') ? true : !!d.use_position;
+          coverMetaByAddr.set(addr, { use_position: usePos });
+        }
+      }
+
+      function coverUsesPosition(addr) {
+        const meta = coverMetaByAddr.get(String(addr || ''));
+        return !!(meta && meta.use_position);
       }
 
       function escapeHtml(s){
@@ -317,6 +333,7 @@
           await getJson(`api/control/ha/cover/${encodeURIComponent(String(addr||''))}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command:'SET_POSITION', position}) });
           return;
         }
+        if (!coverUsesPosition(addr)) return;
         const [s, d, c] = String(addr||'').split('.').map(Number);
         await getJson(`api/control/cover/${s}/${d}/${c}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command:'SET_POSITION', position}) });
       }
@@ -434,7 +451,7 @@
           if (!st) continue;
           const s = String(st.state || '').toUpperCase() || 'STOP';
           states.push(s);
-          if (st.position !== null && st.position !== undefined) {
+          if (coverUsesPosition(addr) && st.position !== null && st.position !== undefined) {
             const p = Number(st.position);
             if (Number.isFinite(p)) positions.push(Math.max(0, Math.min(100, Math.round(p))));
           }
@@ -590,11 +607,12 @@
         activeAddr = addr;
         activeReverse = false;
         activeIsGroup = String(addr || '').startsWith('group:');
+        const allowPos = !activeIsGroup && coverUsesPosition(addr);
         try {
           const pillWrap = document.querySelector('.pillWrap');
-          if (pillWrap) pillWrap.style.display = activeIsGroup ? 'none' : '';
+          if (pillWrap) pillWrap.style.display = allowPos ? '' : 'none';
         } catch (e) {}
-        try { qs('mPctTop').style.display = activeIsGroup ? 'none' : ''; } catch (e) {}
+        try { qs('mPctTop').style.display = allowPos ? '' : 'none'; } catch (e) {}
         if (!String(addr || '').startsWith('group:')) {
           try {
             const d = (lastDevices || []).find(x => String(x.type || '') === 'cover' && addrOf(x) === addr);
@@ -603,14 +621,14 @@
         }
         qs('mTitle').textContent = name || 'Cover';
         let pos = 0;
-        if (!activeIsGroup) {
+        if (allowPos) {
           const st = coverByAddr.get(addr) || { state:'?', position:0 };
           pos = Math.max(0, Math.min(100, Number((st.position === null || st.position === undefined) ? 0 : st.position)));
           setModalPos(pos, false);
         }
         qs('modalBack').style.display = 'flex';
         // Ensure handle is placed after the modal is actually laid out
-        if (!activeIsGroup) {
+        if (allowPos) {
           try { requestAnimationFrame(() => setModalPos(pos, false)); } catch (e) {}
         }
       }
@@ -623,6 +641,7 @@
 
       function setModalPos(pos, send) { 
         if (activeIsGroup) return;
+        if (!coverUsesPosition(activeAddr)) return;
         const p = Math.max(0, Math.min(100, Number(pos))); 
         const ratio = p / 100; 
         const visual = activeReverse ? (1 - ratio) : ratio; 
@@ -792,10 +811,11 @@
 
           const addr = addrOf(d);
           const st = coverByAddr.get(addr) || { state:'?', position:0 };
+          const usePos = coverUsesPosition(addr);
           const pos = Math.max(0, Math.min(100, Number((st.position === null || st.position === undefined) ? 0 : st.position)));
           const state = String(st.state || '?').toUpperCase();
           const moving = (state === 'OPENING' || state === 'CLOSING');
-          const openRatio = Math.max(0, Math.min(1, pos / 100));
+          const openRatio = usePos ? Math.max(0, Math.min(1, pos / 100)) : (state === 'OPEN' ? 1 : (state === 'CLOSED' ? 0 : 0.5));
           const visualRatio = d.reverse_icon ? (1 - openRatio) : openRatio;
           const t = easeOpen(visualRatio);
 
@@ -808,7 +828,7 @@
           row.innerHTML = `
             <div class="content">
               <div class="name">${escapeHtml(d.name || '')}</div>
-              <div class="sub">${escapeHtml(String(state))} &#183; ${Math.round(pos)}%</div>
+              <div class="sub">${escapeHtml(String(state))}${usePos ? ` &#183; ${Math.round(pos)}%` : ''}</div>
             </div>
             <div class="actions">
               <button class="iconBtn" data-act="open" aria-label="Apri">
@@ -902,13 +922,15 @@
             const msg = JSON.parse(evt.data);
             if (msg.type === 'snapshot') {
               lastDevices = msg.data.devices || [];
+              rebuildCoverMeta();
               coverGroups = Array.isArray(msg.data.cover_groups) ? msg.data.cover_groups : [];
               buildCoverGroupMembership();
               refreshDeviceIndex();
               const cstates = msg.data.cover_states || {};
               for (const [addr, st] of Object.entries(cstates)) {
                 const state = String(st.state || '').toUpperCase() || '?';
-                const position = (st.position === null || st.position === undefined) ? 0 : Number(st.position);
+                const positionRaw = (st.position === null || st.position === undefined) ? 0 : Number(st.position);
+                const position = coverUsesPosition(addr) ? positionRaw : null;
                 coverByAddr.set(addr, { state, position });
               }
               const ha = msg.data.ha_states || {};
@@ -932,6 +954,7 @@
             }
             if (msg.type === 'devices') { 
               lastDevices = msg.data.devices || []; 
+              rebuildCoverMeta();
               refreshDeviceIndex();
               queueRender(); 
               return; 
@@ -945,7 +968,8 @@
               const ev = msg.data || {}; 
               const addr = `${ev.subnet_id}.${ev.device_id}.${ev.channel}`; 
               const state = String(ev.state || '').toUpperCase() || '?'; 
-              const position = (ev.position === null || ev.position === undefined) ? 0 : Number(ev.position);
+              const positionRaw = (ev.position === null || ev.position === undefined) ? 0 : Number(ev.position);
+              const position = coverUsesPosition(addr) ? positionRaw : null;
               coverByAddr.set(addr, { state, position });
               const nowActive = isActiveState({ state, position });
               const prevActive = activeByAddr.get(addr);
@@ -955,8 +979,10 @@
               queueCountsUpdate();
               if (showActiveOnly && prevActive !== nowActive) queueRender();
               if (activeAddr && activeAddr === addr) {
-                const pos = Math.max(0, Math.min(100, Number(position)));
-                setModalPos(pos, false);
+                if (coverUsesPosition(addr)) {
+                  const pos = Math.max(0, Math.min(100, Number(position)));
+                  setModalPos(pos, false);
+                }
               }
               return;
             }
@@ -1036,6 +1062,7 @@
           const meta = await getJson('api/meta'); 
           groupOrder = Array.isArray(meta.group_order) ? meta.group_order.map(normalizeGroup).filter(Boolean) : []; 
           lastDevices = await getJson('api/user/devices'); 
+          rebuildCoverMeta();
           await loadCoverGroups();
           refreshDeviceIndex();
           // Default: all groups expanded on first load (no collapsed preference).
@@ -1075,6 +1102,7 @@
             setModalPos(Number(agg.position || 0), false);
             return;
           }
+          if (!coverUsesPosition(activeAddr)) return;
           const st = coverByAddr.get(activeAddr) || { position: 0 }; 
           setModalPos(Number(st.position || 0), false); 
         } catch(e){} 

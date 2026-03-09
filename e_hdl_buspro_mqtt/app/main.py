@@ -49,7 +49,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.299"
+ADDON_VERSION = "0.1.300"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -1444,7 +1444,8 @@ self.addEventListener('fetch', (event) => {{
         state_topic = f"{settings.mqtt.base_topic}/state/cover_state/{subnet}/{did}/{ch}"
         pos_topic = f"{settings.mqtt.base_topic}/state/cover_pos/{subnet}/{did}/{ch}"
         state = str(st.state).upper()
-        pos = int(st.position) if st.position is not None else None
+        use_pos = bool(dev.get("use_position"))
+        pos = int(st.position) if (use_pos and st.position is not None) else None
         store.set_cover_state(subnet_id=subnet, device_id=did, channel=ch, state=state, position=pos)
         mqtt.publish(state_topic, state, retain=True)
         if pos is not None:
@@ -2114,6 +2115,8 @@ self.addEventListener('fetch', (event) => {{
         dev = _find_cover_device(subnet_id, device_id, channel)
         if not dev:
             return
+        if not bool(dev.get("use_position")):
+            position = None
         st = CoverState(state=str(state).upper(), position=int(position) if position is not None else None)
         addr = _cover_addr(subnet_id, device_id, channel)
         api.state._last_cover_state[addr] = (str(st.state).upper(), st.position)
@@ -2250,6 +2253,7 @@ self.addEventListener('fetch', (event) => {{
         subnet = int(dev["subnet_id"])
         did = int(dev["device_id"])
         ch = int(dev["channel"])
+        use_pos = bool(dev.get("use_position"))
         await hub.broadcast(
             "cover_state",
             {
@@ -2257,7 +2261,7 @@ self.addEventListener('fetch', (event) => {{
                 "device_id": did,
                 "channel": ch,
                 "state": str(st.state).upper(),
-                "position": int(st.position) if st.position is not None else None,
+                "position": int(st.position) if (use_pos and st.position is not None) else None,
             },
         )
 
@@ -4689,6 +4693,7 @@ self.addEventListener('fetch', (event) => {{
             "opening_time_up": int(payload.get("opening_time_up") or 20), 
             "opening_time_down": int(payload.get("opening_time_down") or 20), 
             "start_delay_s": float(payload.get("start_delay_s") or 0.0),
+            "use_position": bool(payload.get("use_position") or False),
         } 
         if "reverse_icon" in payload:
             device["reverse_icon"] = bool(payload.get("reverse_icon"))
@@ -5221,6 +5226,10 @@ self.addEventListener('fetch', (event) => {{
         cmd = str(payload.get("command") or "").upper()
         if cmd not in ("OPEN", "CLOSE", "STOP", "SET_POSITION", "OPEN_RAW", "CLOSE_RAW"):
             raise HTTPException(status_code=400, detail="command must be OPEN/CLOSE/STOP/SET_POSITION/OPEN_RAW/CLOSE_RAW")
+        if cmd == "SET_POSITION":
+            dev = _find_cover_device(subnet_id, device_id, channel) or {}
+            if not bool(dev.get("use_position")):
+                raise HTTPException(status_code=400, detail="position disabled for this cover")
         if cmd == "OPEN":
             await gw.cover_open(subnet_id=subnet_id, device_id=device_id, channel=channel)
         elif cmd == "OPEN_RAW":
@@ -5335,6 +5344,8 @@ self.addEventListener('fetch', (event) => {{
             updates["opening_time_down"] = int(payload.get("opening_time_down") or 20) 
         if "start_delay_s" in payload:
             updates["start_delay_s"] = float(payload.get("start_delay_s") or 0.0)
+        if "use_position" in payload:
+            updates["use_position"] = bool(payload.get("use_position"))
         if "group" in payload:
             group = str(payload.get("group") or "").strip()
             if group.startswith("#"):
