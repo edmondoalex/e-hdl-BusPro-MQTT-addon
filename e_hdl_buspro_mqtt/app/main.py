@@ -49,7 +49,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.305"
+ADDON_VERSION = "0.1.306"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -3240,11 +3240,13 @@ self.addEventListener('fetch', (event) => {{
                         until = float(guard.get(addr) or 0.0)
                         if until and time.monotonic() < until:
                             # Ignore bus updates during raw movement window.
+                            _LOGGER.debug("cover_raw_guard ignore bus update %s state=%s pos=%s", addr, st.state, st.position)
                             break
                     # Real bus update: stop any simulation for this cover.
                     _cancel_cover_sim(addr)
                     state_s = str(st.state).upper()
                     pos = int(st.position) if st.position is not None else None
+                    _LOGGER.debug("cover bus update %s state=%s pos=%s use_pos=%s", addr, state_s, pos, use_pos)
                     prev = api.state._last_cover_state.get(addr)
                     cur = (state_s, pos)
                     if prev == cur:
