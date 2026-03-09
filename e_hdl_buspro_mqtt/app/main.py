@@ -49,7 +49,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.308"
+ADDON_VERSION = "0.1.309"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -226,6 +226,7 @@ def create_app() -> FastAPI:
     options = read_options()
     settings = load_settings(options)
     api.state.settings = settings
+    guard_enabled = bool(getattr(settings, "guard_enabled", False))
     _configure_logging(settings.debug, settings.debug_telegram)
     # Optional: force the source IPv4 embedded in telegrams (BUSPRO_LOCAL_IP).
     try:
@@ -663,8 +664,10 @@ def create_app() -> FastAPI:
             return await call_next(request)
 
         # User pages
-        if path in ("/", "/home", "/home2", "/lights", "/covers", "/extra", "/scenarios", "/e-guard"):
+        if path in ("/", "/home", "/home2", "/lights", "/covers", "/extra", "/scenarios"):
             return await call_next(request) 
+        if guard_enabled and path == "/e-guard":
+            return await call_next(request)
 
         # User allowed APIs (read-only + control)
         if path.startswith("/api/control/"):
@@ -673,11 +676,11 @@ def create_app() -> FastAPI:
             return await call_next(request)
         if path == "/api/user/light_scenarios_status" and request.method.upper() == "GET":
             return await call_next(request)
-        if path == "/api/guard_cameras" and request.method.upper() == "GET":
+        if guard_enabled and path == "/api/guard_cameras" and request.method.upper() == "GET":
             return await call_next(request)
-        if path == "/api/e_guard/snapshot" and request.method.upper() == "GET":
+        if guard_enabled and path == "/api/e_guard/snapshot" and request.method.upper() == "GET":
             return await call_next(request)
-        if path == "/api/e_guard/diag" and request.method.upper() == "GET":
+        if guard_enabled and path == "/api/e_guard/diag" and request.method.upper() == "GET":
             return await call_next(request)
         if path == "/api/user/devices" and request.method.upper() == "GET":
             return await call_next(request)
@@ -3754,6 +3757,8 @@ self.addEventListener('fetch', (event) => {{
 
     @api.get("/e-guard", response_class=HTMLResponse)
     async def user_guard():
+        if not guard_enabled:
+            raise HTTPException(status_code=404, detail="Not Found")
         p = os.path.join(static_dir, "user", "e_guard.html")
         with open(p, "r", encoding="utf-8") as f:
             return f.read()
@@ -3764,15 +3769,34 @@ self.addEventListener('fetch', (event) => {{
 
     @api.get("/api/meta")
     async def api_meta(): 
+        hub_icons = store.get_hub_icons()
+        hub_show = store.get_hub_show()
+        hub_order = store.get_hub_order()
+        home2_order = store.get_home2_order()
+        if not guard_enabled:
+            try:
+                hub_show = dict(hub_show or {})
+                hub_show["guard"] = False
+            except Exception:
+                pass
+            try:
+                hub_order = [x for x in (hub_order or []) if str(x) != "guard"]
+            except Exception:
+                pass
+            try:
+                home2_order = [x for x in (home2_order or []) if str(x) != "guard"]
+            except Exception:
+                pass
         return {
             "version": ADDON_VERSION,
             "group_order": store.get_group_order(),
             "hub_links": store.list_visible_hub_links(),
             "home_actions": store.list_visible_home_actions(),
-            "home2_order": store.get_home2_order(),
-            "hub_icons": store.get_hub_icons(),
-            "hub_show": store.get_hub_show(),
-            "hub_order": store.get_hub_order(),
+            "home2_order": home2_order,
+            "hub_icons": hub_icons,
+            "hub_show": hub_show,
+            "hub_order": hub_order,
+            "guard_enabled": guard_enabled,
         } 
 
     @api.get("/api/user/devices")
@@ -3853,7 +3877,12 @@ self.addEventListener('fetch', (event) => {{
 
     @api.get("/api/hub_config")
     async def api_hub_config_get():
-        return {"hub_icons": store.get_hub_icons(), "hub_show": store.get_hub_show(), "hub_order": store.get_hub_order()}
+        return {
+            "hub_icons": store.get_hub_icons(),
+            "hub_show": store.get_hub_show(),
+            "hub_order": store.get_hub_order(),
+            "guard_enabled": guard_enabled,
+        }
 
     @api.put("/api/hub_config")
     async def api_hub_config_set(payload: dict[str, Any]):
@@ -3917,11 +3946,15 @@ self.addEventListener('fetch', (event) => {{
 
     @api.get("/api/guard_cameras")
     async def api_guard_cameras_list():
+        if not guard_enabled:
+            raise HTTPException(status_code=404, detail="Not Found")
         # Admin-only via port gate
         return {"items": store.list_guard_cameras()}
 
     @api.post("/api/guard_cameras")
     async def api_guard_cameras_add(payload: dict[str, Any]):
+        if not guard_enabled:
+            raise HTTPException(status_code=404, detail="Not Found")
         # Admin-only via port gate
         try:
             item = store.add_guard_camera(payload)
@@ -3932,6 +3965,8 @@ self.addEventListener('fetch', (event) => {{
 
     @api.put("/api/guard_cameras/{camera_id}")
     async def api_guard_cameras_update(camera_id: str, payload: dict[str, Any]):
+        if not guard_enabled:
+            raise HTTPException(status_code=404, detail="Not Found")
         # Admin-only via port gate
         try:
             item = store.update_guard_camera(camera_id=camera_id, payload=payload)
@@ -3944,6 +3979,8 @@ self.addEventListener('fetch', (event) => {{
 
     @api.delete("/api/guard_cameras/{camera_id}")
     async def api_guard_cameras_delete(camera_id: str):
+        if not guard_enabled:
+            raise HTTPException(status_code=404, detail="Not Found")
         # Admin-only via port gate
         ok = store.delete_guard_camera(camera_id=camera_id)
         if not ok:
@@ -3953,6 +3990,8 @@ self.addEventListener('fetch', (event) => {{
 
     @api.get("/api/e_guard/snapshot")
     async def api_guard_snapshot(entity_id: str, t: str | None = None):
+        if not guard_enabled:
+            raise HTTPException(status_code=404, detail="Not Found")
         if not _ha_enabled():
             raise HTTPException(status_code=503, detail="Home Assistant not available")
         eid = str(entity_id or "").strip().lower()
@@ -4085,6 +4124,8 @@ self.addEventListener('fetch', (event) => {{
 
     @api.get("/api/e_guard/diag")
     async def api_guard_diag(entity_id: str):
+        if not guard_enabled:
+            raise HTTPException(status_code=404, detail="Not Found")
         if not _ha_enabled():
             raise HTTPException(status_code=503, detail="Home Assistant not available")
         eid = str(entity_id or "").strip().lower()

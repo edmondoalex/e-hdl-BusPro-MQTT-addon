@@ -49,6 +49,7 @@ class Settings:
     ha_poll_interval_s: float
     light_cmd_interval_s: float
     udp_send_interval_s: float
+    guard_enabled: bool
     debug: bool
     debug_telegram: bool
 
@@ -126,6 +127,7 @@ def load_settings(options: dict[str, Any]) -> Settings:
     ha_poll_interval_s = max(0.5, _read_float("ha_poll_interval_s", 2.0))
     light_cmd_interval_s = max(0.0, _read_float("light_cmd_interval_s", 0.12))
     udp_send_interval_s = max(0.0, _read_float("udp_send_interval_s", 0.0))
+    guard_enabled = bool(options.get("guard_enabled", False))
 
     return Settings(
         gateway=GatewayConfig(host=str(gw), port=gw_port, local_ip=gw_local_ip),
@@ -137,6 +139,7 @@ def load_settings(options: dict[str, Any]) -> Settings:
         ha_poll_interval_s=ha_poll_interval_s,
         light_cmd_interval_s=light_cmd_interval_s,
         udp_send_interval_s=udp_send_interval_s,
+        guard_enabled=guard_enabled,
         debug=bool(options.get("debug") or False),
         debug_telegram=bool(options.get("debug_telegram") or False),
     )

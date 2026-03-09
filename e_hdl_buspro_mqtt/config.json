@@ -2,7 +2,7 @@
     "name":  "e-hdl BusPro MQTT",
     "slug":  "e_hdl_buspro_mqtt",
     "description":  "BusPro UDP bridge with MQTT Discovery + Web UI.",
-    "version":  "0.1.308",
+    "version":  "0.1.309",
     "startup":  "services",
     "boot":  "auto",
     "homeassistant_api":  true,
@@ -27,6 +27,7 @@
                     "ha_poll_interval_s":  2.0,
                     "light_cmd_interval_s":  0.12,
                     "udp_send_interval_s":  0.0,
+                    "guard_enabled":  false,
                     "debug":  false,
                     "debug_telegram":  false,
                     "auth":  {
@@ -60,6 +61,7 @@
                    "ha_poll_interval_s":  "float?",
                    "light_cmd_interval_s":  "float?",
                    "udp_send_interval_s":  "float?",
+                   "guard_enabled":  "bool?",
                    "debug":  "bool?",
                    "debug_telegram":  "bool?",
                    "auth":  {

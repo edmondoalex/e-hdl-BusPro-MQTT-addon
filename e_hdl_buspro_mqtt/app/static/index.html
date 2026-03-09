@@ -4299,9 +4299,19 @@
       let hubShow = null;
       let hubOrder = null;
       let pwaCfg = null;
+      let guardEnabled = true;
 
       const airByAddr = new Map(); // addr -> { state, ts }
       const gasByAddr = new Map(); // addr -> { value, ts }
+
+      function applyGuardEnabled() {
+        const acc = document.querySelector('details.acc[data-acc="guard_cameras"]');
+        if (acc) acc.style.display = guardEnabled ? '' : 'none';
+        const icon = qs('hubIconGuard');
+        if (icon && icon.closest('div')) icon.closest('div').style.display = guardEnabled ? '' : 'none';
+        const show = qs('hubShowGuard');
+        if (show && show.closest('div')) show.closest('div').style.display = guardEnabled ? '' : 'none';
+      }
 
       function renderHubIcons() {
         if (!hubIcons) return;
@@ -4309,7 +4319,7 @@
         qs('hubIconScenarios').value = String(hubIcons.scenarios || '');
         qs('hubIconCovers').value = String(hubIcons.covers || '');
         qs('hubIconExtra').value = String(hubIcons.extra || '');
-        qs('hubIconGuard').value = String(hubIcons.guard || '');
+        if (guardEnabled) qs('hubIconGuard').value = String(hubIcons.guard || '');
       }
 
       function renderHubShow() {
@@ -4318,7 +4328,7 @@
         qs('hubShowScenarios').checked = !!hubShow.scenarios;
         qs('hubShowCovers').checked = !!hubShow.covers;
         qs('hubShowExtra').checked = !!hubShow.extra;
-        qs('hubShowGuard').checked = !!hubShow.guard;
+        if (guardEnabled) qs('hubShowGuard').checked = !!hubShow.guard;
       }
 
       function hubKeyLabel(k) {
@@ -4332,7 +4342,7 @@
       }
 
       function normalizeHubOrder(order) {
-        const allowed = ['lights', 'scenarios', 'covers', 'extra', 'guard'];
+        const allowed = guardEnabled ? ['lights', 'scenarios', 'covers', 'extra', 'guard'] : ['lights', 'scenarios', 'covers', 'extra'];
         const out = [];
         const seen = new Set();
         const arr = Array.isArray(order) ? order : [];
@@ -4409,14 +4419,23 @@
           hubIcons = (res && res.hub_icons && typeof res.hub_icons === 'object') ? res.hub_icons : null;
           hubShow = (res && res.hub_show && typeof res.hub_show === 'object') ? res.hub_show : null;
           hubOrder = (res && Array.isArray(res.hub_order)) ? res.hub_order : null;
+          guardEnabled = !(res && typeof res.guard_enabled === 'boolean') ? guardEnabled : !!res.guard_enabled;
         } catch (e) {
           hubIcons = null;
           hubShow = null;
           hubOrder = null;
         }
+        applyGuardEnabled();
         renderHubIcons();
         renderHubShow();
         renderHubOrder();
+        if (guardEnabled) {
+          refreshGuardCameras();
+          updateGuardSourceUI();
+        } else {
+          guardCameras = [];
+          renderGuardCameras();
+        }
       }
 
       async function saveHubIcons() {
@@ -4438,6 +4457,11 @@
           },
           hub_order: normalizeHubOrder(hubOrder || []),
         };
+        if (!guardEnabled) {
+          try { delete payload.hub_icons.guard; } catch (e) {}
+          try { delete payload.hub_show.guard; } catch (e) {}
+          payload.hub_order = normalizeHubOrder(payload.hub_order);
+        }
         try {
           const res = await getJson('api/hub_config', {
             method: 'PUT',
@@ -5066,6 +5090,7 @@
       }
 
       function updateGuardSourceUI() {
+        if (!guardEnabled) return;
         const isDahua = String(qs('guard_source').value || '') === 'dahua';
         const ids = ['guard_dahua_host', 'guard_dahua_user', 'guard_dahua_pass', 'guard_dahua_channel', 'guard_dahua_mode', 'guard_dahua_url'];
         const rows = new Set();
@@ -5093,6 +5118,7 @@
       }
 
       function renderGuardCameras() {
+        if (!guardEnabled) return;
         const table = document.getElementById('guardTable');
         if (!table) return;
         const body = table.querySelector('tbody');
@@ -5136,6 +5162,7 @@
       }
 
       async function refreshGuardCameras() {
+        if (!guardEnabled) return;
         try {
           const res = await getJson('api/guard_cameras');
           guardCameras = Array.isArray(res && res.items) ? res.items : [];
@@ -5238,8 +5265,6 @@
       refreshHome2Order();
       refreshScenarioIdsDatalist();
       refreshHaDevices();
-      refreshGuardCameras();
-      updateGuardSourceUI();
       refreshPwaConfig();
       refreshProxyTargets();
       setHomeActionEditing(null);
@@ -5326,6 +5351,7 @@
 
       qs('guardForm').addEventListener('submit', async (ev) => {
         ev.preventDefault();
+        if (!guardEnabled) return;
         qs('guard_formMsg').textContent = '';
         try {
           const id = String(qs('guard_id').value || '').trim();
@@ -5383,8 +5409,8 @@
         ev.preventDefault();
         setGuardEditing(null);
       });
-      qs('guard_source').addEventListener('change', updateGuardSourceUI);
-      qs('guard_dahua_mode').addEventListener('change', updateGuardSourceUI);
+      qs('guard_source').addEventListener('change', () => { if (guardEnabled) updateGuardSourceUI(); });
+      qs('guard_dahua_mode').addEventListener('change', () => { if (guardEnabled) updateGuardSourceUI(); });
 
       qs('haction_kind').addEventListener('change', () => {
         renderHomeActionFormUI();
