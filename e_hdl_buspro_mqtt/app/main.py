@@ -49,7 +49,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.300"
+ADDON_VERSION = "0.1.301"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -3566,10 +3566,18 @@ self.addEventListener('fetch', (event) => {{
                     )
                 elif kind == "cover":
                     cmd = payload.strip().upper()
+                    dev = _find_cover_device(subnet, did, ch) or {}
+                    use_pos = bool(dev.get("use_position"))
                     if cmd == "OPEN":
-                        asyncio.run_coroutine_threadsafe(gateway.cover_open(subnet_id=subnet, device_id=did, channel=ch), loop)
+                        if use_pos:
+                            asyncio.run_coroutine_threadsafe(gateway.cover_open(subnet_id=subnet, device_id=did, channel=ch), loop)
+                        else:
+                            asyncio.run_coroutine_threadsafe(gateway.cover_open_raw(subnet_id=subnet, device_id=did, channel=ch), loop)
                     elif cmd == "CLOSE":
-                        asyncio.run_coroutine_threadsafe(gateway.cover_close(subnet_id=subnet, device_id=did, channel=ch), loop)
+                        if use_pos:
+                            asyncio.run_coroutine_threadsafe(gateway.cover_close(subnet_id=subnet, device_id=did, channel=ch), loop)
+                        else:
+                            asyncio.run_coroutine_threadsafe(gateway.cover_close_raw(subnet_id=subnet, device_id=did, channel=ch), loop)
                     elif cmd == "STOP":
                         asyncio.run_coroutine_threadsafe(gateway.cover_stop(subnet_id=subnet, device_id=did, channel=ch), loop)
                 elif kind == "cover_raw":
@@ -3581,6 +3589,9 @@ self.addEventListener('fetch', (event) => {{
                     elif cmd == "STOP":
                         asyncio.run_coroutine_threadsafe(gateway.cover_stop(subnet_id=subnet, device_id=did, channel=ch), loop)
                 elif kind == "cover_pos":
+                    dev = _find_cover_device(subnet, did, ch) or {}
+                    if not bool(dev.get("use_position")):
+                        return
                     s = payload.strip()
                     if s and s[0] == "{":
                         obj = json.loads(s)
@@ -5226,16 +5237,23 @@ self.addEventListener('fetch', (event) => {{
         cmd = str(payload.get("command") or "").upper()
         if cmd not in ("OPEN", "CLOSE", "STOP", "SET_POSITION", "OPEN_RAW", "CLOSE_RAW"):
             raise HTTPException(status_code=400, detail="command must be OPEN/CLOSE/STOP/SET_POSITION/OPEN_RAW/CLOSE_RAW")
+        dev = _find_cover_device(subnet_id, device_id, channel) or {}
+        use_pos = bool(dev.get("use_position"))
         if cmd == "SET_POSITION":
-            dev = _find_cover_device(subnet_id, device_id, channel) or {}
-            if not bool(dev.get("use_position")):
+            if not use_pos:
                 raise HTTPException(status_code=400, detail="position disabled for this cover")
         if cmd == "OPEN":
-            await gw.cover_open(subnet_id=subnet_id, device_id=device_id, channel=channel)
+            if use_pos:
+                await gw.cover_open(subnet_id=subnet_id, device_id=device_id, channel=channel)
+            else:
+                await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
         elif cmd == "OPEN_RAW":
             await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
         elif cmd == "CLOSE":
-            await gw.cover_close(subnet_id=subnet_id, device_id=device_id, channel=channel)
+            if use_pos:
+                await gw.cover_close(subnet_id=subnet_id, device_id=device_id, channel=channel)
+            else:
+                await gw.cover_close_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
         elif cmd == "CLOSE_RAW":
             await gw.cover_close_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
         elif cmd == "STOP":
