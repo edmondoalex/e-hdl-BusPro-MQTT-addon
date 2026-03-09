@@ -525,6 +525,20 @@ class Cover(Device):
         await self._send_command()
         self._call_device_updated()
 
+    def clear_pending_motion(self) -> None:
+        """Cancel any pending/auto-stop tasks before issuing raw commands."""
+        try:
+            if self._stop_task and not self._stop_task.done():
+                self._stop_task.cancel()
+        except Exception:
+            pass
+        self._cancel_status_poll()
+        self._cancel_motion_tick()
+        self._cancel_pending_fallback()
+        self._cancel_pending_start()
+        self._cancel_pending_probe()
+        self._pending = None
+
         # Non far partire subito il conteggio: aspetta conferma OPENING/CLOSING dal bus (o fallback timeout).
         self._status = CoverStatus.STOP
         self._set_pending(direction=pending_dir, requested=self._requested_position, full_time=full_time, start_pos=int(self._start_position))

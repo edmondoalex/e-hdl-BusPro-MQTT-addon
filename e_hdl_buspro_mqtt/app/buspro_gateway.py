@@ -590,7 +590,11 @@ class BusproGateway:
         # Raw OPEN without auto-stop scheduling (used for calibration)
         key = (subnet_id, device_id, channel)
         async def _do() -> None:
-            self.ensure_cover(subnet_id=subnet_id, device_id=device_id, channel=channel, name="", opening_time=20)
+            dev = self.ensure_cover(subnet_id=subnet_id, device_id=device_id, channel=channel, name="", opening_time=20)
+            try:
+                dev.clear_pending_motion()
+            except Exception:
+                pass
             self._auto_set_send_target_from_rx()
             scc = _CoverControl(self._buspro)
             scc.subnet_id, scc.device_id = (subnet_id, device_id)
@@ -611,7 +615,11 @@ class BusproGateway:
         # Raw CLOSE without auto-stop scheduling (used for calibration)
         key = (subnet_id, device_id, channel)
         async def _do() -> None:
-            self.ensure_cover(subnet_id=subnet_id, device_id=device_id, channel=channel, name="", opening_time=20)
+            dev = self.ensure_cover(subnet_id=subnet_id, device_id=device_id, channel=channel, name="", opening_time=20)
+            try:
+                dev.clear_pending_motion()
+            except Exception:
+                pass
             self._auto_set_send_target_from_rx()
             scc = _CoverControl(self._buspro)
             scc.subnet_id, scc.device_id = (subnet_id, device_id)
