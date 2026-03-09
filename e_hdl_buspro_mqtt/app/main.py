@@ -49,7 +49,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.310"
+ADDON_VERSION = "0.1.311"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -3769,6 +3769,7 @@ self.addEventListener('fetch', (event) => {{
 
     @api.get("/api/meta")
     async def api_meta(): 
+        back_gesture_enabled = bool(getattr(settings, "back_gesture_enabled", True))
         hub_icons = store.get_hub_icons()
         hub_show = store.get_hub_show()
         hub_order = store.get_hub_order()
@@ -3797,6 +3798,7 @@ self.addEventListener('fetch', (event) => {{
             "hub_show": hub_show,
             "hub_order": hub_order,
             "guard_enabled": guard_enabled,
+            "back_gesture_enabled": back_gesture_enabled,
         } 
 
     @api.get("/api/user/devices")

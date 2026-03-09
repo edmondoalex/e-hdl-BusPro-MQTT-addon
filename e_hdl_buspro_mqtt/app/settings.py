@@ -49,6 +49,7 @@ class Settings:
     ha_poll_interval_s: float
     light_cmd_interval_s: float
     udp_send_interval_s: float
+    back_gesture_enabled: bool
     guard_enabled: bool
     debug: bool
     debug_telegram: bool
@@ -127,6 +128,7 @@ def load_settings(options: dict[str, Any]) -> Settings:
     ha_poll_interval_s = max(0.5, _read_float("ha_poll_interval_s", 2.0))
     light_cmd_interval_s = max(0.0, _read_float("light_cmd_interval_s", 0.12))
     udp_send_interval_s = max(0.0, _read_float("udp_send_interval_s", 0.0))
+    back_gesture_enabled = bool(options.get("back_gesture_enabled", True))
     guard_enabled = bool(options.get("guard_enabled", False))
 
     return Settings(
@@ -139,6 +141,7 @@ def load_settings(options: dict[str, Any]) -> Settings:
         ha_poll_interval_s=ha_poll_interval_s,
         light_cmd_interval_s=light_cmd_interval_s,
         udp_send_interval_s=udp_send_interval_s,
+        back_gesture_enabled=back_gesture_enabled,
         guard_enabled=guard_enabled,
         debug=bool(options.get("debug") or False),
         debug_telegram=bool(options.get("debug_telegram") or False),
