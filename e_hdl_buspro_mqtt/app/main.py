@@ -49,7 +49,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.304"
+ADDON_VERSION = "0.1.305"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -2173,6 +2173,10 @@ self.addEventListener('fetch', (event) => {{
             guard: dict[str, float] = getattr(api.state, "cover_raw_guard", {}) or {}
             guard[addr] = time.monotonic() + max(2.0, float(full_time or 0))
             api.state.cover_raw_guard = guard
+
+        # Emit immediate OPENING/CLOSING state so UI updates right away.
+        state_move_now = "OPENING" if cmd_u == "OPEN" else "CLOSING"
+        asyncio.create_task(_emit_cover_sim_state(subnet_id, device_id, channel, state=state_move_now, position=None))
 
         async def _task() -> None:
             try:
