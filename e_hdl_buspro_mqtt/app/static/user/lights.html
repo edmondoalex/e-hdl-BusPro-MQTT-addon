@@ -404,6 +404,29 @@
         return r.text();
       }
 
+      function scenarioModalEl() {
+        try {
+          const back = qs('scenesModalBack');
+          return back ? back.querySelector('.modal') : null;
+        } catch (e) {
+          return null;
+        }
+      }
+      function captureScenarioScroll() {
+        const modal = scenarioModalEl();
+        if (!modal) return null;
+        return modal.scrollTop;
+      }
+      function restoreScenarioScroll(scrollTop) {
+        if (scrollTop === null || scrollTop === undefined) return;
+        const modal = scenarioModalEl();
+        if (!modal) return;
+        modal.scrollTop = scrollTop;
+        try {
+          requestAnimationFrame(() => { modal.scrollTop = scrollTop; });
+        } catch (e) {}
+      }
+
       async function sendLight(d, addr, state, brightness) {
         const payload = { state: state };
         if (brightness !== undefined) payload.brightness = brightness;
@@ -496,6 +519,7 @@
       }
 
       function renderLightScenarios() {
+        const scScroll = captureScenarioScroll();
         const root = qs('scList');
         const err = qs('scErr');
         const editor = qs('scEditor');
@@ -510,6 +534,7 @@
           empty.className = 'row scRow';
           empty.innerHTML = `<div class="scName">Nessuno scenario salvato</div><div class="scMeta">Crea uno scenario dopo aver impostato le luci</div>`;
           root.appendChild(empty);
+          restoreScenarioScroll(scScroll);
           return;
         }
 
@@ -569,6 +594,7 @@
             openScenarioEditor(id);
           });
         });
+        restoreScenarioScroll(scScroll);
       }
 
       function openScenarioEditor(id) {
@@ -709,6 +735,7 @@
       }
 
       function renderScenarioEditorCovers() {
+        const scScroll = captureScenarioScroll();
         const root = qs('scCoverItems');
         const err = qs('scErr');
         if (!root) return;
@@ -735,6 +762,7 @@
           empty.className = 'scItem';
           empty.innerHTML = `<div class="scItemLeft"><div class="scItemTitle">Nessuna tapparella nello scenario</div><div class="scItemSub">Aggiungi tapparelle o gruppi dalla lista sotto</div></div>`;
           root.appendChild(empty);
+          restoreScenarioScroll(scScroll);
           return;
         }
 
@@ -798,9 +826,11 @@
             renderScenarioEditorCovers();
           });
         });
+        restoreScenarioScroll(scScroll);
       }
 
       function renderScenarioCoverAddList() {
+        const scScroll = captureScenarioScroll();
         const root = qs('scCoverAddList');
         if (!root) return;
         root.replaceChildren();
@@ -838,6 +868,7 @@
           empty.className = 'scAddRow';
           empty.innerHTML = `<div class="scAddName">Nessuna tapparella da aggiungere</div><div class="scAddMeta">usa la ricerca</div>`;
           root.appendChild(empty);
+          restoreScenarioScroll(scScroll);
           return;
         }
 
@@ -860,9 +891,11 @@
           });
           root.appendChild(row);
         }
+        restoreScenarioScroll(scScroll);
       }
 
       function renderScenarioEditorItems() {
+        const scScroll = captureScenarioScroll();
         const root = qs('scItems');
         const err = qs('scErr');
         if (!root) return;
@@ -882,6 +915,7 @@
           empty.className = 'scItem';
           empty.innerHTML = `<div class="scItemLeft"><div class="scItemTitle">Nessuna luce nello scenario</div><div class="scItemSub">Aggiungi luci dalla lista sotto</div></div>`;
           root.appendChild(empty);
+          restoreScenarioScroll(scScroll);
           return;
         }
 
@@ -957,9 +991,11 @@
         });
 
         if (err) err.textContent = '';
+        restoreScenarioScroll(scScroll);
       }
 
       function renderScenarioAddList() {
+        const scScroll = captureScenarioScroll();
         const root = qs('scAddList');
         if (!root) return;
         root.replaceChildren();
@@ -987,6 +1023,7 @@
           empty.className = 'scAddRow';
           empty.innerHTML = `<div class="scAddName">Nessuna luce da aggiungere</div><div class="scAddMeta">usa la ricerca</div>`;
           root.appendChild(empty);
+          restoreScenarioScroll(scScroll);
           return;
         }
         for (const { addr, d } of all) {
@@ -1005,6 +1042,7 @@
           });
           root.appendChild(row);
         }
+        restoreScenarioScroll(scScroll);
       }
 
       async function saveScenarioEdits() {

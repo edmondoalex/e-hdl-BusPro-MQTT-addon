@@ -107,8 +107,27 @@
         background:rgba(0,0,0,.22);
         display:flex;align-items:center;justify-content:center;
         cursor:pointer;
+        position:relative;
+        overflow:hidden;
+        transition:transform .12s ease, box-shadow .18s ease, border-color .18s ease;
       }
       .iconBtn:active{transform:scale(.98)}
+      .iconBtn.pressed{
+        transform:scale(.96);
+        border-color:rgba(255,215,0,.45);
+        box-shadow:0 0 0 2px rgba(255,215,0,.25), 0 10px 18px rgba(255,215,0,.14);
+      }
+      .iconBtn.pulse{animation:btnPulse .28s ease-out 1}
+      .iconBtn.ripple::after{
+        content:'';
+        position:absolute;
+        inset:4px;
+        border-radius:999px;
+        background:radial-gradient(circle at center, rgba(255,215,0,.25) 0%, rgba(255,215,0,.12) 40%, rgba(255,215,0,0) 70%);
+        opacity:0;
+        animation:btnRipple .32s ease-out 1;
+        pointer-events:none;
+      }
       .iconBtn svg{width:22px;height:22px;stroke:rgba(242,245,255,.72);stroke-width:2.2;fill:none;stroke-linecap:round;stroke-linejoin:round}
       .iconBtn.stop svg{stroke:rgba(242,245,255,.65)}
       .coverIco{
@@ -185,6 +204,15 @@
       .mControls .iconBtn{width:46px;height:46px}
       .mControls .iconBtn svg{width:24px;height:24px}
       input[type="range"]{width:100%;accent-color:rgba(242,245,255,.78)}
+      @keyframes btnPulse{
+        0%{transform:scale(1)}
+        45%{transform:scale(1.06)}
+        100%{transform:scale(1)}
+      }
+      @keyframes btnRipple{
+        0%{opacity:.9;transform:scale(.85)}
+        100%{opacity:0;transform:scale(1.25)}
+      }
     </style>
   </head>
   <body>
@@ -310,6 +338,16 @@
         const ct = (r.headers.get('content-type')||'').toLowerCase();
         if (ct.includes('application/json')) return r.json();
         return r.text();
+      }
+
+      function animatePress(btn) {
+        if (!btn) return;
+        btn.classList.remove('pressed','pulse','ripple');
+        try { void btn.offsetWidth; } catch (e) {}
+        btn.classList.add('pressed','pulse','ripple');
+        setTimeout(() => {
+          try { btn.classList.remove('pressed','pulse','ripple'); } catch (e) {}
+        }, 220);
       }
 
       async function sendCoverCmd(addr, command) {
@@ -776,6 +814,7 @@
               row.querySelectorAll('[data-act]').forEach((btn) => {
                 btn.addEventListener('click', async (evt) => {
                   try { evt.stopPropagation(); } catch(e){}
+                  animatePress(btn);
                   qs('err').textContent = '';
                   const act = btn.getAttribute('data-act');
                   try {
@@ -867,6 +906,7 @@
           row.querySelectorAll('[data-act]').forEach((btn) => {
             btn.addEventListener('click', async (evt) => {
               try { evt.stopPropagation(); } catch(e){}
+              animatePress(btn);
               qs('err').textContent = '';
               const act = btn.getAttribute('data-act');
               try {
@@ -1013,9 +1053,9 @@
 
       qs('mClose').addEventListener('click', closeModal);
       qs('modalBack').addEventListener('click', (evt) => { if (evt.target === qs('modalBack')) closeModal(); });
-      qs('mOpen').addEventListener('click', async () => { if (!activeAddr) return; try { await sendCoverCmd(activeAddr,'OPEN'); } catch(e){ qs('err').textContent = e.message || String(e); } });
-      qs('mStop').addEventListener('click', async () => { if (!activeAddr) return; try { await sendCoverCmd(activeAddr,'STOP'); } catch(e){ qs('err').textContent = e.message || String(e); } });
-      qs('mCloseBtn').addEventListener('click', async () => { if (!activeAddr) return; try { await sendCoverCmd(activeAddr,'CLOSE'); } catch(e){ qs('err').textContent = e.message || String(e); } });
+      qs('mOpen').addEventListener('click', async () => { animatePress(qs('mOpen')); if (!activeAddr) return; try { await sendCoverCmd(activeAddr,'OPEN'); } catch(e){ qs('err').textContent = e.message || String(e); } });
+      qs('mStop').addEventListener('click', async () => { animatePress(qs('mStop')); if (!activeAddr) return; try { await sendCoverCmd(activeAddr,'STOP'); } catch(e){ qs('err').textContent = e.message || String(e); } });
+      qs('mCloseBtn').addEventListener('click', async () => { animatePress(qs('mCloseBtn')); if (!activeAddr) return; try { await sendCoverCmd(activeAddr,'CLOSE'); } catch(e){ qs('err').textContent = e.message || String(e); } });
 
       // Drag inside the pill to set position
       (function() {
