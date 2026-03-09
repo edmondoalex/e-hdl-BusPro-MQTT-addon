@@ -49,7 +49,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.302"
+ADDON_VERSION = "0.1.303"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -3569,24 +3569,33 @@ self.addEventListener('fetch', (event) => {{
                     dev = _find_cover_device(subnet, did, ch) or {}
                     use_pos = bool(dev.get("use_position"))
                     if cmd == "OPEN":
+                        if not use_pos:
+                            loop.call_soon_threadsafe(_start_cover_sim, subnet, did, ch, "OPEN")
                         if use_pos:
                             asyncio.run_coroutine_threadsafe(gateway.cover_open(subnet_id=subnet, device_id=did, channel=ch), loop)
                         else:
                             asyncio.run_coroutine_threadsafe(gateway.cover_open_raw(subnet_id=subnet, device_id=did, channel=ch), loop)
                     elif cmd == "CLOSE":
+                        if not use_pos:
+                            loop.call_soon_threadsafe(_start_cover_sim, subnet, did, ch, "CLOSE")
                         if use_pos:
                             asyncio.run_coroutine_threadsafe(gateway.cover_close(subnet_id=subnet, device_id=did, channel=ch), loop)
                         else:
                             asyncio.run_coroutine_threadsafe(gateway.cover_close_raw(subnet_id=subnet, device_id=did, channel=ch), loop)
                     elif cmd == "STOP":
+                        if not use_pos:
+                            loop.call_soon_threadsafe(_start_cover_sim, subnet, did, ch, "STOP")
                         asyncio.run_coroutine_threadsafe(gateway.cover_stop(subnet_id=subnet, device_id=did, channel=ch), loop)
                 elif kind == "cover_raw":
                     cmd = payload.strip().upper()
                     if cmd == "OPEN":
+                        loop.call_soon_threadsafe(_start_cover_sim, subnet, did, ch, "OPEN")
                         asyncio.run_coroutine_threadsafe(gateway.cover_open_raw(subnet_id=subnet, device_id=did, channel=ch), loop)
                     elif cmd == "CLOSE":
+                        loop.call_soon_threadsafe(_start_cover_sim, subnet, did, ch, "CLOSE")
                         asyncio.run_coroutine_threadsafe(gateway.cover_close_raw(subnet_id=subnet, device_id=did, channel=ch), loop)
                     elif cmd == "STOP":
+                        loop.call_soon_threadsafe(_start_cover_sim, subnet, did, ch, "STOP")
                         asyncio.run_coroutine_threadsafe(gateway.cover_stop(subnet_id=subnet, device_id=did, channel=ch), loop)
                 elif kind == "cover_pos":
                     dev = _find_cover_device(subnet, did, ch) or {}
@@ -5246,6 +5255,7 @@ self.addEventListener('fetch', (event) => {{
             if use_pos:
                 await gw.cover_open(subnet_id=subnet_id, device_id=device_id, channel=channel)
             else:
+                _start_cover_sim(subnet_id, device_id, channel, "OPEN")
                 await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
         elif cmd == "OPEN_RAW":
             await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
@@ -5253,10 +5263,13 @@ self.addEventListener('fetch', (event) => {{
             if use_pos:
                 await gw.cover_close(subnet_id=subnet_id, device_id=device_id, channel=channel)
             else:
+                _start_cover_sim(subnet_id, device_id, channel, "CLOSE")
                 await gw.cover_close_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
         elif cmd == "CLOSE_RAW":
             await gw.cover_close_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
         elif cmd == "STOP":
+            if not use_pos:
+                _start_cover_sim(subnet_id, device_id, channel, "STOP")
             await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
         else:
             pos = int(payload.get("position") or 0)
