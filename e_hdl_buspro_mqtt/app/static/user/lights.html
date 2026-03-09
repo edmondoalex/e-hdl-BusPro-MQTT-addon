@@ -243,6 +243,36 @@
       .scAddRow:active{background:rgba(255,255,255,.04)}
       .scAddName{min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.86}
       .scAddMeta{font-size:12px;color:rgba(255,255,255,.55);white-space:nowrap}
+      .pressFx{
+        position:relative;
+        overflow:hidden;
+        transition:transform .12s ease, box-shadow .18s ease, border-color .18s ease;
+      }
+      .pressFx.pressed{
+        transform:scale(.98);
+        border-color:rgba(255,215,0,.35);
+        box-shadow:0 0 0 2px rgba(255,215,0,.18) inset, 0 10px 18px rgba(255,215,0,.08);
+      }
+      .pressFx.pulse{animation:btnPulse .28s ease-out 1}
+      .pressFx.ripple::after{
+        content:'';
+        position:absolute;
+        inset:4px;
+        border-radius:999px;
+        background:radial-gradient(circle at center, rgba(255,215,0,.22) 0%, rgba(255,215,0,.10) 40%, rgba(255,215,0,0) 70%);
+        opacity:0;
+        animation:btnRipple .32s ease-out 1;
+        pointer-events:none;
+      }
+      @keyframes btnPulse{
+        0%{transform:scale(1)}
+        45%{transform:scale(1.04)}
+        100%{transform:scale(1)}
+      }
+      @keyframes btnRipple{
+        0%{opacity:.85;transform:scale(.86)}
+        100%{opacity:0;transform:scale(1.2)}
+      }
     </style>
   </head>
   <body>
@@ -404,6 +434,16 @@
         return r.text();
       }
 
+      function animatePress(el) {
+        if (!el) return;
+        el.classList.remove('pressed','pulse','ripple');
+        try { void el.offsetWidth; } catch (e) {}
+        el.classList.add('pressFx','pressed','pulse','ripple');
+        setTimeout(() => {
+          try { el.classList.remove('pressed','pulse','ripple'); } catch (e) {}
+        }, 220);
+      }
+
       function scenarioModalEl() {
         try {
           const back = qs('scenesModalBack');
@@ -557,6 +597,7 @@
 
         root.querySelectorAll('button[data-act="toggle"]').forEach((b) => {
           b.addEventListener('click', async () => {
+            animatePress(b);
             const id = b.getAttribute('data-id') || '';
             try {
               if (err) err.textContent = '';
@@ -574,6 +615,7 @@
         });
         root.querySelectorAll('button[data-act="del"]').forEach((b) => {
           b.addEventListener('click', async () => {
+            animatePress(b);
             const id = b.getAttribute('data-id') || '';
             if (!id) return;
             if (!confirm('Eliminare questo scenario?')) return;
@@ -589,6 +631,7 @@
 
         root.querySelectorAll('button[data-act="edit"]').forEach((b) => {
           b.addEventListener('click', async () => {
+            animatePress(b);
             const id = b.getAttribute('data-id') || '';
             if (!id) return;
             openScenarioEditor(id);
@@ -799,6 +842,7 @@
 
         root.querySelectorAll('button[data-act="c_del"]').forEach((b) => {
           b.addEventListener('click', () => {
+            animatePress(b);
             const key = b.getAttribute('data-key') || '';
             editingScenarioCovers = (editingScenarioCovers || []).filter((x) => coverKeyFromItem(x) !== key);
             renderScenarioEditorCovers();
@@ -807,6 +851,7 @@
         });
         root.querySelectorAll('button[data-act="c_open"]').forEach((b) => {
           b.addEventListener('click', () => {
+            animatePress(b);
             const key = b.getAttribute('data-key') || '';
             for (const it of (editingScenarioCovers || [])) if (coverKeyFromItem(it) === key) { it.command = 'OPEN'; it.position = null; }
             renderScenarioEditorCovers();
@@ -814,6 +859,7 @@
         });
         root.querySelectorAll('button[data-act="c_close"]').forEach((b) => {
           b.addEventListener('click', () => {
+            animatePress(b);
             const key = b.getAttribute('data-key') || '';
             for (const it of (editingScenarioCovers || [])) if (coverKeyFromItem(it) === key) { it.command = 'CLOSE'; it.position = null; }
             renderScenarioEditorCovers();
@@ -821,6 +867,7 @@
         });
         root.querySelectorAll('button[data-act="c_stop"]').forEach((b) => {
           b.addEventListener('click', () => {
+            animatePress(b);
             const key = b.getAttribute('data-key') || '';
             for (const it of (editingScenarioCovers || [])) if (coverKeyFromItem(it) === key) { it.command = 'STOP'; it.position = null; }
             renderScenarioEditorCovers();
@@ -878,6 +925,7 @@
           row.setAttribute('data-key', c.key);
           row.innerHTML = `<div class="scAddName">${escapeHtml(c.name)}</div><div class="scAddMeta">${escapeHtml(c.meta)}</div>`;
           row.addEventListener('click', () => {
+            animatePress(row);
             if (c.kind === 'group') {
               editingScenarioCovers = (editingScenarioCovers || []).concat([{ kind:'group', group_id: String(c.gid), command:'STOP', position:null }]);
             } else if (c.kind === 'ha') {
@@ -955,6 +1003,7 @@
 
         root.querySelectorAll('[data-act="rm"]').forEach((b) => {
           b.addEventListener('click', () => {
+            animatePress(b);
             const addr = b.getAttribute('data-addr') || '';
             editingScenarioItems = (editingScenarioItems || []).filter((x) => addrFromItem(x) !== addr);
             renderScenarioEditorItems();
@@ -1033,6 +1082,7 @@
           const meta = d.dimmable ? 'dimmer' : 'on/off';
           row.innerHTML = `<div class="scAddName">${escapeHtml(String(d.name||addr))}</div><div class="scAddMeta">${escapeHtml(addr)} • ${escapeHtml(meta)}</div>`;
           row.addEventListener('click', () => {
+            animatePress(row);
             const it = (String(d.origin || '') === 'ha')
               ? { entity_id: String(d.entity_id || addr), domain: String(d.domain || 'light'), state: 'ON', brightness: d.dimmable ? 255 : null }
               : { subnet_id: Number(d.subnet_id), device_id: Number(d.device_id), channel: Number(d.channel), state: 'ON', brightness: d.dimmable ? 255 : null };
@@ -1383,6 +1433,7 @@
           el.addEventListener('click', async (evt) => {
             const t = evt && evt.target;
             if (t && t.tagName && String(t.tagName).toLowerCase() === 'input') return;
+            animatePress(el);
             qs('err').textContent = '';
             const addr = el.getAttribute('data-addr');
             if (!addr) return;
@@ -1554,6 +1605,7 @@
       })(); 
 
       qs('filterBtn').addEventListener('click', () => {
+        animatePress(qs('filterBtn'));
         showActiveOnly = !showActiveOnly;
         try { localStorage.setItem('buspro_show_active_only_lights', JSON.stringify(showActiveOnly)); } catch (e) {}
         qs('filterBtn').classList.toggle('on', !!showActiveOnly);
@@ -1561,6 +1613,7 @@
       });
 
       qs('collapseBtn').addEventListener('click', () => {
+        animatePress(qs('collapseBtn'));
         const allLights = lastDevices
           .filter(isLightListDevice)
           .slice();
@@ -1574,14 +1627,15 @@
 
       // Scenarios navigation + editor
       qs('scenesPageBtn').addEventListener('click', () => {
+        animatePress(qs('scenesPageBtn'));
         try { window.location.href = absUrl('scenarios'); } catch (e) {}
       });
-      qs('scenesSettingsBtn').addEventListener('click', () => openScenarios());
-      qs('scCloseBtn').addEventListener('click', () => closeScenarios());
-      qs('scSaveOnBtn').addEventListener('click', () => saveScenario({ onlyOn: true }));
-      qs('scSaveAllBtn').addEventListener('click', () => saveScenario({ onlyOn: false }));
-      qs('scBackBtn').addEventListener('click', () => closeScenarioEditor());
-      qs('scSaveEditBtn').addEventListener('click', () => saveScenarioEdits());
+      qs('scenesSettingsBtn').addEventListener('click', () => { animatePress(qs('scenesSettingsBtn')); openScenarios(); });
+      qs('scCloseBtn').addEventListener('click', () => { animatePress(qs('scCloseBtn')); closeScenarios(); });
+      qs('scSaveOnBtn').addEventListener('click', () => { animatePress(qs('scSaveOnBtn')); saveScenario({ onlyOn: true }); });
+      qs('scSaveAllBtn').addEventListener('click', () => { animatePress(qs('scSaveAllBtn')); saveScenario({ onlyOn: false }); });
+      qs('scBackBtn').addEventListener('click', () => { animatePress(qs('scBackBtn')); closeScenarioEditor(); });
+      qs('scSaveEditBtn').addEventListener('click', () => { animatePress(qs('scSaveEditBtn')); saveScenarioEdits(); });
       qs('scAddSearch').addEventListener('input', () => renderScenarioAddList());
       try { qs('scCoverAddSearch').addEventListener('input', () => renderScenarioCoverAddList()); } catch (e) {}
       qs('scGroupSelect').addEventListener('change', () => {

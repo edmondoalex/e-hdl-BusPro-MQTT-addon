@@ -113,6 +113,36 @@
         opacity:.88;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
       }
       .error{color:var(--danger);font-size:13px;margin-top:10px}
+      .pressFx{
+        position:relative;
+        overflow:hidden;
+        transition:transform .12s ease, box-shadow .18s ease, border-color .18s ease;
+      }
+      .pressFx.pressed{
+        transform:scale(.98);
+        border-color:rgba(255,215,0,.35);
+        box-shadow:0 0 0 2px rgba(255,215,0,.18) inset, 0 10px 18px rgba(255,215,0,.08);
+      }
+      .pressFx.pulse{animation:btnPulse .28s ease-out 1}
+      .pressFx.ripple::after{
+        content:'';
+        position:absolute;
+        inset:4px;
+        border-radius:999px;
+        background:radial-gradient(circle at center, rgba(255,215,0,.22) 0%, rgba(255,215,0,.10) 40%, rgba(255,215,0,0) 70%);
+        opacity:0;
+        animation:btnRipple .32s ease-out 1;
+        pointer-events:none;
+      }
+      @keyframes btnPulse{
+        0%{transform:scale(1)}
+        45%{transform:scale(1.04)}
+        100%{transform:scale(1)}
+      }
+      @keyframes btnRipple{
+        0%{opacity:.85;transform:scale(.86)}
+        100%{opacity:0;transform:scale(1.2)}
+      }
     </style>
   </head>
   <body>
@@ -213,6 +243,16 @@
         const ct = (r.headers.get('content-type')||'').toLowerCase();
         if (ct.includes('application/json')) return r.json();
         return r.text();
+      }
+
+      function animatePress(el) {
+        if (!el) return;
+        el.classList.remove('pressed','pulse','ripple');
+        try { void el.offsetWidth; } catch (e) {}
+        el.classList.add('pressFx','pressed','pulse','ripple');
+        setTimeout(() => {
+          try { el.classList.remove('pressed','pulse','ripple'); } catch (e) {}
+        }, 220);
       }
 
       async function sendLight(d, addr, state) {
@@ -386,6 +426,7 @@
 
         root.querySelectorAll('.row[data-act="toggle"]').forEach((el) => {
           el.addEventListener('click', async () => {
+            animatePress(el);
             qs('err').textContent = '';
             const addr = el.getAttribute('data-addr');
             if (!addr) return;
@@ -526,6 +567,7 @@
       })(); 
 
       qs('filterBtn').addEventListener('click', () => {
+        animatePress(qs('filterBtn'));
         showActiveOnly = !showActiveOnly;
         try { localStorage.setItem('buspro_show_active_only_extra', JSON.stringify(showActiveOnly)); } catch (e) {}
         qs('filterBtn').classList.toggle('on', !!showActiveOnly);
@@ -533,6 +575,7 @@
       });
 
       qs('collapseBtn').addEventListener('click', () => {
+        animatePress(qs('collapseBtn'));
         const allExtras = lastDevices.filter(isExtraSwitch).slice();
         const groups = new Set(allExtras.map((d) => groupKeyFromGroup(d.group)));
         const keys = Array.from(groups);
