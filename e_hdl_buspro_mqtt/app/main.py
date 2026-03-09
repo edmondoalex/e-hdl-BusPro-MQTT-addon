@@ -49,7 +49,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.303"
+ADDON_VERSION = "0.1.304"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -2110,6 +2110,10 @@ self.addEventListener('fetch', (event) => {{
         t = tasks.pop(addr, None)
         if t and not t.done():
             t.cancel()
+        guard: dict[str, float] = getattr(api.state, "cover_raw_guard", {}) or {}
+        if addr in guard:
+            guard.pop(addr, None)
+            api.state.cover_raw_guard = guard
 
     async def _emit_cover_sim_state(subnet_id: int, device_id: int, channel: int, *, state: str, position: int | None) -> None:
         dev = _find_cover_device(subnet_id, device_id, channel)
@@ -2131,9 +2135,15 @@ self.addEventListener('fetch', (event) => {{
     def _start_cover_sim(subnet_id: int, device_id: int, channel: int, cmd: str) -> None:
         addr = _cover_addr(subnet_id, device_id, channel)
         _cancel_cover_sim(addr)
+        dev = _find_cover_device(subnet_id, device_id, channel) or {}
+        use_pos = bool(dev.get("use_position"))
 
         cmd_u = str(cmd or "").upper()
         if cmd_u == "STOP":
+            if not use_pos:
+                guard: dict[str, float] = getattr(api.state, "cover_raw_guard", {}) or {}
+                guard.pop(addr, None)
+                api.state.cover_raw_guard = guard
             # Emit STOP at current position
             pos = None
             prev = api.state._last_cover_state.get(addr)
@@ -2158,6 +2168,11 @@ self.addEventListener('fetch', (event) => {{
         if duration <= 0:
             asyncio.create_task(_emit_cover_sim_state(subnet_id, device_id, channel, state=("OPEN" if cmd_u == "OPEN" else "CLOSED"), position=end_pos))
             return
+
+        if not use_pos:
+            guard: dict[str, float] = getattr(api.state, "cover_raw_guard", {}) or {}
+            guard[addr] = time.monotonic() + max(2.0, float(full_time or 0))
+            api.state.cover_raw_guard = guard
 
         async def _task() -> None:
             try:
@@ -3215,6 +3230,13 @@ self.addEventListener('fetch', (event) => {{
                     did = int(dev["device_id"])
                     ch = int(dev["channel"])
                     addr = f"{subnet}.{did}.{ch}"
+                    use_pos = bool(dev.get("use_position"))
+                    if not use_pos:
+                        guard: dict[str, float] = getattr(api.state, "cover_raw_guard", {}) or {}
+                        until = float(guard.get(addr) or 0.0)
+                        if until and time.monotonic() < until:
+                            # Ignore bus updates during raw movement window.
+                            break
                     # Real bus update: stop any simulation for this cover.
                     _cancel_cover_sim(addr)
                     state_s = str(st.state).upper()
