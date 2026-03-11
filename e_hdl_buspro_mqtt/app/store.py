@@ -682,7 +682,12 @@ class StateStore:
         out: list[dict[str, Any]] = []
         for it in items:
             if isinstance(it, dict):
-                out.append(dict(it))
+                cur = dict(it)
+                if "run_enabled" not in cur:
+                    cur["run_enabled"] = False
+                if "onoff_enabled" not in cur:
+                    cur["onoff_enabled"] = True
+                out.append(cur)
         return out
 
     def find_light_scenario(self, *, scenario_id: str) -> dict[str, Any] | None:
@@ -833,16 +838,25 @@ class StateStore:
                 }
             )
 
-        return {"name": name, "items": items, "covers": covers}
+        out: dict[str, Any] = {"name": name, "items": items, "covers": covers}
+        if "run_enabled" in payload:
+            out["run_enabled"] = bool(payload.get("run_enabled"))
+        if "onoff_enabled" in payload:
+            out["onoff_enabled"] = bool(payload.get("onoff_enabled"))
+        return out
 
     def add_light_scenario(self, payload: dict[str, Any]) -> dict[str, Any]:
         cleaned = self._normalize_light_scenario_payload(payload, require_name=True)
         scenario_id = str(uuid.uuid4())
+        run_enabled = bool(cleaned.get("run_enabled")) if "run_enabled" in cleaned else False
+        onoff_enabled = bool(cleaned.get("onoff_enabled")) if "onoff_enabled" in cleaned else True
         out = {
             "id": scenario_id,
             "name": cleaned["name"],
             "items": cleaned["items"],
             "covers": cleaned.get("covers") or [],
+            "run_enabled": run_enabled,
+            "onoff_enabled": onoff_enabled,
         }
 
         raw = self.read_raw()
@@ -884,6 +898,10 @@ class StateStore:
                 cur["items"] = cleaned["items"]
             if "covers" in cleaned:
                 cur["covers"] = cleaned.get("covers") or []
+            if "run_enabled" in cleaned:
+                cur["run_enabled"] = bool(cleaned.get("run_enabled"))
+            if "onoff_enabled" in cleaned:
+                cur["onoff_enabled"] = bool(cleaned.get("onoff_enabled"))
             updated = cur
             out_items.append(cur)
 

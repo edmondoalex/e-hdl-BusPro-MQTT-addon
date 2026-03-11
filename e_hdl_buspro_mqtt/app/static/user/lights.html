@@ -243,6 +243,8 @@
       .scAddRow:active{background:rgba(255,255,255,.04)}
       .scAddName{min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.86}
       .scAddMeta{font-size:12px;color:rgba(255,255,255,.55);white-space:nowrap}
+      .scChecks{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+      .scChecks label{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.55)}
       .pressFx{
         position:relative;
         overflow:hidden;
@@ -327,6 +329,19 @@
               <div class="btnRow">
                 <button id="scBackBtn" class="btn" type="button">Indietro</button>
                 <button id="scSaveEditBtn" class="btn primary" type="button">Salva modifiche</button>
+              </div>
+            </div>
+            <div class="scField">
+              <label>Azioni</label>
+              <div class="scChecks">
+                <label style="display:flex;align-items:center;gap:8px">
+                  <input id="scFlagRun" type="checkbox" />
+                  RUN
+                </label>
+                <label style="display:flex;align-items:center;gap:8px">
+                  <input id="scFlagOnOff" type="checkbox" checked />
+                  ON/OFF
+                </label>
               </div>
             </div>
             <div class="scItems" id="scItems"></div>
@@ -432,6 +447,12 @@
         const ct = (r.headers.get('content-type')||'').toLowerCase();
         if (ct.includes('application/json')) return r.json();
         return r.text();
+      }
+
+      function getScenarioFlags() {
+        const run = !!(qs('scFlagRun') && qs('scFlagRun').checked);
+        const onoff = !!(qs('scFlagOnOff') && qs('scFlagOnOff').checked);
+        return { run_enabled: run, onoff_enabled: onoff };
       }
 
       function animatePress(el) {
@@ -700,6 +721,8 @@
 
         const nameInput = qs('scNameInput');
         if (nameInput) nameInput.value = editingScenarioName;
+        if (qs('scFlagRun')) qs('scFlagRun').checked = !!sc.run_enabled;
+        if (qs('scFlagOnOff')) qs('scFlagOnOff').checked = (sc.onoff_enabled === undefined) ? true : !!sc.onoff_enabled;
 
         qs('scList').style.display = 'none';
         const editor = qs('scEditor');
@@ -1107,6 +1130,11 @@
             if (err) err.textContent = 'Nome scenario obbligatorio';
             return;
           }
+          const flags = getScenarioFlags();
+          if (!flags.run_enabled && !flags.onoff_enabled) {
+            if (err) err.textContent = 'Seleziona RUN o ON/OFF';
+            return;
+          }
           const items = (editingScenarioItems || []).map((it) => {
             const st = String(it.state || 'ON').toUpperCase() === 'OFF' ? 'OFF' : 'ON';
             let br = it.brightness;
@@ -1138,7 +1166,7 @@
           await getJson(`api/user/light_scenarios/${encodeURIComponent(sid)}`, {
             method:'PUT',
             headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ name, items, covers }),
+            body: JSON.stringify({ name, items, covers, run_enabled: flags.run_enabled, onoff_enabled: flags.onoff_enabled }),
           });
           await loadLightScenarios();
           closeScenarioEditor();
@@ -1174,6 +1202,11 @@
           if (err) err.textContent = '';
           const name = prompt('Nome scenario:', '');
           if (!name) return;
+          const flags = getScenarioFlags();
+          if (!flags.run_enabled && !flags.onoff_enabled) {
+            if (err) err.textContent = 'Seleziona RUN o ON/OFF';
+            return;
+          }
           const items = buildScenarioItems({ onlyOn });
           if (!items.length) {
             if (err) err.textContent = 'Nessuna luce da salvare';
@@ -1182,7 +1215,7 @@
           await getJson('api/user/light_scenarios', {
             method:'POST',
             headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ name, items }),
+            body: JSON.stringify({ name, items, run_enabled: flags.run_enabled, onoff_enabled: flags.onoff_enabled }),
           });
           await loadLightScenarios();
         } catch (e) {
