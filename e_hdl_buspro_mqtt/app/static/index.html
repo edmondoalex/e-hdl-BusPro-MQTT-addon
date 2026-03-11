@@ -1039,10 +1039,13 @@
                     <input id="hubIconExtra" list="usedIcons" placeholder="Es: mdi:shape" />
                   </div>
                   <div>
+                    <label>Lock (mdi)</label>
+                    <input id="hubIconLocks" list="usedIcons" placeholder="Es: mdi:lock-smart" />
+                  </div>
+                  <div>
                     <label>Guard (mdi)</label>
                     <input id="hubIconGuard" list="usedIcons" placeholder="Es: mdi:cctv" />
                   </div>
-                  <div></div>
                 </div>
                 <div class="row3" style="margin-top:10px">
                   <div style="display:flex;align-items:end;gap:10px">
@@ -1073,11 +1076,16 @@
                   </div>
                   <div style="display:flex;align-items:end;gap:10px">
                     <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
+                      <input id="hubShowLocks" type="checkbox" checked />
+                      Mostra Lock
+                    </label>
+                  </div>
+                  <div style="display:flex;align-items:end;gap:10px">
+                    <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
                       <input id="hubShowGuard" type="checkbox" checked />
                       Mostra Guard
                     </label>
                   </div>
-                  <div></div>
                 </div>
                 <div class="flex" style="margin-top:10px">
                   <button class="btn secondary small" id="btnSaveHubIcons" type="button">Salva icone</button>
@@ -1263,7 +1271,7 @@
             </summary>
             <div class="accBody">
               <div class="muted" style="margin-top:6px">
-                Aggiungi entità di Home Assistant (light/switch/cover) da mostrare nelle pagine utente <code>/lights</code>, <code>/covers</code>, <code>/extra</code>.
+                Aggiungi entità di Home Assistant (light/switch/cover/lock) da mostrare nelle pagine utente <code>/lights</code>, <code>/covers</code>, <code>/locks</code>, <code>/extra</code>.
                 Non pubblica nulla su MQTT: controlla tramite API di Home Assistant.
               </div>
 
@@ -1279,6 +1287,7 @@
                     <select id="ha_page">
                       <option value="lights">Luci</option>
                       <option value="covers">Cover</option>
+                      <option value="locks">Lock</option>
                       <option value="extra">Extra</option>
                     </select>
                   </div>
@@ -4333,6 +4342,7 @@
         qs('hubIconScenarios').value = String(hubIcons.scenarios || '');
         qs('hubIconCovers').value = String(hubIcons.covers || '');
         qs('hubIconExtra').value = String(hubIcons.extra || '');
+        qs('hubIconLocks').value = String(hubIcons.locks || '');
         if (guardEnabled) qs('hubIconGuard').value = String(hubIcons.guard || '');
       }
 
@@ -4342,6 +4352,7 @@
         qs('hubShowScenarios').checked = !!hubShow.scenarios;
         qs('hubShowCovers').checked = !!hubShow.covers;
         qs('hubShowExtra').checked = !!hubShow.extra;
+        qs('hubShowLocks').checked = !!hubShow.locks;
         if (guardEnabled) qs('hubShowGuard').checked = !!hubShow.guard;
       }
 
@@ -4350,13 +4361,16 @@
         if (key === 'lights') return 'Luci';
         if (key === 'scenarios') return 'Scenari';
         if (key === 'covers') return 'Cover';
+        if (key === 'locks') return 'Lock';
         if (key === 'extra') return 'Extra';
         if (key === 'guard') return 'Guard';
         return key;
       }
 
       function normalizeHubOrder(order) {
-        const allowed = guardEnabled ? ['lights', 'scenarios', 'covers', 'extra', 'guard'] : ['lights', 'scenarios', 'covers', 'extra'];
+        const allowed = guardEnabled
+          ? ['lights', 'scenarios', 'covers', 'locks', 'extra', 'guard']
+          : ['lights', 'scenarios', 'covers', 'locks', 'extra'];
         const out = [];
         const seen = new Set();
         const arr = Array.isArray(order) ? order : [];
@@ -4460,6 +4474,7 @@
             scenarios: String(qs('hubIconScenarios').value || '').trim(),
             covers: String(qs('hubIconCovers').value || '').trim(),
             extra: String(qs('hubIconExtra').value || '').trim(),
+            locks: String(qs('hubIconLocks').value || '').trim(),
             guard: String(qs('hubIconGuard').value || '').trim(),
           },
           hub_show: {
@@ -4467,6 +4482,7 @@
             scenarios: !!qs('hubShowScenarios').checked,
             covers: !!qs('hubShowCovers').checked,
             extra: !!qs('hubShowExtra').checked,
+            locks: !!qs('hubShowLocks').checked,
             guard: !!qs('hubShowGuard').checked,
           },
           hub_order: normalizeHubOrder(hubOrder || []),
@@ -5682,3 +5698,4 @@
     </script>
   </body>
 </html>
+

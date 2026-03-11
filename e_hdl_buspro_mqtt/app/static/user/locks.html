@@ -1,0 +1,610 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BusPro - Lock</title>
+    <style>
+      :root{
+        --bg0:#05070b;
+        --text:#f2f5ff;
+        --muted:rgba(255,255,255,.60);
+        --line:rgba(255,255,255,.08);
+        --danger:#ff6b6b;
+      }
+      body{
+        margin:0;
+        font-family:system-ui,Segoe UI,Roboto,Arial;
+        color:var(--text);
+        -webkit-font-smoothing:antialiased;
+        text-rendering:optimizeLegibility;
+        min-height:100vh;
+      }
+      body::before{
+        content:'';
+        position:fixed;
+        inset:0;
+        z-index:-2;
+        background: radial-gradient(1200px 800px at 50% 50%, rgba(26,34,48,.65) 0%, var(--bg0) 52%, #000 100%);
+        background-position:center center;
+        background-repeat:no-repeat;
+      }
+      body::after{
+        content:'';
+        position:fixed;
+        inset:0;
+        z-index:-1;
+        pointer-events:none;
+        background-image:url('static/user/e-extra-addon.png');
+        background-repeat:no-repeat;
+        background-position:50% 50%;
+        background-size:min(380px, 41vmin);
+        opacity:.7;
+        filter:brightness(1.05);
+      }
+      main{max-width:820px;margin:0 auto;padding:10px 14px 24px;min-height:100vh;display:flex;flex-direction:column}
+      main.centerY{justify-content:center}
+      .list{border-radius:18px;overflow:hidden;border:1px solid var(--line);background:rgba(0,0,0,.05);backdrop-filter: blur(10px)}
+      .topBtns{
+        position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:20;
+        display:flex;gap:10px;align-items:center;justify-content:center;
+      }
+      .filterBtn{
+        width:42px;height:42px;border-radius:999px;
+        border:1px solid rgba(255,255,255,.10);
+        background:rgba(0,0,0,.28);
+        backdrop-filter: blur(10px);
+        display:flex;align-items:center;justify-content:center;
+        cursor:pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .filterBtn:active{transform:scale(.98)}
+      .filterBtn svg{width:20px;height:20px}
+      .filterBtn path{stroke:rgba(242,245,255,.78);stroke-width:2.2;stroke-linecap:round}
+      .filterBtn.on path{stroke:rgba(255,215,0,.95)}
+      .section{
+        padding:12px 16px;
+        font-size:12px;
+        letter-spacing:.12em;
+        text-transform:uppercase;
+        color:rgba(255,255,255,.55);
+        border-top:1px solid rgba(255,255,255,.06);
+        background:rgba(0,0,0,.03);
+        display:flex;align-items:center;justify-content:space-between;
+        cursor:pointer;
+        user-select:none;
+      }
+      .section:active{background:rgba(0,0,0,.06)}
+      .section .count{font-size:11px;letter-spacing:.08em;color:rgba(255,255,255,.40)}
+      .row{
+        display:flex;gap:14px;align-items:center;
+        padding:14px 16px;
+        border-top:1px solid rgba(255,255,255,.06);
+        background:rgba(0,0,0,.05);
+        -webkit-tap-highlight-color: transparent;
+      }
+      .row:first-child{border-top:none}
+      .row.active{
+        background:linear-gradient(180deg, rgba(255,215,0, calc(.04 + var(--int,1)*.10)) 0%, rgba(0,0,0,.20) 100%);
+        box-shadow:0 0 22px rgba(255,215,0, calc(.02 + var(--int,1)*.18)) inset;
+      }
+      .ico{
+        width:34px;height:34px;flex:0 0 34px;
+        background:rgba(242,245,255,.70);
+        -webkit-mask-repeat:no-repeat;
+        -webkit-mask-position:center;
+        -webkit-mask-size:contain;
+        mask-repeat:no-repeat;
+        mask-position:center;
+        mask-size:contain;
+        box-shadow:0 0 10px rgba(255,255,255,.04);
+        opacity:.92;
+      }
+      .row .ico{opacity:.70}
+      .row.active .ico{
+        background:rgba(255,215,0, calc(.35 + var(--int,1) * .65));
+        box-shadow:0 0 14px rgba(255,215,0, calc(.10 + var(--int,1) * .22));
+        opacity:1;
+      }
+      .content{flex:1;min-width:0}
+      .name{
+        font-size:19px;line-height:1.15;font-weight:420;
+        opacity:.88;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+      }
+      .sub{margin-top:6px;font-size:12px;color:var(--muted)}
+      .actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+      .iconBtn{
+        width:40px;height:40px;border-radius:999px;
+        border:1px solid rgba(255,255,255,.10);
+        background:rgba(0,0,0,.22);
+        display:flex;align-items:center;justify-content:center;
+        cursor:pointer;
+        position:relative;
+        overflow:hidden;
+        transition:transform .12s ease, box-shadow .18s ease, border-color .18s ease;
+      }
+      .iconBtn:active{transform:scale(.98)}
+      .iconBtn svg{width:22px;height:22px;stroke:rgba(242,245,255,.72);stroke-width:2.2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+      .iconBtn.disabled{opacity:.4;pointer-events:none}
+      .iconBtn.pressed{
+        transform:scale(.96);
+        border-color:rgba(255,215,0,.45);
+        box-shadow:0 0 0 2px rgba(255,215,0,.25), 0 10px 18px rgba(255,215,0,.14);
+      }
+      .iconBtn.pulse{animation:btnPulse .28s ease-out 1}
+      .iconBtn.ripple::after{
+        content:'';
+        position:absolute;
+        inset:4px;
+        border-radius:999px;
+        background:radial-gradient(circle at center, rgba(255,215,0,.25) 0%, rgba(255,215,0,.12) 40%, rgba(255,215,0,0) 70%);
+        opacity:0;
+        animation:btnRipple .32s ease-out 1;
+        pointer-events:none;
+      }
+      .error{color:var(--danger);font-size:13px;margin-top:10px}
+      @keyframes btnPulse{
+        0%{transform:scale(1)}
+        45%{transform:scale(1.06)}
+        100%{transform:scale(1)}
+      }
+      @keyframes btnRipple{
+        0%{opacity:.9;transform:scale(.85)}
+        100%{opacity:0;transform:scale(1.25)}
+      }
+      @media(max-width:600px){
+        .row{flex-direction:column;align-items:flex-start}
+        .actions{width:100%;justify-content:flex-start}
+      }
+    </style>
+  </head>
+  <body>
+    <div class="topBtns">
+      <button id="filterBtn" class="filterBtn" type="button" aria-label="Mostra solo attivi">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M6 7h12"/><path d="M6 12h12"/><path d="M6 17h12"/>
+        </svg>
+      </button>
+      <button id="collapseBtn" class="filterBtn" type="button" aria-label="Collassa/espandi gruppi">
+        <svg id="collapseIcon" viewBox="0 0 24 24" aria-hidden="true"></svg>
+      </button>
+    </div>
+    <main>
+      <div id="list" class="list"></div>
+      <div id="err" class="error"></div>
+    </main>
+
+    <script>
+      const qs = (id) => document.getElementById(id);
+      const stateByAddr = new Map();
+      const deviceByAddr = new Map();
+      const rowByAddr = new Map();
+      const sectionByGroup = new Map();
+      const activeByAddr = new Map();
+      let lastDevices = [];
+      let groupOrder = [];
+      let showActiveOnly = false;
+      let collapsedGroups = new Set();
+      let renderQueued = false;
+      let countsQueued = false;
+
+      const GROUP_NONE = '__none__';
+      const LS_COLLAPSED = 'buspro_collapsed_groups_locks';
+
+      function escapeHtml(s){
+        const v = (s === null || s === undefined) ? '' : String(s);
+        return v
+          .replace(/&/g,'&amp;')
+          .replace(/</g,'&lt;')
+          .replace(/>/g,'&gt;')
+          .replace(/\\"/g,'&quot;')
+          .replace(/'/g,'&#039;');
+      }
+      function addrOf(d){
+        if (d && String(d.origin || '') === 'ha') return String(d.entity_id || '').trim();
+        return `${Number(d.subnet_id)}.${Number(d.device_id)}.${Number(d.channel)}`;
+      }
+      function absUrl(path) { return new URL(path, window.location.href).toString(); }
+      function cssEscape(s) {
+        const v = String(s || '');
+        try { return CSS.escape(v); } catch (e) {}
+        return v.replace(/[^a-zA-Z0-9_.-]/g, (ch) => `\\${ch.charCodeAt(0).toString(16)} `);
+      }
+      function mdiName(iconValue) {
+        const v = (iconValue === null || iconValue === undefined) ? '' : String(iconValue).trim();
+        const m = /^mdi:([a-z0-9_-]+)$/i.exec(v);
+        return m ? m[1].toLowerCase() : 'lock-smart';
+      }
+      function iconUrl(iconValue) {
+        const name = mdiName(iconValue);
+        return absUrl(`api/icons/mdi/${name}.svg`);
+      }
+
+      function normalizeGroup(v) {
+        const s = (v === null || v === undefined) ? '' : String(v).trim();
+        if (!s) return '';
+        return s.startsWith('#') ? s.slice(1).trim() : s;
+      }
+      function groupKeyFromGroup(groupValue) {
+        const g = normalizeGroup(groupValue);
+        return g ? g.toLowerCase() : GROUP_NONE;
+      }
+      function groupLabelFromKey(groupKey) {
+        if (!groupKey || groupKey === GROUP_NONE) return 'ALTRO';
+        return String(groupKey).toUpperCase();
+      }
+      function setCollapseIcon(allCollapsed) {
+        const svg = qs('collapseIcon');
+        if (!svg) return;
+        svg.innerHTML = allCollapsed
+          ? '<path d="M10 8L6 12l4 4"/><path d="M14 8l4 4-4 4"/>'
+          : '<path d="M8 8l4 4-4 4"/><path d="M16 8l-4 4 4 4"/>';
+      }
+      function queueRender() {
+        if (renderQueued) return;
+        renderQueued = true;
+        try {
+          requestAnimationFrame(() => { renderQueued = false; render(); });
+        } catch (e) {
+          renderQueued = false;
+          render();
+        }
+      }
+      function groupIndex(groupName) {
+        const key = normalizeGroup(groupName).toLowerCase();
+        if (!key) return 1e9;
+        for (let i = 0; i < groupOrder.length; i++) {
+          if (String(groupOrder[i] || '').toLowerCase() === key) return i;
+        }
+        return 1e8;
+      }
+
+      async function getJson(path, opts) {
+        const r = await fetch(absUrl(path), opts);
+        if (!r.ok) throw new Error(await r.text());
+        const ct = (r.headers.get('content-type')||'').toLowerCase();
+        if (ct.includes('application/json')) return r.json();
+        return r.text();
+      }
+
+      function animatePress(btn) {
+        if (!btn) return;
+        btn.classList.remove('pressed','pulse','ripple');
+        try { void btn.offsetWidth; } catch (e) {}
+        btn.classList.add('pressed','pulse','ripple');
+        setTimeout(() => {
+          try { btn.classList.remove('pressed','pulse','ripple'); } catch (e) {}
+        }, 220);
+      }
+
+      async function sendLockCmd(addr, command) {
+        await getJson(`api/control/ha/lock/${encodeURIComponent(String(addr||''))}`, {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ command })
+        });
+      }
+
+      function isLockListDevice(d) {
+        return String(d.type || '').toLowerCase() === 'lock' && String(d.origin || '') === 'ha';
+      }
+      function isActiveState(st) {
+        if (!st) return false;
+        const s = String(st.state || '').toUpperCase();
+        return s === 'UNLOCKED' || s === 'UNLOCKING' || s === 'OPENING';
+      }
+      function isActive(d) {
+        const addr = addrOf(d);
+        return isActiveState(stateByAddr.get(addr));
+      }
+
+      function refreshDeviceIndex() {
+        deviceByAddr.clear();
+        for (const d of (lastDevices || [])) {
+          if (!isLockListDevice(d)) continue;
+          deviceByAddr.set(addrOf(d), d);
+        }
+      }
+
+      function applyLockStateToRow(addr) {
+        const row = rowByAddr.get(addr) || document.querySelector(`.row[data-addr="${cssEscape(addr)}"]`);
+        if (!row) return;
+        const st = stateByAddr.get(addr) || { state:'?' };
+        const state = String(st.state || '?').toUpperCase();
+        row.classList.toggle('active', isActiveState(st));
+        const sub = row.querySelector('.sub');
+        if (sub) sub.textContent = state;
+      }
+
+      function render() {
+        const root = qs('list');
+        if (!root) return;
+        root.replaceChildren();
+        rowByAddr.clear();
+
+        const allLocks = (lastDevices || []).filter(isLockListDevice);
+        const locks = allLocks
+          .filter(d => !showActiveOnly || isActive(d))
+          .sort((a,b) => {
+            const ga = normalizeGroup(a.group);
+            const gb = normalizeGroup(b.group);
+            const ia = groupIndex(ga);
+            const ib = groupIndex(gb);
+            if (ia !== ib) return ia - ib;
+            const gcmp = String(ga || '').localeCompare(String(gb || ''), undefined, {sensitivity:'base'});
+            if (gcmp !== 0) return gcmp;
+            return String(a.name || '').localeCompare(String(b.name || ''), undefined, {sensitivity:'base'});
+          });
+
+        const groupStats = new Map();
+        for (const d of allLocks) {
+          const k = groupKeyFromGroup(d.group);
+          const cur = groupStats.get(k) || { total: 0, active: 0 };
+          cur.total += 1;
+          if (isActive(d)) cur.active += 1;
+          groupStats.set(k, cur);
+        }
+        const knownGroups = Array.from(groupStats.keys());
+        const allCollapsed = knownGroups.length > 0 && knownGroups.every((k) => collapsedGroups.has(k));
+        qs('collapseBtn').classList.toggle('on', allCollapsed);
+        setCollapseIcon(allCollapsed);
+
+        let lastGroupKey = null;
+        for (const d of locks) {
+          const groupKey = groupKeyFromGroup(d.group);
+          const label = groupLabelFromKey(groupKey);
+          if (groupKey !== lastGroupKey) {
+            const sec = document.createElement('div');
+            sec.className = 'section';
+            sec.setAttribute('data-act', 'toggle-group');
+            sec.setAttribute('data-group', groupKey);
+            const st = groupStats.get(groupKey) || { total: 0, active: 0 };
+            sec.innerHTML = `<span>${escapeHtml(label)}</span><span class="count">${escapeHtml(String(st.active))}/${escapeHtml(String(st.total))}</span>`;
+            root.appendChild(sec);
+            sectionByGroup.set(groupKey, sec);
+            lastGroupKey = groupKey;
+          }
+          if (collapsedGroups.has(groupKey)) continue;
+
+          const addr = addrOf(d);
+          const st = stateByAddr.get(addr) || { state:'?' };
+          const state = String(st.state || '?').toUpperCase();
+          const openSupported = !!d.open_supported;
+          const row = document.createElement('div');
+          row.className = `row ${isActiveState(st) ? 'active' : ''}`;
+          row.setAttribute('data-addr', addr);
+          row.style.setProperty('--int', isActiveState(st) ? '1' : '0');
+          row.innerHTML = `
+            <span class="ico" aria-hidden="true"
+              style="-webkit-mask-image:url('${escapeHtml(iconUrl(d.icon || 'mdi:lock-smart'))}');mask-image:url('${escapeHtml(iconUrl(d.icon || 'mdi:lock-smart'))}')"></span>
+            <div class="content">
+              <div class="name">${escapeHtml(d.name || addr)}</div>
+              <div class="sub">${escapeHtml(state)}</div>
+            </div>
+            <div class="actions">
+              <button class="iconBtn" data-act="lock" aria-label="Blocca">
+                <svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3"/><path d="M6 10h12v10H6z"/></svg>
+              </button>
+              <button class="iconBtn" data-act="unlock" aria-label="Sblocca">
+                <svg viewBox="0 0 24 24"><path d="M9 10V7a5 5 0 0 1 10 0"/><path d="M6 10h12v10H6z"/></svg>
+              </button>
+              <button class="iconBtn ${openSupported ? '' : 'disabled'}" data-act="open" aria-label="Apertura totale">
+                <svg viewBox="0 0 24 24"><path d="M7 7h6"/><path d="M7 11h6"/><path d="M7 15h6"/><path d="M14 7l4 4-4 4"/></svg>
+              </button>
+            </div>
+          `;
+          row.querySelectorAll('[data-act]').forEach((btn) => {
+            btn.addEventListener('click', async (evt) => {
+              try { evt.stopPropagation(); } catch(e){}
+              animatePress(btn);
+              qs('err').textContent = '';
+              const act = btn.getAttribute('data-act');
+              try {
+                if (act === 'lock') await sendLockCmd(addr, 'LOCK');
+                if (act === 'unlock') await sendLockCmd(addr, 'UNLOCK');
+                if (act === 'open') await sendLockCmd(addr, 'OPEN');
+              } catch (e) { qs('err').textContent = e.message || String(e); }
+            });
+          });
+          root.appendChild(row);
+          rowByAddr.set(addr, row);
+          activeByAddr.set(addr, isActive(d));
+        }
+
+        root.querySelectorAll('.section[data-act="toggle-group"]').forEach((el) => {
+          el.addEventListener('click', () => {
+            const g = el.getAttribute('data-group') || GROUP_NONE;
+            if (collapsedGroups.has(g)) collapsedGroups.delete(g);
+            else collapsedGroups.add(g);
+            try { localStorage.setItem(LS_COLLAPSED, JSON.stringify(Array.from(collapsedGroups))); } catch (e) {}
+            queueRender();
+          });
+        });
+        queueCenter();
+      }
+
+      function queueCenter() {
+        try { requestAnimationFrame(applyCenter); } catch(e) { applyCenter(); }
+      }
+      function applyCenter() {
+        const main = document.querySelector('main');
+        const list = qs('list');
+        if (!main || !list) return;
+        const padT = parseFloat(getComputedStyle(main).paddingTop || '0') || 0;
+        const padB = parseFloat(getComputedStyle(main).paddingBottom || '0') || 0;
+        const listH = list.getBoundingClientRect().height || 0;
+        const avail = Math.max(0, window.innerHeight - padT - padB);
+        main.classList.toggle('centerY', listH > 0 && listH < (avail - 40));
+      }
+
+      function wsUrl() {
+        const u = new URL('ws', window.location.href);
+        u.protocol = (location.protocol === 'https:') ? 'wss:' : 'ws:';
+        return u.toString();
+      }
+
+      function connectWs() {
+        const ws = new WebSocket(wsUrl());
+        ws.onclose = () => { setTimeout(connectWs, 1500); };
+        ws.onmessage = (evt) => {
+          try {
+            const msg = JSON.parse(evt.data);
+            if (msg.type === 'snapshot') {
+              lastDevices = msg.data.devices || [];
+              refreshDeviceIndex();
+              const ha = msg.data.ha_states || {};
+              if (ha && typeof ha === 'object') {
+                for (const [eid, st] of Object.entries(ha)) {
+                  const s0 = (st && typeof st === 'object') ? st : {};
+                  if (!String(eid || '').startsWith('lock.')) continue;
+                  stateByAddr.set(String(eid), { state: String(s0.state || '').toUpperCase() || '?' });
+                }
+              }
+              queueRender();
+              return;
+            }
+            if (msg.type === 'devices') {
+              lastDevices = msg.data.devices || [];
+              refreshDeviceIndex();
+              queueRender();
+              return;
+            }
+            if (msg.type === 'ui') {
+              groupOrder = Array.isArray(msg.data && msg.data.group_order) ? msg.data.group_order.map(normalizeGroup).filter(Boolean) : groupOrder;
+              queueRender();
+              return;
+            }
+            if (msg.type === 'ha_lock_state') {
+              const ev = msg.data || {};
+              const addr = String(ev.entity_id || '').trim();
+              if (!addr) return;
+              const next = { state: ev.state };
+              stateByAddr.set(addr, next);
+              const nowActive = isActiveState(next);
+              const prevActive = activeByAddr.get(addr);
+              activeByAddr.set(addr, nowActive);
+              applyLockStateToRow(addr);
+              queueCountsUpdate();
+              if (showActiveOnly && prevActive !== nowActive) queueRender();
+              return;
+            }
+          } catch (e) {}
+        };
+      }
+
+      function queueCountsUpdate() {
+        if (countsQueued) return;
+        countsQueued = true;
+        try {
+          requestAnimationFrame(() => { countsQueued = false; updateCounts(); });
+        } catch (e) {
+          countsQueued = false;
+          updateCounts();
+        }
+      }
+      function updateCounts() {
+        for (const [groupKey, sec] of sectionByGroup.entries()) {
+          const total = (lastDevices || []).filter(d => isLockListDevice(d) && groupKeyFromGroup(d.group) === groupKey).length;
+          const active = (lastDevices || []).filter(d => isLockListDevice(d) && groupKeyFromGroup(d.group) === groupKey && isActive(d)).length;
+          const count = sec.querySelector('.count');
+          if (count) count.textContent = `${active}/${total}`;
+        }
+      }
+
+      (async () => {
+        try {
+          const hasCollapsedPref = (localStorage.getItem(LS_COLLAPSED) !== null);
+          try {
+            showActiveOnly = JSON.parse(localStorage.getItem('buspro_show_active_only_locks') || 'false') === true;
+          } catch (e) { showActiveOnly = false; }
+          try {
+            const raw = JSON.parse(localStorage.getItem(LS_COLLAPSED) || '[]');
+            if (Array.isArray(raw)) collapsedGroups = new Set(raw.map((x) => String(x || '').trim()).filter(Boolean));
+          } catch (e) { collapsedGroups = new Set(); }
+          const fb = qs('filterBtn');
+          if (fb) fb.classList.toggle('on', !!showActiveOnly);
+          const meta = await getJson('api/meta');
+          window.__backGestureEnabled = !(meta && typeof meta.back_gesture_enabled === 'boolean') ? true : !!meta.back_gesture_enabled;
+          groupOrder = Array.isArray(meta.group_order) ? meta.group_order.map(normalizeGroup).filter(Boolean) : [];
+          lastDevices = await getJson('api/user/devices');
+          refreshDeviceIndex();
+          queueRender();
+        } catch (e) {}
+        connectWs();
+      })();
+
+      qs('filterBtn').addEventListener('click', () => {
+        animatePress(qs('filterBtn'));
+        showActiveOnly = !showActiveOnly;
+        try { localStorage.setItem('buspro_show_active_only_locks', JSON.stringify(showActiveOnly)); } catch (e) {}
+        qs('filterBtn').classList.toggle('on', !!showActiveOnly);
+        queueRender();
+      });
+
+      qs('collapseBtn').addEventListener('click', () => {
+        animatePress(qs('collapseBtn'));
+        const allLocks = lastDevices.filter(isLockListDevice).slice();
+        const groups = new Set(allLocks.map((d) => groupKeyFromGroup(d.group)));
+        const keys = Array.from(groups);
+        const allCollapsed = keys.length > 0 && keys.every((k) => collapsedGroups.has(k));
+        collapsedGroups = new Set(allCollapsed ? [] : keys);
+        try { localStorage.setItem(LS_COLLAPSED, JSON.stringify(Array.from(collapsedGroups))); } catch (e) {}
+        queueRender();
+      });
+
+      window.addEventListener('resize', () => queueCenter());
+    </script>
+    <script>
+      // Hidden back gesture: long-press top-left corner.
+      (function () {
+        async function backEnabled() {
+          if (typeof window.__backGestureEnabled === 'boolean') return window.__backGestureEnabled;
+          try {
+            const meta = await getJson('api/meta');
+            return !(meta && typeof meta.back_gesture_enabled === 'boolean') ? true : !!meta.back_gesture_enabled;
+          } catch (e) {
+            return true;
+          }
+        }
+        (async () => {
+          const enabled = await backEnabled();
+          if (!enabled) return;
+          const CORNER = 60;
+          const HOLD_MS = 450;
+          let timer = null;
+          function inCorner(e) {
+            return !!e && Number(e.clientX) <= CORNER && Number(e.clientY) <= CORNER;
+          }
+          function goHome() {
+            try {
+              window.location.href = new URL('home2', window.location.href).toString();
+            } catch (e) {}
+          }
+          function doBack() {
+            try {
+              if (window.history && window.history.length > 1) {
+                window.history.back();
+                return;
+              }
+            } catch (e) {}
+            goHome();
+          }
+          function clear() {
+            if (timer) { clearTimeout(timer); timer = null; }
+          }
+          document.addEventListener('pointerdown', (e) => {
+            if (timer) return;
+            if (!inCorner(e)) return;
+            timer = setTimeout(() => {
+              timer = null;
+              doBack();
+            }, HOLD_MS);
+          }, { passive: true });
+          document.addEventListener('pointerup', clear, { passive: true });
+          document.addEventListener('pointercancel', clear, { passive: true });
+          document.addEventListener('pointermove', (e) => { if (timer && !inCorner(e)) clear(); }, { passive: true });
+        })();
+      })();
+    </script>
+  </body>
+</html>

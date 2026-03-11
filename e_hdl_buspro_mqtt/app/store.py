@@ -32,6 +32,7 @@ class StateStore:
             "lights": "mdi:lightbulb-group",
             "scenarios": "mdi:star",
             "covers": "mdi:window-shutter",
+            "locks": "mdi:lock-smart",
             "extra": "mdi:shape",
             "guard": "mdi:cctv",
         }
@@ -42,6 +43,7 @@ class StateStore:
             "lights": True,
             "scenarios": True,
             "covers": True,
+            "locks": True,
             "extra": True,
             "guard": True,
         }
@@ -54,7 +56,7 @@ class StateStore:
             "cover_groups_published": [],
             "light_scenarios": [],
             "light_scenarios_published": [],
-            "hub_order": ["lights", "scenarios", "covers", "extra", "guard"],
+            "hub_order": ["lights", "scenarios", "covers", "locks", "extra", "guard"],
             "ha_devices": [],
             "hub_links": [],
             "home_actions": [],
@@ -383,12 +385,14 @@ class StateStore:
             raise ValueError("entity_id required (e.g. light.kitchen)")
 
         domain = entity_id.split(".", 1)[0]
-        if domain not in ("light", "switch", "cover"):
-            raise ValueError("only light/switch/cover supported")
+        if domain not in ("light", "switch", "cover", "lock"):
+            raise ValueError("only light/switch/cover/lock supported")
 
-        page = str(payload.get("page") or "").strip().lower() or ("covers" if domain == "cover" else "lights")
-        if page not in ("lights", "extra", "covers"):
-            raise ValueError("page must be lights/extra/covers")
+        page = str(payload.get("page") or "").strip().lower() or (
+            "covers" if domain == "cover" else ("locks" if domain == "lock" else "lights")
+        )
+        if page not in ("lights", "extra", "covers", "locks"):
+            raise ValueError("page must be lights/extra/covers/locks")
 
         name = str(payload.get("name") or "").strip()
         group = str(payload.get("group") or "").strip()
@@ -1166,7 +1170,7 @@ class StateStore:
         order = ui.get("hub_order") or []
         if not isinstance(order, list):
             order = []
-        allowed = ["lights", "scenarios", "covers", "extra", "guard"]
+        allowed = ["lights", "scenarios", "covers", "locks", "extra", "guard"]
         out: list[str] = []
         seen: set[str] = set()
         for v in order:
@@ -1180,7 +1184,7 @@ class StateStore:
         return out
 
     def set_hub_order(self, order: list[Any]) -> list[str]:
-        allowed = ["lights", "scenarios", "covers", "extra", "guard"]
+        allowed = ["lights", "scenarios", "covers", "locks", "extra", "guard"]
         out: list[str] = []
         seen: set[str] = set()
         for v in order or []:
@@ -1210,7 +1214,7 @@ class StateStore:
             token = str(v or "").strip().lower()
             if not token or token in seen:
                 continue
-            if re.fullmatch(r"fixed:(lights|scenarios|covers|extra|guard)", token) or re.fullmatch(
+            if re.fullmatch(r"fixed:(lights|scenarios|covers|locks|extra|guard)", token) or re.fullmatch(
                 r"(action|link):[a-f0-9]{4,64}",
                 token,
             ):
@@ -1225,7 +1229,7 @@ class StateStore:
             token = str(v or "").strip().lower()
             if not token or token in seen:
                 continue
-            if re.fullmatch(r"fixed:(lights|scenarios|covers|extra|guard)", token) or re.fullmatch(
+            if re.fullmatch(r"fixed:(lights|scenarios|covers|locks|extra|guard)", token) or re.fullmatch(
                 r"(action|link):[a-f0-9]{4,64}",
                 token,
             ):

@@ -49,7 +49,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.314"
+ADDON_VERSION = "0.1.315"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -504,6 +504,23 @@ def create_app() -> FastAPI:
                 pos = None
         return {"entity_id": eid, "state": state, "position": pos}
 
+    def _map_ha_state_to_lock(st: dict[str, Any]) -> dict[str, Any]:
+        eid = str(st.get("entity_id") or "").strip().lower()
+        s = _ha_state_str(st.get("state"))
+        if s in ("unavailable", "unknown", ""):
+            state = "?"
+        elif s in ("locked", "locking"):
+            state = "LOCKED" if s == "locked" else "LOCKING"
+        elif s in ("unlocked", "unlocking"):
+            state = "UNLOCKED" if s == "unlocked" else "UNLOCKING"
+        elif s == "jammed":
+            state = "JAMMED"
+        elif s == "opening":
+            state = "OPENING"
+        else:
+            state = s.upper()
+        return {"entity_id": eid, "state": state}
+
     def _list_user_devices() -> list[dict[str, Any]]:
         devices = list(store.list_devices())
         caps: dict[str, Any] = getattr(api.state, "ha_caps", {}) or {}
@@ -532,6 +549,22 @@ def create_app() -> FastAPI:
                             "name": name,
                             "group": group,
                             "icon": icon,
+                        }
+                    )
+                elif domain == "lock":
+                    open_supported = False
+                    if isinstance(cap, dict) and cap.get("open_supported") is not None:
+                        open_supported = bool(cap.get("open_supported"))
+                    devices.append(
+                        {
+                            "type": "lock",
+                            "origin": "ha",
+                            "entity_id": eid,
+                            "page": page,
+                            "name": name,
+                            "group": group,
+                            "icon": icon,
+                            "open_supported": open_supported,
                         }
                     )
                 else:
@@ -664,7 +697,7 @@ def create_app() -> FastAPI:
             return await call_next(request)
 
         # User pages
-        if path in ("/", "/home", "/home2", "/lights", "/covers", "/extra", "/scenarios"):
+        if path in ("/", "/home", "/home2", "/lights", "/covers", "/extra", "/scenarios", "/locks"):
             return await call_next(request) 
         if guard_enabled and path == "/e-guard":
             return await call_next(request)
@@ -3364,7 +3397,7 @@ self.addEventListener('fetch', (event) => {{
                         if not eid:
                             continue
                         dom = str(it.get("domain") or "").strip().lower() or (eid.split(".", 1)[0] if "." in eid else "")
-                        if dom not in ("light", "switch", "cover"):
+                        if dom not in ("light", "switch", "cover", "lock"):
                             continue
                         eids.append(eid)
                         domains[eid] = dom
@@ -3415,12 +3448,33 @@ self.addEventListener('fetch', (event) => {{
                                 next_caps[eid] = dict(next_caps.get(eid) or {})
                                 next_caps[eid]["dimmable"] = bool(dim)
                                 caps_changed = True
+                        if dom == "lock":
+                            attrs = st.get("attributes") or {}
+                            feat = 0
+                            try:
+                                feat = int(attrs.get("supported_features") or 0)
+                            except Exception:
+                                feat = 0
+                            open_supported = bool(feat & 1)
+                            prevs = None
+                            if isinstance(last_caps.get(eid), dict):
+                                prevs = (last_caps.get(eid) or {}).get("open_supported")
+                            if prevs is None or bool(prevs) != bool(open_supported):
+                                next_caps[eid] = dict(next_caps.get(eid) or {})
+                                next_caps[eid]["open_supported"] = bool(open_supported)
+                                caps_changed = True
                         if dom == "cover":
                             mapped = _map_ha_state_to_cover(st)
                             prev = last.get(eid)
                             if prev != mapped:
                                 next_states[eid] = mapped
                                 await hub.broadcast("ha_cover_state", mapped)
+                        elif dom == "lock":
+                            mapped = _map_ha_state_to_lock(st)
+                            prev = last.get(eid)
+                            if prev != mapped:
+                                next_states[eid] = mapped
+                                await hub.broadcast("ha_lock_state", mapped)
                         elif dom == "switch":
                             mapped = _map_ha_state_to_switch(st)
                             prev = last.get(eid)
@@ -3748,6 +3802,12 @@ self.addEventListener('fetch', (event) => {{
         p = os.path.join(static_dir, "user", "covers.html") 
         with open(p, "r", encoding="utf-8") as f: 
             return f.read() 
+
+    @api.get("/locks", response_class=HTMLResponse)
+    async def user_locks():
+        p = os.path.join(static_dir, "user", "locks.html")
+        with open(p, "r", encoding="utf-8") as f:
+            return f.read()
 
     @api.get("/extra", response_class=HTMLResponse)
     async def user_extra():
@@ -6933,6 +6993,25 @@ self.addEventListener('fetch', (event) => {{
                 raise HTTPException(status_code=400, detail="position required")
             pos_i = max(0, min(100, pos_i))
             await asyncio.to_thread(_ha_request, "POST", "/api/services/cover/set_cover_position", payload={"entity_id": eid, "position": pos_i}, timeout_s=10)
+            return {"ok": True}
+        raise HTTPException(status_code=400, detail="unsupported command")
+
+    @api.post("/api/control/ha/lock/{entity_id}")
+    async def control_ha_lock(entity_id: str, payload: dict[str, Any]):
+        if not _ha_enabled():
+            raise HTTPException(status_code=503, detail="Home Assistant API not available (SUPERVISOR_TOKEN missing)")
+        eid = str(entity_id or "").strip().lower()
+        if not eid.startswith("lock."):
+            raise HTTPException(status_code=400, detail="entity_id must start with lock.")
+        cmd = str(payload.get("command") or "").strip().upper()
+        if cmd == "LOCK":
+            await asyncio.to_thread(_ha_request, "POST", "/api/services/lock/lock", payload={"entity_id": eid}, timeout_s=10)
+            return {"ok": True}
+        if cmd == "UNLOCK":
+            await asyncio.to_thread(_ha_request, "POST", "/api/services/lock/unlock", payload={"entity_id": eid}, timeout_s=10)
+            return {"ok": True}
+        if cmd == "OPEN":
+            await asyncio.to_thread(_ha_request, "POST", "/api/services/lock/open", payload={"entity_id": eid}, timeout_s=10)
             return {"ok": True}
         raise HTTPException(status_code=400, detail="unsupported command")
 

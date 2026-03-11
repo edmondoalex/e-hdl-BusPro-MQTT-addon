@@ -335,11 +335,14 @@
           lights: { key: 'lights', title: 'Luci', href: absUrl('lights'), fallback: 'lightbulb-group' },
           scenarios: { key: 'scenarios', title: 'Scenari', href: absUrl('scenarios'), fallback: 'star' },
           covers: { key: 'covers', title: 'Cover', href: absUrl('covers'), fallback: 'window-shutter' },
+          locks: { key: 'locks', title: 'Lock', href: absUrl('locks'), fallback: 'lock-smart' },
           extra: { key: 'extra', title: 'Extra', href: absUrl('extra'), fallback: 'shape' },
           guard: { key: 'guard', title: 'e-Guard', href: absUrl('e-guard'), fallback: 'cctv' },
         };
         if (!guardEnabled) delete fixedByKey.guard;
-        const allowed = guardEnabled ? ['lights','scenarios','covers','extra','guard'] : ['lights','scenarios','covers','extra'];
+        const allowed = guardEnabled
+          ? ['lights','scenarios','covers','locks','extra','guard']
+          : ['lights','scenarios','covers','locks','extra'];
         const orderRaw = (meta && Array.isArray(meta.hub_order)) ? meta.hub_order : [];
         const order = [];
         const seen = new Set();

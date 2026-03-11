@@ -133,6 +133,7 @@
         const show = (meta && meta.hub_show && typeof meta.hub_show === 'object') ? meta.hub_show : {};
         const iconLights = String(icons.lights || 'mdi:lightbulb-group');
         const iconCovers = String(icons.covers || 'mdi:window-shutter');
+        const iconLocks = String(icons.locks || 'mdi:lock-smart');
         const iconExtra = String(icons.extra || 'mdi:shape');
 
         if (show.lights !== false) {
@@ -150,6 +151,15 @@
             subtitle: 'Tapparelle / curtain',
             href: absUrl('covers'),
             icon: iconUrl(iconCovers, 'window-shutter'),
+            targetBlank: false
+          }));
+        }
+        if (show.locks !== false) {
+          grid.appendChild(makeTile({
+            title: 'Lock',
+            subtitle: 'Serrature',
+            href: absUrl('locks'),
+            icon: iconUrl(iconLocks, 'lock-smart'),
             targetBlank: false
           }));
         }
