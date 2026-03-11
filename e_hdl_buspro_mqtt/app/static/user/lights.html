@@ -208,7 +208,7 @@
       .scItem:first-child{border-top:none}
       .scItemLeft{min-width:0;flex:1}
       .scItemTitle{font-size:15px;opacity:.90;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      .scItemSub{font-size:12px;color:rgba(255,255,255,.55);margin-top:3px}
+      .scItemSub{font-size:12px;color:rgba(255,255,255,.55);margin-top:3px;max-width:100%;word-break:break-word}
       .scItemCtrls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
       .scSel{
         height:34px;padding:0 10px;
@@ -274,6 +274,12 @@
       @keyframes btnRipple{
         0%{opacity:.85;transform:scale(.86)}
         100%{opacity:0;transform:scale(1.2)}
+      }
+      @media(max-width:600px){
+        .scItem{flex-direction:column;align-items:flex-start;gap:8px}
+        .scItemCtrls{width:100%;justify-content:flex-start}
+        .scRange{width:100%}
+        .scItemTitle{white-space:normal}
       }
     </style>
   </head>
@@ -361,6 +367,21 @@
               <div id="scCoverAddList" class="scAddList"></div>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="scNameModalBack" class="modalBack" role="dialog" aria-modal="true" aria-label="Nome scenario">
+      <div class="modal" style="max-width:520px">
+        <div class="modalTop">
+          <div class="modalTitle">Nome scenario</div>
+          <div class="btnRow">
+            <button id="scNameCancel" class="btn" type="button">Annulla</button>
+            <button id="scNameOk" class="btn primary" type="button">OK</button>
+          </div>
+        </div>
+        <div style="padding:0 6px 10px">
+          <input id="scNamePromptInput" type="text" placeholder="Nome scenario" />
         </div>
       </div>
     </div>
@@ -463,6 +484,46 @@
         setTimeout(() => {
           try { el.classList.remove('pressed','pulse','ripple'); } catch (e) {}
         }, 220);
+      }
+
+      function askScenarioName() {
+        return new Promise((resolve) => {
+          const back = qs('scNameModalBack');
+          const input = qs('scNamePromptInput');
+          const ok = qs('scNameOk');
+          const cancel = qs('scNameCancel');
+          if (!back || !input || !ok || !cancel) { resolve(null); return; }
+
+          function close(val) {
+            back.classList.remove('show');
+            cleanup();
+            resolve(val);
+          }
+          function onOk() {
+            const v = String(input.value || '').trim();
+            if (!v) { input.focus(); return; }
+            close(v);
+          }
+          function onCancel() { close(null); }
+          function onKey(e) {
+            if (e && e.key === 'Enter') { e.preventDefault(); onOk(); }
+            if (e && e.key === 'Escape') { e.preventDefault(); onCancel(); }
+          }
+          function onBackClick(e) { if (e && e.target === back) onCancel(); }
+          function cleanup() {
+            ok.removeEventListener('click', onOk);
+            cancel.removeEventListener('click', onCancel);
+            back.removeEventListener('click', onBackClick);
+            document.removeEventListener('keydown', onKey);
+          }
+
+          ok.addEventListener('click', onOk);
+          cancel.addEventListener('click', onCancel);
+          back.addEventListener('click', onBackClick);
+          document.addEventListener('keydown', onKey);
+          back.classList.add('show');
+          try { input.value = ''; input.focus(); } catch (e) {}
+        });
       }
 
       function scenarioModalEl() {
@@ -1200,7 +1261,7 @@
         const err = qs('scErr');
         try {
           if (err) err.textContent = '';
-          const name = prompt('Nome scenario:', '');
+          const name = await askScenarioName();
           if (!name) return;
           const flags = getScenarioFlags();
           if (!flags.run_enabled && !flags.onoff_enabled) {
