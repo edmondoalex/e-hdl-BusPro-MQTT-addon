@@ -454,9 +454,10 @@
               refreshDeviceIndex();
               const ha = msg.data.ha_states || {};
               if (ha && typeof ha === 'object') {
+                const lockEids = new Set((lastDevices || []).filter(isLockListDevice).map(d => String(d.entity_id || '')));
                 for (const [eid, st] of Object.entries(ha)) {
                   const s0 = (st && typeof st === 'object') ? st : {};
-                  if (!String(eid || '').startsWith('lock.')) continue;
+                  if (!lockEids.has(String(eid))) continue;
                   stateByAddr.set(String(eid), { state: String(s0.state || '').toUpperCase() || '?' });
                 }
               }

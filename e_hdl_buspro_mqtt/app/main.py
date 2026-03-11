@@ -49,7 +49,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.316"
+ADDON_VERSION = "0.1.317"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -509,6 +509,10 @@ def create_app() -> FastAPI:
         s = _ha_state_str(st.get("state"))
         if s in ("unavailable", "unknown", ""):
             state = "?"
+        elif s == "on":
+            state = "UNLOCKED"
+        elif s == "off":
+            state = "LOCKED"
         elif s in ("locked", "locking"):
             state = "LOCKED" if s == "locked" else "LOCKING"
         elif s in ("unlocked", "unlocking"):
@@ -551,7 +555,7 @@ def create_app() -> FastAPI:
                             "icon": icon,
                         }
                     )
-                elif domain == "lock":
+                elif domain == "lock" or (domain == "switch" and page == "locks"):
                     open_supported = False
                     if isinstance(cap, dict) and cap.get("open_supported") is not None:
                         open_supported = bool(cap.get("open_supported"))
@@ -564,7 +568,7 @@ def create_app() -> FastAPI:
                             "name": name,
                             "group": group,
                             "icon": icon,
-                            "open_supported": open_supported,
+                            "open_supported": open_supported if domain == "lock" else False,
                         }
                     )
                 else:
@@ -3392,6 +3396,7 @@ self.addEventListener('fetch', (event) => {{
                     ha_devices = store.list_ha_devices()
                     eids: list[str] = []
                     domains: dict[str, str] = {}
+                    pages: dict[str, str] = {}
                     for it in ha_devices:
                         eid = str(it.get("entity_id") or "").strip().lower()
                         if not eid:
@@ -3399,8 +3404,10 @@ self.addEventListener('fetch', (event) => {{
                         dom = str(it.get("domain") or "").strip().lower() or (eid.split(".", 1)[0] if "." in eid else "")
                         if dom not in ("light", "switch", "cover", "lock"):
                             continue
+                        page = str(it.get("page") or "").strip().lower() or ("covers" if dom == "cover" else ("locks" if dom == "lock" else "lights"))
                         eids.append(eid)
                         domains[eid] = dom
+                        pages[eid] = page
                     if not eids:
                         await asyncio.sleep(interval)
                         continue
@@ -3463,13 +3470,15 @@ self.addEventListener('fetch', (event) => {{
                                 next_caps[eid] = dict(next_caps.get(eid) or {})
                                 next_caps[eid]["open_supported"] = bool(open_supported)
                                 caps_changed = True
+                        page = pages.get(eid) or ""
+                        as_lock = page == "locks"
                         if dom == "cover":
                             mapped = _map_ha_state_to_cover(st)
                             prev = last.get(eid)
                             if prev != mapped:
                                 next_states[eid] = mapped
                                 await hub.broadcast("ha_cover_state", mapped)
-                        elif dom == "lock":
+                        elif as_lock:
                             mapped = _map_ha_state_to_lock(st)
                             prev = last.get(eid)
                             if prev != mapped:
@@ -7006,18 +7015,26 @@ self.addEventListener('fetch', (event) => {{
         if not _ha_enabled():
             raise HTTPException(status_code=503, detail="Home Assistant API not available (SUPERVISOR_TOKEN missing)")
         eid = str(entity_id or "").strip().lower()
-        if not eid.startswith("lock."):
-            raise HTTPException(status_code=400, detail="entity_id must start with lock.")
+        if not (eid.startswith("lock.") or eid.startswith("switch.")):
+            raise HTTPException(status_code=400, detail="entity_id must start with lock. or switch.")
         cmd = str(payload.get("command") or "").strip().upper()
-        if cmd == "LOCK":
-            await asyncio.to_thread(_ha_request, "POST", "/api/services/lock/lock", payload={"entity_id": eid}, timeout_s=10)
-            return {"ok": True}
-        if cmd == "UNLOCK":
-            await asyncio.to_thread(_ha_request, "POST", "/api/services/lock/unlock", payload={"entity_id": eid}, timeout_s=10)
-            return {"ok": True}
-        if cmd == "OPEN":
-            await asyncio.to_thread(_ha_request, "POST", "/api/services/lock/open", payload={"entity_id": eid}, timeout_s=10)
-            return {"ok": True}
+        if eid.startswith("switch."):
+            if cmd == "LOCK":
+                await asyncio.to_thread(_ha_request, "POST", "/api/services/switch/turn_off", payload={"entity_id": eid}, timeout_s=10)
+                return {"ok": True}
+            if cmd in ("UNLOCK", "OPEN"):
+                await asyncio.to_thread(_ha_request, "POST", "/api/services/switch/turn_on", payload={"entity_id": eid}, timeout_s=10)
+                return {"ok": True}
+        else:
+            if cmd == "LOCK":
+                await asyncio.to_thread(_ha_request, "POST", "/api/services/lock/lock", payload={"entity_id": eid}, timeout_s=10)
+                return {"ok": True}
+            if cmd == "UNLOCK":
+                await asyncio.to_thread(_ha_request, "POST", "/api/services/lock/unlock", payload={"entity_id": eid}, timeout_s=10)
+                return {"ok": True}
+            if cmd == "OPEN":
+                await asyncio.to_thread(_ha_request, "POST", "/api/services/lock/open", payload={"entity_id": eid}, timeout_s=10)
+                return {"ok": True}
         raise HTTPException(status_code=400, detail="unsupported command")
 
     @api.post("/api/control/home_action/{action_id}")
