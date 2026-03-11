@@ -147,6 +147,15 @@
         filter:drop-shadow(0 2px 3px rgba(0,0,0,.35));
         opacity:.95;
       }
+      .modalBack{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:9999;padding:18px}
+      .modalBack.show{display:flex}
+      .modal{width:min(92vw,420px);max-height:84vh;overflow:auto;background:rgba(12,14,20,.96);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:16px 16px 14px}
+      .modalTop{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+      .modalTitle{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.72)}
+      .modalMsg{font-size:14px;color:rgba(255,255,255,.9);line-height:1.4}
+      .modalActions{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
+      .btn{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:#fff;border-radius:999px;padding:8px 12px;font-size:13px}
+      .btn.primary{background:linear-gradient(135deg, #ffd54a, #f5b52c);color:#1a1300;border-color:rgba(255,213,74,.35)}
       .label{
         font-size:19px;
         font-weight:460;
@@ -201,6 +210,19 @@
       </div>
     </main>
 
+    <div id="confirmModalBack" class="modalBack" role="dialog" aria-modal="true" aria-label="Conferma">
+      <div class="modal">
+        <div class="modalTop">
+          <div class="modalTitle">Conferma</div>
+          <div class="modalActions">
+            <button id="confirmCancel" class="btn" type="button">Annulla</button>
+            <button id="confirmOk" class="btn primary" type="button">OK</button>
+          </div>
+        </div>
+        <div class="modalMsg" id="confirmMsg"></div>
+      </div>
+    </div>
+
     <script>
       function absUrl(path) { return new URL(path, window.location.href).toString(); }
       async function getJson(path, opts) {
@@ -218,6 +240,41 @@
       function iconUrl(iconValue, fallback) {
         const name = mdiName(iconValue, fallback);
         return absUrl(`api/icons/mdi/${name}.svg`);
+      }
+      function askConfirm(message) {
+        return new Promise((resolve) => {
+          const back = document.getElementById('confirmModalBack');
+          const msg = document.getElementById('confirmMsg');
+          const ok = document.getElementById('confirmOk');
+          const cancel = document.getElementById('confirmCancel');
+          if (!back || !msg || !ok || !cancel) { resolve(true); return; }
+
+          function close(val) {
+            back.classList.remove('show');
+            cleanup();
+            resolve(!!val);
+          }
+          function onOk() { close(true); }
+          function onCancel() { close(false); }
+          function onKey(e) {
+            if (e && e.key === 'Enter') { e.preventDefault(); onOk(); }
+            if (e && e.key === 'Escape') { e.preventDefault(); onCancel(); }
+          }
+          function onBackClick(e) { if (e && e.target === back) onCancel(); }
+          function cleanup() {
+            ok.removeEventListener('click', onOk);
+            cancel.removeEventListener('click', onCancel);
+            back.removeEventListener('click', onBackClick);
+            document.removeEventListener('keydown', onKey);
+          }
+
+          ok.addEventListener('click', onOk);
+          cancel.addEventListener('click', onCancel);
+          back.addEventListener('click', onBackClick);
+          document.addEventListener('keydown', onKey);
+          msg.textContent = String(message || 'Confermi?');
+          back.classList.add('show');
+        });
       }
       function makeTile({ title, href, icon, targetBlank }) {
         const a = document.createElement('a');
@@ -261,7 +318,8 @@
         b.appendChild(label);
         b.addEventListener('click', async () => {
           if (confirm) {
-            if (!window.confirm(`Eseguire "${title}"?`)) return;
+            const ok = await askConfirm(`Eseguire "${title}"?`);
+            if (!ok) return;
           }
           b.disabled = true;
           try {

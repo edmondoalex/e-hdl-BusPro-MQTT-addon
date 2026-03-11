@@ -151,6 +151,8 @@
       }
       .modalTop{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px}
       .modalTitle{font-size:14px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.70)}
+      .modalMsg{font-size:15px;color:rgba(255,255,255,.88);line-height:1.4}
+      .modalActions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
       .btnRow{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:flex-end}
       .btn{
         height:38px;padding:0 12px;
@@ -386,6 +388,19 @@
       </div>
     </div>
 
+    <div id="confirmModalBack" class="modalBack" role="dialog" aria-modal="true" aria-label="Conferma">
+      <div class="modal" style="max-width:520px">
+        <div class="modalTop">
+          <div class="modalTitle">Conferma</div>
+          <div class="btnRow">
+            <button id="confirmCancel" class="btn" type="button">Annulla</button>
+            <button id="confirmOk" class="btn danger" type="button">Conferma</button>
+          </div>
+        </div>
+        <div class="modalMsg" id="confirmMsg"></div>
+      </div>
+    </div>
+
     <script>
       const qs = (id) => document.getElementById(id); 
       const stateByAddr = new Map(); 
@@ -523,6 +538,42 @@
           document.addEventListener('keydown', onKey);
           back.classList.add('show');
           try { input.value = ''; input.focus(); } catch (e) {}
+        });
+      }
+
+      function askConfirm(message) {
+        return new Promise((resolve) => {
+          const back = qs('confirmModalBack');
+          const msg = qs('confirmMsg');
+          const ok = qs('confirmOk');
+          const cancel = qs('confirmCancel');
+          if (!back || !msg || !ok || !cancel) { resolve(false); return; }
+
+          function close(val) {
+            back.classList.remove('show');
+            cleanup();
+            resolve(!!val);
+          }
+          function onOk() { close(true); }
+          function onCancel() { close(false); }
+          function onKey(e) {
+            if (e && e.key === 'Enter') { e.preventDefault(); onOk(); }
+            if (e && e.key === 'Escape') { e.preventDefault(); onCancel(); }
+          }
+          function onBackClick(e) { if (e && e.target === back) onCancel(); }
+          function cleanup() {
+            ok.removeEventListener('click', onOk);
+            cancel.removeEventListener('click', onCancel);
+            back.removeEventListener('click', onBackClick);
+            document.removeEventListener('keydown', onKey);
+          }
+
+          ok.addEventListener('click', onOk);
+          cancel.addEventListener('click', onCancel);
+          back.addEventListener('click', onBackClick);
+          document.addEventListener('keydown', onKey);
+          msg.textContent = String(message || 'Confermi?');
+          back.classList.add('show');
         });
       }
 
@@ -700,7 +751,8 @@
             animatePress(b);
             const id = b.getAttribute('data-id') || '';
             if (!id) return;
-            if (!confirm('Eliminare questo scenario?')) return;
+            const ok = await askConfirm('Eliminare questo scenario?');
+            if (!ok) return;
             try {
               if (err) err.textContent = '';
               await getJson(`api/user/light_scenarios/${encodeURIComponent(id)}`, { method:'DELETE' });
