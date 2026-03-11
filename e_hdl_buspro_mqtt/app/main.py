@@ -49,7 +49,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.315"
+ADDON_VERSION = "0.1.316"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -4518,6 +4518,11 @@ self.addEventListener('fetch', (event) => {{
                 path = os.path.join(icons_dir, "mdi", f"{safe}.svg")
                 if os.path.exists(path):
                     with open(path, "rb") as f:
+                        return Response(content=f.read(), media_type="image/svg+xml")
+                # Fallback to bundled icons (works offline for a small set)
+                bundled = os.path.join(static_dir, "mdi", f"{safe}.svg")
+                if os.path.exists(bundled):
+                    with open(bundled, "rb") as f:
                         return Response(content=f.read(), media_type="image/svg+xml")
         except Exception:
             pass
