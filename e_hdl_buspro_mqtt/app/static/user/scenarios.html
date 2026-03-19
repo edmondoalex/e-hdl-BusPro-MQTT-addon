@@ -177,6 +177,7 @@
             row.className = 'row';
             const name = String(sc.name || '').trim() || '(senza nome)';
             const n = Array.isArray(sc.items) ? sc.items.length : 0;
+            const c = Array.isArray(sc.covers) ? sc.covers.length : 0;
             const sid = String(sc.id || '').trim();
             const on = String((stMap && stMap[sid]) || '').toUpperCase() === 'ON';
             const runEnabled = !!sc.run_enabled;
@@ -192,7 +193,7 @@
             row.innerHTML = `
               <div class="left">
                 <div class="name">${escapeHtml(name)}</div>
-                <div class="meta">${escapeHtml(String(n))} luci</div>
+                <div class="meta">${escapeHtml(String(n))} luci • ${escapeHtml(String(c))} tapparelle</div>
               </div>
               <div class="btnRow">${btns.join('')}</div>
             `;

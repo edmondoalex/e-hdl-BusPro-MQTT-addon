@@ -762,6 +762,7 @@
           row.className = 'row scRow';
           const name = String(sc.name || '').trim() || '(senza nome)';
           const count = Array.isArray(sc.items) ? sc.items.length : 0;
+          const coverCount = Array.isArray(sc.covers) ? sc.covers.length : 0;
           const isOn = String((scenarioStates && scenarioStates[String(sc.id||'')]) || '').toUpperCase() === 'ON';
           const runEnabled = !!sc.run_enabled;
           const onoffEnabled = (sc.onoff_enabled === undefined) ? true : !!sc.onoff_enabled;
@@ -772,7 +773,7 @@
           }
           if (onoffEnabled) btns.push(`<button class="btn ${isOn ? 'danger' : 'primary'}" type="button" data-act="toggle" data-id="${escapeHtml(String(sc.id||''))}">${isOn ? 'Spegni' : 'Accendi'}</button>`);
           row.innerHTML = `
-            <div class="scName">${escapeHtml(name)}<span class="scMeta">${escapeHtml(String(count))} luci</span></div>
+            <div class="scName">${escapeHtml(name)}<span class="scMeta">${escapeHtml(String(count))} luci • ${escapeHtml(String(coverCount))} tapparelle</span></div>
             <div class="btnRow">
               ${btns.join('')}
               <button class="btn" type="button" data-act="edit" data-id="${escapeHtml(String(sc.id||''))}">Modifica</button>
