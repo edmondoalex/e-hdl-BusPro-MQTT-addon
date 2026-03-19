@@ -801,6 +801,26 @@ class StateStore:
             if cmd not in ("OPEN", "CLOSE", "STOP", "SET_POSITION"):
                 continue
 
+            ramp_minutes = it.get("ramp_minutes")
+            if ramp_minutes is None or ramp_minutes == "":
+                ramp_minutes_i = 0
+            else:
+                try:
+                    ramp_minutes_i = int(float(ramp_minutes))
+                except Exception:
+                    ramp_minutes_i = 0
+            ramp_minutes_i = max(0, min(240, ramp_minutes_i))
+
+            step_seconds = it.get("step_seconds")
+            if step_seconds is None or step_seconds == "":
+                step_seconds_i = 5
+            else:
+                try:
+                    step_seconds_i = int(float(step_seconds))
+                except Exception:
+                    step_seconds_i = 5
+            step_seconds_i = max(1, min(120, step_seconds_i))
+
             pos = it.get("position")
             if cmd == "SET_POSITION":
                 try:
@@ -815,14 +835,32 @@ class StateStore:
                 gid = str(it.get("group_id") or it.get("id") or "").strip()
                 if not gid:
                     continue
-                covers.append({"kind": "group", "group_id": gid, "command": cmd, "position": pos_i})
+                covers.append(
+                    {
+                        "kind": "group",
+                        "group_id": gid,
+                        "command": cmd,
+                        "position": pos_i,
+                        "ramp_minutes": ramp_minutes_i,
+                        "step_seconds": step_seconds_i,
+                    }
+                )
                 continue
 
             if kind == "ha":
                 entity_id = str(it.get("entity_id") or "").strip().lower()
                 if not entity_id.startswith("cover."):
                     continue
-                covers.append({"kind": "ha", "entity_id": entity_id, "command": cmd, "position": pos_i})
+                covers.append(
+                    {
+                        "kind": "ha",
+                        "entity_id": entity_id,
+                        "command": cmd,
+                        "position": pos_i,
+                        "ramp_minutes": ramp_minutes_i,
+                        "step_seconds": step_seconds_i,
+                    }
+                )
                 continue
 
             try:
@@ -839,6 +877,8 @@ class StateStore:
                     "channel": channel,
                     "command": cmd,
                     "position": pos_i,
+                    "ramp_minutes": ramp_minutes_i,
+                    "step_seconds": step_seconds_i,
                 }
             )
 

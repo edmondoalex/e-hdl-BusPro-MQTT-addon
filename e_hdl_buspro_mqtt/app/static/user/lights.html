@@ -212,6 +212,17 @@
       .scItemTitle{font-size:15px;opacity:.90;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .scItemSub{font-size:12px;color:rgba(255,255,255,.55);margin-top:3px;max-width:100%;word-break:break-word}
       .scItemCtrls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+      .scItemRamp{display:flex;gap:8px;align-items:center}
+      .scItemRamp label{font-size:12px;color:rgba(255,255,255,.52)}
+      .scItemRamp input{
+        width:64px;
+        background:rgba(255,255,255,.04);
+        border:1px solid rgba(255,255,255,.12);
+        color:var(--text);
+        border-radius:10px;
+        padding:6px 8px;
+        font-size:12px;
+      }
       .scSel{
         height:34px;padding:0 10px;
         border:1px solid rgba(255,255,255,.14);
@@ -814,11 +825,16 @@
             const kind = String(it.kind || 'single').toLowerCase();
             let cmd = String(it.command || '').toUpperCase();
             const pos = (it.position === null || it.position === undefined) ? null : Math.max(0, Math.min(100, Number(it.position)));
+            const ramp_minutes = Math.max(0, Math.min(240, Number(it.ramp_minutes ?? 0) || 0));
+            const step_seconds = Math.max(1, Math.min(120, Number(it.step_seconds ?? 5) || 5));
             if (cmd === 'SET_POSITION') {
               cmd = 'STOP';
             }
             if (kind === 'group') {
-              return { kind: 'group', group_id: String(it.group_id || it.id || '').trim(), command: cmd, position: null };
+              return { kind: 'group', group_id: String(it.group_id || it.id || '').trim(), command: cmd, position: null, ramp_minutes, step_seconds };
+            }
+            if (kind === 'ha') {
+              return { kind: 'ha', entity_id: String(it.entity_id || '').trim().toLowerCase(), command: cmd, position: null, ramp_minutes, step_seconds };
             }
             return {
               kind: 'single',
@@ -827,6 +843,8 @@
               channel: Number(it.channel),
               command: cmd,
               position: null,
+              ramp_minutes,
+              step_seconds,
             };
           })
           .filter(it => (it.kind === 'group' ? !!it.group_id : (Number.isFinite(it.subnet_id) && Number.isFinite(it.device_id) && Number.isFinite(it.channel))))
@@ -957,6 +975,8 @@
           const sub = isGroup
             ? `Gruppo &bull; ${escapeHtml(String(it.group_id||''))}`
             : `${escapeHtml(coverAddrFromItem(it))}${isHa ? ' &bull; HA' : ''}`;
+          const rampMin = Math.max(0, Math.min(240, Number(it.ramp_minutes ?? 0) || 0));
+          const stepSec = Math.max(1, Math.min(120, Number(it.step_seconds ?? 5) || 5));
 
           const row = document.createElement('div');
           row.className = 'scItem';
@@ -970,6 +990,12 @@
               <button class="btn ${cmd==='OPEN' ? 'primary':''}" type="button" data-act="c_open" data-key="${escapeHtml(key)}">Su</button>
               <button class="btn ${cmd==='CLOSE' ? 'primary':''}" type="button" data-act="c_close" data-key="${escapeHtml(key)}">Gi&#249;</button>
               <button class="btn ${cmd==='STOP' ? 'primary':''}" type="button" data-act="c_stop" data-key="${escapeHtml(key)}">Stop</button>
+              <div class="scItemRamp">
+                <label>Min</label>
+                <input type="number" min="0" max="240" step="1" value="${escapeHtml(String(rampMin))}" data-act="c_ramp" data-key="${escapeHtml(key)}" />
+                <label>Step s</label>
+                <input type="number" min="1" max="120" step="1" value="${escapeHtml(String(stepSec))}" data-act="c_step" data-key="${escapeHtml(key)}" />
+              </div>
               <button class="btn danger" type="button" data-act="c_del" data-key="${escapeHtml(key)}">Rimuovi</button>
             </div>
           `;
@@ -1007,6 +1033,20 @@
             const key = b.getAttribute('data-key') || '';
             for (const it of (editingScenarioCovers || [])) if (coverKeyFromItem(it) === key) { it.command = 'STOP'; it.position = null; }
             renderScenarioEditorCovers();
+          });
+        });
+        root.querySelectorAll('input[data-act="c_ramp"]').forEach((inp) => {
+          inp.addEventListener('change', () => {
+            const key = inp.getAttribute('data-key') || '';
+            const v = Math.max(0, Math.min(240, Number(inp.value || 0) || 0));
+            for (const it of (editingScenarioCovers || [])) if (coverKeyFromItem(it) === key) { it.ramp_minutes = v; }
+          });
+        });
+        root.querySelectorAll('input[data-act="c_step"]').forEach((inp) => {
+          inp.addEventListener('change', () => {
+            const key = inp.getAttribute('data-key') || '';
+            const v = Math.max(1, Math.min(120, Number(inp.value || 5) || 5));
+            for (const it of (editingScenarioCovers || [])) if (coverKeyFromItem(it) === key) { it.step_seconds = v; }
           });
         });
         restoreScenarioScroll(scScroll);
@@ -1063,12 +1103,12 @@
           row.addEventListener('click', () => {
             animatePress(row);
             if (c.kind === 'group') {
-              editingScenarioCovers = (editingScenarioCovers || []).concat([{ kind:'group', group_id: String(c.gid), command:'STOP', position:null }]);
+              editingScenarioCovers = (editingScenarioCovers || []).concat([{ kind:'group', group_id: String(c.gid), command:'STOP', position:null, ramp_minutes:0, step_seconds:5 }]);
             } else if (c.kind === 'ha') {
-              editingScenarioCovers = (editingScenarioCovers || []).concat([{ kind:'ha', entity_id: String(c.id || '').trim().toLowerCase(), command:'STOP', position:null }]);
+              editingScenarioCovers = (editingScenarioCovers || []).concat([{ kind:'ha', entity_id: String(c.id || '').trim().toLowerCase(), command:'STOP', position:null, ramp_minutes:0, step_seconds:5 }]);
             } else {
               const parts = String(c.id).split('.').map(Number);
-              editingScenarioCovers = (editingScenarioCovers || []).concat([{ kind:'single', subnet_id: parts[0], device_id: parts[1], channel: parts[2], command:'STOP', position:null }]);
+              editingScenarioCovers = (editingScenarioCovers || []).concat([{ kind:'single', subnet_id: parts[0], device_id: parts[1], channel: parts[2], command:'STOP', position:null, ramp_minutes:0, step_seconds:5 }]);
             }
             renderScenarioEditorCovers();
             renderScenarioCoverAddList();
@@ -1262,10 +1302,16 @@
             return { subnet_id: Number(it.subnet_id), device_id: Number(it.device_id), channel: Number(it.channel), state: st, brightness: br };
           });
           const covers = (editingScenarioCovers || []).map((it) => {
-            const kind = String(it.kind || 'single') === 'group' ? 'group' : 'single';
+            const kindRaw = String(it.kind || 'single');
+            const kind = kindRaw === 'group' ? 'group' : (kindRaw === 'ha' ? 'ha' : 'single');
             const cmd = String(it.command || '').toUpperCase();
+            const ramp_minutes = Math.max(0, Math.min(240, Number(it.ramp_minutes ?? 0) || 0));
+            const step_seconds = Math.max(1, Math.min(120, Number(it.step_seconds ?? 5) || 5));
             if (kind === 'group') {
-              return { kind: 'group', group_id: String(it.group_id || '').trim(), command: cmd, position: null };
+              return { kind: 'group', group_id: String(it.group_id || '').trim(), command: cmd, position: null, ramp_minutes, step_seconds };
+            }
+            if (kind === 'ha') {
+              return { kind: 'ha', entity_id: String(it.entity_id || '').trim().toLowerCase(), command: cmd, position: null, ramp_minutes, step_seconds };
             }
             return {
               kind: 'single',
@@ -1274,6 +1320,8 @@
               channel: Number(it.channel),
               command: cmd,
               position: null,
+              ramp_minutes,
+              step_seconds,
             };
           });
           await getJson(`api/user/light_scenarios/${encodeURIComponent(sid)}`, {
