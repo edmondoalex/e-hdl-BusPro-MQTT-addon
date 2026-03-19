@@ -887,6 +887,26 @@ class StateStore:
             out["run_enabled"] = bool(payload.get("run_enabled"))
         if "onoff_enabled" in payload:
             out["onoff_enabled"] = bool(payload.get("onoff_enabled"))
+        trig_in = payload.get("trigger")
+        if isinstance(trig_in, dict):
+            t_type = str(trig_in.get("type") or "none").strip().lower()
+            if t_type not in ("none", "time", "sunrise", "sunset"):
+                t_type = "none"
+            t_enabled = bool(trig_in.get("enabled")) if "enabled" in trig_in else False
+            t_time = str(trig_in.get("time") or "").strip()
+            if t_time and not re.fullmatch(r"\d{1,2}:\d{2}", t_time):
+                t_time = ""
+            try:
+                t_offset = int(float(trig_in.get("offset_min") or 0))
+            except Exception:
+                t_offset = 0
+            t_offset = max(-1440, min(1440, t_offset))
+            out["trigger"] = {
+                "enabled": t_enabled,
+                "type": t_type,
+                "time": t_time,
+                "offset_min": t_offset,
+            }
         return out
 
     def add_light_scenario(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -902,6 +922,8 @@ class StateStore:
             "run_enabled": run_enabled,
             "onoff_enabled": onoff_enabled,
         }
+        if "trigger" in cleaned:
+            out["trigger"] = cleaned.get("trigger") or {}
 
         raw = self.read_raw()
         ui = dict(raw.get("ui") or {})
@@ -946,6 +968,8 @@ class StateStore:
                 cur["run_enabled"] = bool(cleaned.get("run_enabled"))
             if "onoff_enabled" in cleaned:
                 cur["onoff_enabled"] = bool(cleaned.get("onoff_enabled"))
+            if "trigger" in cleaned:
+                cur["trigger"] = cleaned.get("trigger") or {}
             updated = cur
             out_items.append(cur)
 

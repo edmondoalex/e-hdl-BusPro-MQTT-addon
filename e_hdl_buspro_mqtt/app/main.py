@@ -15,6 +15,7 @@ import urllib.error
 from typing import Any
 import re
 import shutil
+from datetime import datetime, timedelta, time as dt_time
 
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
@@ -49,7 +50,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.323"
+ADDON_VERSION = "0.1.324"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -601,6 +602,8 @@ def create_app() -> FastAPI:
     api.state.sniffer = TelegramSniffer(share_dir="/share", maxlen=5000)
     api.state.cover_sim_tasks = {}
     api.state.scenario_tasks = {}
+    api.state.scenario_trigger_last = {}
+    api.state.sun_cache = {"ts": 0.0, "next_rising": None, "next_setting": None}
 
     @api.middleware("http")
     async def ingress_path_middleware(request: Request, call_next):
@@ -3667,6 +3670,106 @@ self.addEventListener('fetch', (event) => {{
             api.state.ha_poll_task = asyncio.create_task(_ha_poll_loop())
         except Exception:
             api.state.ha_poll_task = None
+
+        def _parse_dt(val: str | None) -> datetime | None:
+            if not val:
+                return None
+            try:
+                s = str(val).strip().replace("Z", "+00:00")
+                dt = datetime.fromisoformat(s)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=datetime.now().astimezone().tzinfo)
+                return dt.astimezone()
+            except Exception:
+                return None
+
+        async def _get_sun_times() -> dict[str, datetime] | None:
+            if not _ha_enabled():
+                return None
+            cache = getattr(api.state, "sun_cache", {}) or {}
+            now_m = time.monotonic()
+            ts = float(cache.get("ts") or 0.0)
+            if now_m - ts < 300 and cache.get("next_rising") and cache.get("next_setting"):
+                return {"next_rising": cache.get("next_rising"), "next_setting": cache.get("next_setting")}
+            try:
+                raw = await asyncio.to_thread(_ha_request, "GET", "/api/states/sun.sun", payload=None, timeout_s=10)
+            except Exception:
+                return None
+            if not isinstance(raw, dict):
+                return None
+            attrs = raw.get("attributes") or {}
+            nr = _parse_dt(str(attrs.get("next_rising") or ""))
+            ns = _parse_dt(str(attrs.get("next_setting") or ""))
+            if not nr or not ns:
+                return None
+            api.state.sun_cache = {"ts": now_m, "next_rising": nr, "next_setting": ns}
+            return {"next_rising": nr, "next_setting": ns}
+
+        async def _scenario_trigger_loop() -> None:
+            while True:
+                try:
+                    await asyncio.sleep(20)
+                    now = datetime.now().astimezone()
+                    last_map: dict[str, str] = getattr(api.state, "scenario_trigger_last", {}) or {}
+                    for sc in store.list_light_scenarios():
+                        if not isinstance(sc, dict):
+                            continue
+                        sid = str(sc.get("id") or "").strip()
+                        if not sid:
+                            continue
+                        trig = sc.get("trigger") or {}
+                        if not isinstance(trig, dict):
+                            continue
+                        if not bool(trig.get("enabled")):
+                            continue
+                        t_type = str(trig.get("type") or "none").strip().lower()
+                        if t_type not in ("time", "sunrise", "sunset"):
+                            continue
+                        target: datetime | None = None
+                        offset = 0
+                        try:
+                            offset = int(trig.get("offset_min") or 0)
+                        except Exception:
+                            offset = 0
+                        if t_type == "time":
+                            t = str(trig.get("time") or "").strip()
+                            if not t or ":" not in t:
+                                continue
+                            try:
+                                hh_s, mm_s = t.split(":", 1)
+                                hh = max(0, min(23, int(hh_s)))
+                                mm = max(0, min(59, int(mm_s)))
+                            except Exception:
+                                continue
+                            target = datetime.combine(now.date(), dt_time(hh, mm), tzinfo=now.tzinfo) + timedelta(minutes=offset)
+                        else:
+                            sun = await _get_sun_times()
+                            if not sun:
+                                continue
+                            base = sun.get("next_rising") if t_type == "sunrise" else sun.get("next_setting")
+                            if not base:
+                                continue
+                            target = base + timedelta(minutes=offset)
+                        if not target:
+                            continue
+                        last_key = last_map.get(sid)
+                        tkey = target.isoformat()
+                        if last_key == tkey:
+                            continue
+                        diff_s = (now - target).total_seconds()
+                        if diff_s >= 0 and diff_s <= 60:
+                            last_map[sid] = tkey
+                            api.state.scenario_trigger_last = last_map
+                            await run_light_scenario(sid, {"command": "RUN"})
+                except asyncio.CancelledError:
+                    return
+                except Exception:
+                    continue
+
+        try:
+            api.state.scenario_trigger_task = asyncio.create_task(_scenario_trigger_loop())
+        except Exception:
+            api.state.scenario_trigger_task = None
 
         # Best-effort icon sync on boot (non-blocking)
         asyncio.create_task(_sync_icons_for_devices(store.list_devices()))
