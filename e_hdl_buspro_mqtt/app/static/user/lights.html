@@ -732,7 +732,10 @@
           const runEnabled = !!sc.run_enabled;
           const onoffEnabled = (sc.onoff_enabled === undefined) ? true : !!sc.onoff_enabled;
           const btns = [];
-          if (runEnabled) btns.push(`<button class="btn" type="button" data-act="run" data-id="${escapeHtml(String(sc.id||''))}">Esegui</button>`);
+          if (runEnabled) {
+            btns.push(`<button class="btn" type="button" data-act="run" data-id="${escapeHtml(String(sc.id||''))}">Esegui</button>`);
+            btns.push(`<button class="btn danger" type="button" data-act="stop" data-id="${escapeHtml(String(sc.id||''))}">Stop</button>`);
+          }
           if (onoffEnabled) btns.push(`<button class="btn ${isOn ? 'danger' : 'primary'}" type="button" data-act="toggle" data-id="${escapeHtml(String(sc.id||''))}">${isOn ? 'Spegni' : 'Accendi'}</button>`);
           row.innerHTML = `
             <div class="scName">${escapeHtml(name)}<span class="scMeta">${escapeHtml(String(count))} luci</span></div>
@@ -774,6 +777,24 @@
               await loadLightScenarios();
             } catch (e) {
               if (err) err.textContent = 'Errore esecuzione scenario';
+            }
+          });
+        });
+        root.querySelectorAll('button[data-act="stop"]').forEach((b) => {
+          b.addEventListener('click', async () => {
+            animatePress(b);
+            const id = b.getAttribute('data-id') || '';
+            if (!id) return;
+            try {
+              if (err) err.textContent = '';
+              await getJson(`api/control/light_scenario/${encodeURIComponent(id)}`, {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ command: 'STOP' })
+              });
+              await loadLightScenarios();
+            } catch (e) {
+              if (err) err.textContent = 'Errore stop scenario';
             }
           });
         });

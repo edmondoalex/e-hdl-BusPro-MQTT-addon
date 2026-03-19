@@ -49,7 +49,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.322"
+ADDON_VERSION = "0.1.323"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -600,6 +600,7 @@ def create_app() -> FastAPI:
     api.state.gateway = None
     api.state.sniffer = TelegramSniffer(share_dir="/share", maxlen=5000)
     api.state.cover_sim_tasks = {}
+    api.state.scenario_tasks = {}
 
     @api.middleware("http")
     async def ingress_path_middleware(request: Request, call_next):
@@ -2315,71 +2316,78 @@ self.addEventListener('fetch', (event) => {{
         ramp_minutes: int,
         step_seconds: int,
     ) -> None:
-        cmd_u = str(cmd or "").upper()
-        if cmd_u == "STOP":
-            try:
-                await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
-            except Exception:
-                return
-            _start_cover_sim(subnet_id, device_id, channel, "STOP")
-            return
-        if cmd_u not in ("OPEN", "CLOSE"):
-            return
-
-        if ramp_minutes <= 0 or step_seconds <= 0:
-            try:
-                if cmd_u == "OPEN":
-                    await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
-                    _start_cover_sim(subnet_id, device_id, channel, "OPEN")
-                else:
-                    await gw.cover_close_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
-                    _start_cover_sim(subnet_id, device_id, channel, "CLOSE")
-            except Exception:
-                return
-            return
-
-        desired_total = float(ramp_minutes) * 60.0
-        up_s, down_s = _cover_times(subnet_id, device_id, channel)
-        full_time = up_s if cmd_u == "OPEN" else down_s
-        if desired_total <= max(1.0, float(full_time)):
-            try:
-                if cmd_u == "OPEN":
-                    await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
-                    _start_cover_sim(subnet_id, device_id, channel, "OPEN")
-                else:
-                    await gw.cover_close_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
-                    _start_cover_sim(subnet_id, device_id, channel, "CLOSE")
-            except Exception:
-                return
-            return
-
-        step_s = max(0.5, float(step_seconds))
-        duty = min(1.0, max(0.05, float(full_time) / float(desired_total)))
-        on_time = max(0.2, step_s * duty)
-        off_time = max(0.0, step_s - on_time)
-
-        _start_cover_sim_custom(subnet_id, device_id, channel, cmd_u, duration_s=desired_total)
-
-        end_t = time.monotonic() + desired_total
-        while time.monotonic() < end_t:
-            try:
-                if cmd_u == "OPEN":
-                    await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
-                else:
-                    await gw.cover_close_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
-            except Exception:
-                break
-            await asyncio.sleep(on_time)
-            try:
-                await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
-            except Exception:
-                break
-            if off_time > 0:
-                await asyncio.sleep(off_time)
         try:
-            await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
-        except Exception:
-            pass
+            cmd_u = str(cmd or "").upper()
+            if cmd_u == "STOP":
+                try:
+                    await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                except Exception:
+                    return
+                _start_cover_sim(subnet_id, device_id, channel, "STOP")
+                return
+            if cmd_u not in ("OPEN", "CLOSE"):
+                return
+
+            if ramp_minutes <= 0 or step_seconds <= 0:
+                try:
+                    if cmd_u == "OPEN":
+                        await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                        _start_cover_sim(subnet_id, device_id, channel, "OPEN")
+                    else:
+                        await gw.cover_close_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                        _start_cover_sim(subnet_id, device_id, channel, "CLOSE")
+                except Exception:
+                    return
+                return
+
+            desired_total = float(ramp_minutes) * 60.0
+            up_s, down_s = _cover_times(subnet_id, device_id, channel)
+            full_time = up_s if cmd_u == "OPEN" else down_s
+            if desired_total <= max(1.0, float(full_time)):
+                try:
+                    if cmd_u == "OPEN":
+                        await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                        _start_cover_sim(subnet_id, device_id, channel, "OPEN")
+                    else:
+                        await gw.cover_close_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                        _start_cover_sim(subnet_id, device_id, channel, "CLOSE")
+                except Exception:
+                    return
+                return
+
+            step_s = max(0.5, float(step_seconds))
+            duty = min(1.0, max(0.05, float(full_time) / float(desired_total)))
+            on_time = max(0.2, step_s * duty)
+            off_time = max(0.0, step_s - on_time)
+
+            _start_cover_sim_custom(subnet_id, device_id, channel, cmd_u, duration_s=desired_total)
+
+            end_t = time.monotonic() + desired_total
+            while time.monotonic() < end_t:
+                try:
+                    if cmd_u == "OPEN":
+                        await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                    else:
+                        await gw.cover_close_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                except Exception:
+                    break
+                await asyncio.sleep(on_time)
+                try:
+                    await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                except Exception:
+                    break
+                if off_time > 0:
+                    await asyncio.sleep(off_time)
+            try:
+                await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
+            except Exception:
+                pass
+        except asyncio.CancelledError:
+            try:
+                await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
+            except Exception:
+                pass
+            return
 
     def _find_cover_group_by_gid(gid: str) -> dict[str, Any] | None:
         gid_s = str(gid or "").strip()
@@ -6897,10 +6905,46 @@ self.addEventListener('fetch', (event) => {{
         if not sc:
             raise HTTPException(status_code=404, detail="Not Found")
         desired = None
+        command = None
         if isinstance(payload, dict):
             v = str(payload.get("state") or "").strip().upper()
             if v in ("ON", "OFF"):
                 desired = v
+            c = str(payload.get("command") or "").strip().upper()
+            if c in ("STOP", "RUN"):
+                command = c
+
+        def _track_scenario_task(sid: str, task: asyncio.Task) -> None:
+            tasks: dict[str, set[asyncio.Task]] = getattr(api.state, "scenario_tasks", {}) or {}
+            s = tasks.get(sid)
+            if s is None:
+                s = set()
+                tasks[sid] = s
+            s.add(task)
+            api.state.scenario_tasks = tasks
+            def _done(_t: asyncio.Task) -> None:
+                tasks2: dict[str, set[asyncio.Task]] = getattr(api.state, "scenario_tasks", {}) or {}
+                s2 = tasks2.get(sid)
+                if s2 and _t in s2:
+                    s2.remove(_t)
+                if s2 is not None and not s2:
+                    tasks2.pop(sid, None)
+                api.state.scenario_tasks = tasks2
+            try:
+                task.add_done_callback(_done)
+            except Exception:
+                pass
+
+        def _cancel_scenario_tasks(sid: str) -> None:
+            tasks: dict[str, set[asyncio.Task]] = getattr(api.state, "scenario_tasks", {}) or {}
+            s = tasks.pop(sid, None)
+            if not s:
+                api.state.scenario_tasks = tasks
+                return
+            for t in list(s):
+                if t and not t.done():
+                    t.cancel()
+            api.state.scenario_tasks = tasks
 
         def _invert_state(st: str) -> str:
             return "OFF" if str(st).upper() == "ON" else "ON"
@@ -6912,6 +6956,53 @@ self.addEventListener('fetch', (event) => {{
             if c == "CLOSE":
                 return "OPEN"
             return "STOP"
+
+        if command == "STOP":
+            _cancel_scenario_tasks(str(sc.get("id") or ""))
+            covers = sc.get("covers") or []
+            if isinstance(covers, list):
+                for it in covers:
+                    if not isinstance(it, dict):
+                        continue
+                    kind = str(it.get("kind") or "single").strip().lower()
+                    if kind == "ha":
+                        if not _ha_enabled():
+                            continue
+                        eid = str(it.get("entity_id") or "").strip().lower()
+                        if not eid.startswith("cover."):
+                            continue
+                        try:
+                            await asyncio.to_thread(
+                                _ha_request,
+                                "POST",
+                                "/api/services/cover/stop_cover",
+                                payload={"entity_id": eid},
+                                timeout_s=10,
+                            )
+                        except Exception:
+                            continue
+                        continue
+                    if kind == "group":
+                        gid = str(it.get("group_id") or "").strip()
+                        if not gid:
+                            continue
+                        try:
+                            await _run_cover_group_command(gid, "STOP", raw=True)
+                        except Exception:
+                            continue
+                        continue
+                    try:
+                        subnet_id = int(it.get("subnet_id"))
+                        device_id = int(it.get("device_id"))
+                        channel = int(it.get("channel"))
+                    except Exception:
+                        continue
+                    try:
+                        await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                        _start_cover_sim(subnet_id, device_id, channel, "STOP")
+                    except Exception:
+                        continue
+            return {"ok": True, "stopped": True}
 
         items = sc.get("items") or []
         if not isinstance(items, list) or not items:
@@ -7054,7 +7145,7 @@ self.addEventListener('fetch', (event) => {{
                                 subnet_id, device_id, channel = [int(x) for x in addr.split(".")]
                             except Exception:
                                 continue
-                            asyncio.create_task(
+                            t = asyncio.create_task(
                                 _run_cover_ramp_buspro(
                                     gw=gw,
                                     subnet_id=subnet_id,
@@ -7065,6 +7156,7 @@ self.addEventListener('fetch', (event) => {{
                                     step_seconds=step_seconds,
                                 )
                             )
+                            _track_scenario_task(str(sc.get("id") or ""), t)
                         cover_sent += 1
                     else:
                         try:
@@ -7083,7 +7175,7 @@ self.addEventListener('fetch', (event) => {{
                 try:
                     # Scenario single covers: use direct (raw) commands only.
                     if ramp_minutes > 0 and step_seconds > 0 and cmd_eff in ("OPEN", "CLOSE"):
-                        asyncio.create_task(
+                        t = asyncio.create_task(
                             _run_cover_ramp_buspro(
                                 gw=gw,
                                 subnet_id=subnet_id,
@@ -7094,6 +7186,7 @@ self.addEventListener('fetch', (event) => {{
                                 step_seconds=step_seconds,
                             )
                         )
+                        _track_scenario_task(str(sc.get("id") or ""), t)
                     else:
                         if cmd_eff == "OPEN":
                             await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)

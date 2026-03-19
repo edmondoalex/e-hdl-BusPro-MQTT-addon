@@ -126,6 +126,13 @@
       async function runScenario(id) {
         await getJson(`api/control/light_scenario/${encodeURIComponent(String(id||''))}`, { method:'POST' });
       }
+      async function stopScenario(id) {
+        await getJson(`api/control/light_scenario/${encodeURIComponent(String(id||''))}`, {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ command: 'STOP' })
+        });
+      }
 
       async function setScenario(id, state) {
         await getJson(`api/control/light_scenario/${encodeURIComponent(String(id||''))}`, {
@@ -177,6 +184,7 @@
             const btns = [];
             if (runEnabled) {
               btns.push(`<button class="btn" type="button" data-act="run" data-id="${escapeHtml(String(sc.id||''))}">Esegui</button>`);
+              btns.push(`<button class="btn danger" type="button" data-act="stop" data-id="${escapeHtml(String(sc.id||''))}">Stop</button>`);
             }
             if (onoffEnabled) {
               btns.push(`<button class="btn ${on ? 'danger' : 'primary'}" type="button" data-act="toggle" data-id="${escapeHtml(String(sc.id||''))}">${on ? 'Spegni' : 'Accendi'}</button>`);
@@ -196,6 +204,8 @@
                   const act = b.getAttribute('data-act') || '';
                   if (act === 'run') {
                     await runScenario(sc.id);
+                  } else if (act === 'stop') {
+                    await stopScenario(sc.id);
                   } else if (act === 'toggle') {
                     const nowOn = String((stMap && stMap[sid2]) || '').toUpperCase() === 'ON';
                     await setScenario(sc.id, nowOn ? 'OFF' : 'ON');
