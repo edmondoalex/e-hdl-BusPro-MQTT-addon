@@ -333,6 +333,7 @@
             <select id="scGroupSelect" class="scSel" aria-label="Gruppo scenari">
               <option value="__all__">TUTTE</option>
             </select>
+            <button id="scNewBtn" class="btn" type="button">Nuovo scenario</button>
             <button id="scSaveOnBtn" class="btn primary" type="button">Salva (solo accese)</button>
             <button id="scSaveAllBtn" class="btn" type="button">Salva (tutte)</button>
             <button id="scCloseBtn" class="btn" type="button">Chiudi</button>
@@ -728,10 +729,15 @@
           const name = String(sc.name || '').trim() || '(senza nome)';
           const count = Array.isArray(sc.items) ? sc.items.length : 0;
           const isOn = String((scenarioStates && scenarioStates[String(sc.id||'')]) || '').toUpperCase() === 'ON';
+          const runEnabled = !!sc.run_enabled;
+          const onoffEnabled = (sc.onoff_enabled === undefined) ? true : !!sc.onoff_enabled;
+          const btns = [];
+          if (runEnabled) btns.push(`<button class="btn" type="button" data-act="run" data-id="${escapeHtml(String(sc.id||''))}">Esegui</button>`);
+          if (onoffEnabled) btns.push(`<button class="btn ${isOn ? 'danger' : 'primary'}" type="button" data-act="toggle" data-id="${escapeHtml(String(sc.id||''))}">${isOn ? 'Spegni' : 'Accendi'}</button>`);
           row.innerHTML = `
             <div class="scName">${escapeHtml(name)}<span class="scMeta">${escapeHtml(String(count))} luci</span></div>
             <div class="btnRow">
-              <button class="btn ${isOn ? 'danger' : 'primary'}" type="button" data-act="toggle" data-id="${escapeHtml(String(sc.id||''))}">${isOn ? 'Spegni' : 'Accendi'}</button>
+              ${btns.join('')}
               <button class="btn" type="button" data-act="edit" data-id="${escapeHtml(String(sc.id||''))}">Modifica</button>
               <button class="btn danger" type="button" data-act="del" data-id="${escapeHtml(String(sc.id||''))}">Elimina</button>
             </div>
@@ -751,6 +757,20 @@
                 headers:{'Content-Type':'application/json'},
                 body: JSON.stringify({ state: nowOn ? 'OFF' : 'ON' })
               });
+              await loadLightScenarios();
+            } catch (e) {
+              if (err) err.textContent = 'Errore esecuzione scenario';
+            }
+          });
+        });
+        root.querySelectorAll('button[data-act="run"]').forEach((b) => {
+          b.addEventListener('click', async () => {
+            animatePress(b);
+            const id = b.getAttribute('data-id') || '';
+            if (!id) return;
+            try {
+              if (err) err.textContent = '';
+              await getJson(`api/control/light_scenario/${encodeURIComponent(id)}`, { method:'POST' });
               await loadLightScenarios();
             } catch (e) {
               if (err) err.textContent = 'Errore esecuzione scenario';
@@ -858,6 +878,25 @@
         qs('scList').style.display = 'none';
         const editor = qs('scEditor');
         if (editor) editor.classList.add('show');
+        renderScenarioEditorItems();
+        renderScenarioAddList();
+        renderScenarioEditorCovers();
+        renderScenarioCoverAddList();
+      }
+
+      function openNewScenarioEditor() {
+        const err = qs('scErr');
+        if (err) err.textContent = '';
+        editingScenarioId = '__new__';
+        editingScenarioName = '';
+        editingScenarioItems = [];
+        editingScenarioCovers = [];
+        const editor = qs('scEditor');
+        const list = qs('scList');
+        if (list) list.style.display = 'none';
+        if (editor) editor.classList.add('show');
+        const nameInput = qs('scNameInput');
+        if (nameInput) nameInput.value = '';
         renderScenarioEditorItems();
         renderScenarioAddList();
         renderScenarioEditorCovers();
@@ -1324,11 +1363,23 @@
               step_seconds,
             };
           });
-          await getJson(`api/user/light_scenarios/${encodeURIComponent(sid)}`, {
-            method:'PUT',
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ name, items, covers, run_enabled: flags.run_enabled, onoff_enabled: flags.onoff_enabled }),
-          });
+          if (!items.length && !covers.length) {
+            if (err) err.textContent = 'Aggiungi almeno una luce o una tapparella';
+            return;
+          }
+          if (sid === '__new__') {
+            await getJson('api/user/light_scenarios', {
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({ name, items, covers, run_enabled: flags.run_enabled, onoff_enabled: flags.onoff_enabled }),
+            });
+          } else {
+            await getJson(`api/user/light_scenarios/${encodeURIComponent(sid)}`, {
+              method:'PUT',
+              headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({ name, items, covers, run_enabled: flags.run_enabled, onoff_enabled: flags.onoff_enabled }),
+            });
+          }
           await loadLightScenarios();
           closeScenarioEditor();
         } catch (e) {
@@ -1827,6 +1878,7 @@
       });
       qs('scenesSettingsBtn').addEventListener('click', () => { animatePress(qs('scenesSettingsBtn')); openScenarios(); });
       qs('scCloseBtn').addEventListener('click', () => { animatePress(qs('scCloseBtn')); closeScenarios(); });
+      qs('scNewBtn').addEventListener('click', () => { animatePress(qs('scNewBtn')); openNewScenarioEditor(); });
       qs('scSaveOnBtn').addEventListener('click', () => { animatePress(qs('scSaveOnBtn')); saveScenario({ onlyOn: true }); });
       qs('scSaveAllBtn').addEventListener('click', () => { animatePress(qs('scSaveAllBtn')); saveScenario({ onlyOn: false }); });
       qs('scBackBtn').addEventListener('click', () => { animatePress(qs('scBackBtn')); closeScenarioEditor(); });
