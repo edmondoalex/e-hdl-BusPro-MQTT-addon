@@ -993,3 +993,8 @@
 - MQTT discovery: le entita' "no%" ora pubblicano su topic raw (`cmd/cover_raw/...` e `cmd/cover_group_raw/...`) che usano `cover_open_raw/cover_close_raw` per bypassare la logica posizione/auto-stop e forzare UP/DOWN anche quando HA pensa che sia gia' chiusa/aperta.
 - Version bump: 0.1.181 -> 0.1.182.
 
+
+## 2026-04-08 (sync repo)
+- Allineata la cartella locale a origin/main tramite fetch + reset sul commit 260a8dc.
+- Stato finale: main allineato a origin/main (versione 0.1.325), working tree pulito.
+
