@@ -1012,3 +1012,9 @@
 - Obiettivo: ridurre lo sfasamento di partenza tra tapparelle nello stesso scenario.
 - Version bump: 0.1.326 -> 0.1.327.
 
+
+## 2026-04-08 (scenario button press feedback)
+- Pagina utente /scenarios: aggiunto feedback visivo di pressione (pressed/pulse/ripple) sui pulsanti azione scenario (Esegui/Stop/Accendi/Spegni) e sui pulsanti top.
+- Nessuna modifica alla logica di esecuzione scenari; intervento solo UI.
+- Version bump: 0.1.327 -> 0.1.328.
+

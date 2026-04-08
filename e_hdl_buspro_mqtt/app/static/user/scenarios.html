@@ -73,25 +73,55 @@
       .btn:active{transform:scale(.99)}
       .btn.primary{border-color:rgba(255,215,0,.35); background:rgba(255,215,0,.08)}
       .btn.danger{border-color:rgba(255,107,107,.40); background:rgba(255,107,107,.10)}
+      .pressFx{
+        position:relative;
+        overflow:hidden;
+        transition:transform .12s ease, box-shadow .18s ease, border-color .18s ease;
+      }
+      .pressFx.pressed{
+        transform:scale(.98);
+        border-color:rgba(255,215,0,.35);
+        box-shadow:0 0 0 2px rgba(255,215,0,.18) inset, 0 10px 18px rgba(255,215,0,.08);
+      }
+      .pressFx.pulse{animation:btnPulse .28s ease-out 1}
+      .pressFx.ripple::after{
+        content:'';
+        position:absolute;
+        inset:4px;
+        border-radius:999px;
+        background:radial-gradient(circle at center, rgba(255,215,0,.22) 0%, rgba(255,215,0,.10) 40%, rgba(255,215,0,0) 70%);
+        opacity:0;
+        animation:btnRipple .32s ease-out 1;
+        pointer-events:none;
+      }
+      @keyframes btnPulse{
+        0%{transform:scale(1)}
+        45%{transform:scale(1.04)}
+        100%{transform:scale(1)}
+      }
+      @keyframes btnRipple{
+        0%{opacity:.85;transform:scale(.86)}
+        100%{opacity:0;transform:scale(1.2)}
+      }
       .error{color:var(--danger);font-size:13px;margin-top:10px}
     </style>
   </head>
   <body>
     <div class="topBtns">
-      <button id="homeBtn" class="btnIcon" type="button" aria-label="Home">
+      <button id="homeBtn" class="btnIcon pressFx" type="button" aria-label="Home">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M4 10.5l8-7 8 7" fill="none" />
           <path d="M6.5 9.8V20h11V9.8" fill="none" />
         </svg>
       </button>
-      <button id="editBtn" class="btnIcon" type="button" aria-label="Modifica scenari">
+      <button id="editBtn" class="btnIcon pressFx" type="button" aria-label="Modifica scenari">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M12 3l2.6 5.4L20.5 9l-4.3 4.2 1 6-5.2-2.8-5.2 2.8 1-6L3.5 9l5.9-.6z" fill="none" />
           <path d="M18 7l3 3" fill="none" />
           <path d="M14 21l6-6" fill="none" />
         </svg>
       </button>
-      <button id="settingsBtn" class="btnIcon" type="button" aria-label="Impostazioni scenari">
+      <button id="settingsBtn" class="btnIcon pressFx" type="button" aria-label="Impostazioni scenari">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z" fill="none"/>
           <path d="M19.4 15a7.9 7.9 0 0 0 .1-2l2-1.1-2-3.5-2.3.7a7.7 7.7 0 0 0-1.7-1l-.3-2.4H11l-.3 2.4a7.7 7.7 0 0 0-1.7 1L6.7 8.4l-2 3.5 2 1.1a7.9 7.9 0 0 0 .1 2l-2 1.1 2 3.5 2.3-.7a7.7 7.7 0 0 0 1.7 1l.3 2.4h4.1l.3-2.4a7.7 7.7 0 0 0 1.7-1l2.3.7 2-3.5z" fill="none"/>
@@ -121,6 +151,16 @@
           .replace(/>/g,'&gt;')
           .replace(/\"/g,'&quot;')
           .replace(/'/g,'&#039;');
+      }
+      function animatePress(el) {
+        if (!el) return;
+        try {
+          el.classList.remove('pressed', 'pulse', 'ripple');
+          void el.offsetWidth;
+          el.classList.add('pressed', 'pulse', 'ripple');
+          setTimeout(() => el.classList.remove('pressed'), 130);
+          setTimeout(() => el.classList.remove('pulse', 'ripple'), 320);
+        } catch (e) {}
       }
 
       async function runScenario(id) {
@@ -184,11 +224,11 @@
             const onoffEnabled = (sc.onoff_enabled === undefined) ? true : !!sc.onoff_enabled;
             const btns = [];
             if (runEnabled) {
-              btns.push(`<button class="btn" type="button" data-act="run" data-id="${escapeHtml(String(sc.id||''))}">Esegui</button>`);
-              btns.push(`<button class="btn danger" type="button" data-act="stop" data-id="${escapeHtml(String(sc.id||''))}">Stop</button>`);
+              btns.push(`<button class="btn pressFx" type="button" data-act="run" data-id="${escapeHtml(String(sc.id||''))}">Esegui</button>`);
+              btns.push(`<button class="btn danger pressFx" type="button" data-act="stop" data-id="${escapeHtml(String(sc.id||''))}">Stop</button>`);
             }
             if (onoffEnabled) {
-              btns.push(`<button class="btn ${on ? 'danger' : 'primary'}" type="button" data-act="toggle" data-id="${escapeHtml(String(sc.id||''))}">${on ? 'Spegni' : 'Accendi'}</button>`);
+              btns.push(`<button class="btn pressFx ${on ? 'danger' : 'primary'}" type="button" data-act="toggle" data-id="${escapeHtml(String(sc.id||''))}">${on ? 'Spegni' : 'Accendi'}</button>`);
             }
             row.innerHTML = `
               <div class="left">
@@ -199,6 +239,7 @@
             `;
             row.querySelectorAll('button[data-act]').forEach((b) => {
               b.addEventListener('click', async () => {
+                animatePress(b);
                 try {
                   err.textContent = '';
                   const sid2 = String(sc.id || '').trim();
@@ -222,13 +263,16 @@
       }
 
       qs('homeBtn').addEventListener('click', () => {
+        animatePress(qs('homeBtn'));
         try { window.location.href = absUrl('home2'); } catch (e) {}
       });
       // Star (page) indicates "scenari": keep on this page (refresh list)
       qs('editBtn').addEventListener('click', async () => {
+        animatePress(qs('editBtn'));
         try { await load(); } catch (e) {}
       });
       qs('settingsBtn').addEventListener('click', () => {
+        animatePress(qs('settingsBtn'));
         try { window.location.href = absUrl('lights?sc=1'); } catch (e) {}
       });
 

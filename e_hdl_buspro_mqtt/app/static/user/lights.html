@@ -742,10 +742,11 @@
         const root = qs('scList');
         const err = qs('scErr');
         const editor = qs('scEditor');
+        const editingOpen = !!(editor && editor.classList.contains('show') && String(editingScenarioId || '').trim());
         if (!root) return;
         root.replaceChildren();
         if (err) err.textContent = '';
-        if (editor) editor.classList.remove('show');
+        if (editor && !editingOpen) editor.classList.remove('show');
 
         const items = (lightScenarios || []).slice().sort((a,b) => String(a.name||'').localeCompare(String(b.name||''), undefined, {sensitivity:'base'}));
         if (!items.length) {
@@ -1572,6 +1573,8 @@
         if (!id || (st !== 'ON' && st !== 'OFF')) return;
         scenarioStates = scenarioStates && typeof scenarioStates === 'object' ? scenarioStates : {};
         scenarioStates[id] = st;
+        // While editing a scenario, avoid forcing list re-render that can hide the editor panel.
+        if (String(editingScenarioId || '').trim()) return;
         try { renderLightScenarios(); } catch (e) {}
       }
 
