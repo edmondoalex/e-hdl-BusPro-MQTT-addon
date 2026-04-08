@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-04-08 (scenari centered desktop + safe mobile)
+- UI /scenarios: layout responsive corretto.
+- Desktop: lista scenari nuovamente centrata verticalmente.
+- Mobile: mantiene padding top con safe-area per evitare overlap con icone fisse quando gli scenari sono espansi.
+- Version bump: 0.1.334 -> 0.1.335.
+
 ## 2026-04-08 (scenari top safe area)
 - Fix UI /scenarios: aggiunto spazio superiore con safe-area per evitare sovrapposizione con icone fisse (home/scenari/settings) quando le righe sono espanse.
 - main ora parte dall'alto (justify-content:flex-start) invece che centrato verticalmente.
