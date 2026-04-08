@@ -1037,3 +1037,10 @@
 - Ora la pagina renderizza da cache locale e aggiorna solo lo stato visivo, senza richiamare `load()` ad ogni evento realtime.
 - Version bump: 0.1.330 -> 0.1.331.
 
+## 2026-04-08 (user scenarios trigger time + SVEGLIA trigger type)
+- Pagina utente `/scenarios`: aggiunto campo orario trigger per scenario con pulsante `Salva ora`; il salvataggio e' persistente (PUT scenario completo) e imposta trigger `time` attivo.
+- Editor scenari in `/lights?sc=1`: aggiunto nuovo tipo trigger `Sveglia (custom)`.
+- Backend trigger loop: supporto tipo `sveglia`, che usa l'orario del trigger del scenario chiamato `SVEGLIA`.
+- Normalizzazione store: trigger type `sveglia` ora accettato e persistito.
+- Version bump: 0.1.331 -> 0.1.332.
+

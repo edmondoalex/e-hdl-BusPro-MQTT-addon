@@ -890,7 +890,7 @@ class StateStore:
         trig_in = payload.get("trigger")
         if isinstance(trig_in, dict):
             t_type = str(trig_in.get("type") or "none").strip().lower()
-            if t_type not in ("none", "time", "sunrise", "sunset"):
+            if t_type not in ("none", "time", "sunrise", "sunset", "sveglia"):
                 t_type = "none"
             t_enabled = bool(trig_in.get("enabled")) if "enabled" in trig_in else False
             t_time = str(trig_in.get("time") or "").strip()

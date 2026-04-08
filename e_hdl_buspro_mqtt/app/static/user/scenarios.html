@@ -59,6 +59,16 @@
       .row:first-child{border-top:none}
       .name{font-size:19px;line-height:1.15;font-weight:420;opacity:.88;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .meta{font-size:12px;color:rgba(255,255,255,.55);margin-top:6px}
+      .trigRow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+      .trigLbl{font-size:11px;color:rgba(255,255,255,.62);letter-spacing:.06em;text-transform:uppercase}
+      .trigTime{
+        height:30px;padding:0 8px;
+        border:1px solid rgba(255,255,255,.14);
+        background:rgba(0,0,0,.24);
+        color:rgba(242,245,255,.88);
+        border-radius:10px;
+      }
+      .trigHint{font-size:11px;color:rgba(255,255,255,.50)}
       .left{flex:1;min-width:0}
       .btn{
         height:38px;padding:0 12px;
@@ -185,6 +195,34 @@
         });
       }
 
+      async function saveScenarioTriggerTime(sc, timeValue) {
+        const sid = String((sc && sc.id) || '').trim();
+        if (!sid) throw new Error('Scenario non valido');
+        const t = String(timeValue || '').trim();
+        if (!/^\d{2}:\d{2}$/.test(t)) throw new Error('Orario non valido');
+        const trig = (sc && typeof sc.trigger === 'object' && sc.trigger) ? sc.trigger : {};
+        let offsetMin = Number(trig.offset_min ?? 0);
+        if (!Number.isFinite(offsetMin)) offsetMin = 0;
+        const payload = {
+          name: String(sc.name || '').trim(),
+          items: Array.isArray(sc.items) ? sc.items : [],
+          covers: Array.isArray(sc.covers) ? sc.covers : [],
+          run_enabled: !!sc.run_enabled,
+          onoff_enabled: (sc.onoff_enabled === undefined) ? true : !!sc.onoff_enabled,
+          trigger: {
+            enabled: true,
+            type: 'time',
+            time: t,
+            offset_min: Math.max(-1440, Math.min(1440, Math.round(offsetMin))),
+          },
+        };
+        await getJson(`api/user/light_scenarios/${encodeURIComponent(sid)}`, {
+          method:'PUT',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify(payload),
+        });
+      }
+
       function renderScenariosList() {
         const root = qs('list');
         const err = qs('err');
@@ -209,6 +247,10 @@
             const sid = String(sc.id || '').trim();
             const on = String((scenarioStates && scenarioStates[sid]) || '').toUpperCase() === 'ON';
             const running = !!(scenarioRunning && scenarioRunning[sid]);
+            const trig = (sc && typeof sc.trigger === 'object' && sc.trigger) ? sc.trigger : {};
+            const trigType = String(trig.type || 'none').toLowerCase();
+            const trigEnabled = !!trig.enabled;
+            const trigTime = (/^\d{2}:\d{2}$/.test(String(trig.time || '')) ? String(trig.time) : '');
             const runEnabled = !!sc.run_enabled;
             const onoffEnabled = (sc.onoff_enabled === undefined) ? true : !!sc.onoff_enabled;
             const btns = [];
@@ -223,6 +265,12 @@
               <div class="left">
                 <div class="name">${escapeHtml(name)}</div>
                 <div class="meta">${escapeHtml(String(n))} luci • ${escapeHtml(String(c))} tapparelle</div>
+                <div class="trigRow">
+                  <span class="trigLbl">Trigger</span>
+                  <input class="trigTime" type="time" step="60" data-act="trig-time" data-id="${escapeHtml(String(sc.id||''))}" value="${escapeHtml(trigTime)}" />
+                  <button class="btn pressFx" type="button" data-act="trig-save" data-id="${escapeHtml(String(sc.id||''))}">Salva ora</button>
+                  <span class="trigHint">${trigEnabled && trigType === 'time' ? 'attivo' : 'non attivo'}</span>
+                </div>
               </div>
               <div class="btnRow">${btns.join('')}</div>
             `;
@@ -240,6 +288,10 @@
                   } else if (act === 'toggle') {
                     const nowOn = String((scenarioStates && scenarioStates[sid2]) || '').toUpperCase() === 'ON';
                     await setScenario(sc.id, nowOn ? 'OFF' : 'ON');
+                  } else if (act === 'trig-save') {
+                    const tEl = row.querySelector('input[data-act="trig-time"]');
+                    const tVal = String((tEl && tEl.value) || '').trim();
+                    await saveScenarioTriggerTime(sc, tVal);
                   }
                   await load();
                 } catch (e) {

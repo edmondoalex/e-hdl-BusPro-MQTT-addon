@@ -50,7 +50,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.331"
+ADDON_VERSION = "0.1.332"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -3722,6 +3722,28 @@ self.addEventListener('fetch', (event) => {{
             api.state.sun_cache = {"ts": now_m, "next_rising": nr, "next_setting": ns}
             return {"next_rising": nr, "next_setting": ns}
 
+        def _get_sveglia_time_hhmm() -> tuple[int, int] | None:
+            for scx in store.list_light_scenarios():
+                if not isinstance(scx, dict):
+                    continue
+                nm = str(scx.get("name") or "").strip().lower()
+                if nm != "sveglia":
+                    continue
+                trigx = scx.get("trigger") or {}
+                if not isinstance(trigx, dict):
+                    continue
+                t = str(trigx.get("time") or "").strip()
+                if ":" not in t:
+                    continue
+                try:
+                    hh_s, mm_s = t.split(":", 1)
+                    hh = max(0, min(23, int(hh_s)))
+                    mm = max(0, min(59, int(mm_s)))
+                except Exception:
+                    continue
+                return (hh, mm)
+            return None
+
         async def _scenario_trigger_loop() -> None:
             while True:
                 try:
@@ -3740,7 +3762,7 @@ self.addEventListener('fetch', (event) => {{
                         if not bool(trig.get("enabled")):
                             continue
                         t_type = str(trig.get("type") or "none").strip().lower()
-                        if t_type not in ("time", "sunrise", "sunset"):
+                        if t_type not in ("time", "sunrise", "sunset", "sveglia"):
                             continue
                         target: datetime | None = None
                         offset = 0
@@ -3758,6 +3780,12 @@ self.addEventListener('fetch', (event) => {{
                                 mm = max(0, min(59, int(mm_s)))
                             except Exception:
                                 continue
+                            target = datetime.combine(now.date(), dt_time(hh, mm), tzinfo=now.tzinfo) + timedelta(minutes=offset)
+                        elif t_type == "sveglia":
+                            hhmm = _get_sveglia_time_hhmm()
+                            if not hhmm:
+                                continue
+                            hh, mm = hhmm
                             target = datetime.combine(now.date(), dt_time(hh, mm), tzinfo=now.tzinfo) + timedelta(minutes=offset)
                         else:
                             sun = await _get_sun_times()
