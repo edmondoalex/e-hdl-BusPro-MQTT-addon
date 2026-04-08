@@ -92,6 +92,7 @@
         color:rgba(242,245,255,.75);
       }
       .trigHint{font-size:11px;color:rgba(255,255,255,.50)}
+      .extHint{font-size:11px;color:rgba(255,255,255,.50)}
       .left{flex:1;min-width:0}
       .btn{
         height:38px;padding:0 12px;
@@ -178,6 +179,7 @@
       let scenarioStates = {};
       let scenarioRunning = {};
       let scenarioExpanded = {};
+      let scenarioHaTriggersById = {};
       function absUrl(path) { return new URL(path, window.location.href).toString(); }
       async function getJson(path, opts) {
         const r = await fetch(absUrl(path), opts);
@@ -307,6 +309,9 @@
             const trigType = String(trig.type || 'none').toLowerCase();
             const trigEnabled = !!trig.enabled;
             const trigTime = (/^\d{2}:\d{2}$/.test(String(trig.time || '')) ? String(trig.time) : '');
+            const extId = String(sc.ha_trigger_id || '').trim();
+            const extEnabled = !!sc.ha_trigger_enabled && !!extId;
+            const extName = extEnabled ? String(scenarioHaTriggersById[extId] || extId) : '';
             const runEnabled = !!sc.run_enabled;
             const onoffEnabled = (sc.onoff_enabled === undefined) ? true : !!sc.onoff_enabled;
             const expanded = !!scenarioExpanded[sid];
@@ -318,21 +323,27 @@
             if (onoffEnabled) {
               btns.push(`<button class="btn pressFx ${on ? 'danger' : 'primary'}" type="button" data-act="toggle" data-id="${escapeHtml(String(sc.id||''))}">${on ? 'Spegni' : 'Accendi'}</button>`);
             }
+            const triggerHtml = extEnabled
+              ? `<div class="trigRow">
+                   <span class="trigLbl">Trigger E-manager</span>
+                   <span class="extHint">${escapeHtml(extName)}</span>
+                 </div>`
+              : `<div class="trigRow">
+                   <span class="trigLbl">Trigger</span>
+                   <input class="trigTime ${trigEnabled ? 'active' : 'inactive'}" type="time" step="60" data-act="trig-time" data-id="${escapeHtml(String(sc.id||''))}" value="${escapeHtml(trigTime)}" />
+                   <button class="btn pressFx" type="button" data-act="trig-save" data-id="${escapeHtml(String(sc.id||''))}">Salva ora</button>
+                   <button class="btn pressFx ${trigEnabled ? 'danger' : ''}" type="button" data-act="trig-off" data-id="${escapeHtml(String(sc.id||''))}">Disattiva</button>
+                   <span class="trigHint">${trigEnabled && trigType === 'time' ? 'attivo' : 'non attivo'}</span>
+                 </div>`;
             row.innerHTML = `
               <div class="left">
                 <button class="nameBtn pressFx" type="button" data-act="expand" data-id="${escapeHtml(String(sc.id||''))}">
                   <span class="name">${escapeHtml(name)}</span>
-                  <span class="caret">${expanded ? '▾' : '▸'}</span>
+                  <span class="caret">${expanded ? '&#9662;' : '&#9656;'}</span>
                 </button>
                 <div class="details ${expanded ? 'open' : ''}">
-                  <div class="meta">${escapeHtml(String(n))} luci • ${escapeHtml(String(c))} tapparelle</div>
-                  <div class="trigRow">
-                    <span class="trigLbl">Trigger</span>
-                    <input class="trigTime ${trigEnabled ? 'active' : 'inactive'}" type="time" step="60" data-act="trig-time" data-id="${escapeHtml(String(sc.id||''))}" value="${escapeHtml(trigTime)}" />
-                    <button class="btn pressFx" type="button" data-act="trig-save" data-id="${escapeHtml(String(sc.id||''))}">Salva ora</button>
-                    <button class="btn pressFx ${trigEnabled ? 'danger' : ''}" type="button" data-act="trig-off" data-id="${escapeHtml(String(sc.id||''))}">Disattiva</button>
-                    <span class="trigHint">${trigEnabled && trigType === 'time' ? 'attivo' : 'non attivo'}</span>
-                  </div>
+                  <div class="meta">${escapeHtml(String(n))} luci &bull; ${escapeHtml(String(c))} tapparelle</div>
+                  ${triggerHtml}
                 </div>
               </div>
               <div class="btnRow">${btns.join('')}</div>
@@ -382,13 +393,23 @@
         try {
           const data = await getJson('api/user/light_scenarios');
           const st = await getJson('api/user/light_scenarios_status');
+          const tr = await getJson('api/user/scenario_ha_triggers');
           scenarioItems = (data && Array.isArray(data.items)) ? data.items : [];
           scenarioStates = (st && st.states && typeof st.states === 'object') ? st.states : {};
           scenarioRunning = (st && st.running && typeof st.running === 'object') ? st.running : {};
+          const tItems = (tr && Array.isArray(tr.items)) ? tr.items : [];
+          scenarioHaTriggersById = {};
+          for (const it of tItems) {
+            if (!it || typeof it !== 'object') continue;
+            const id = String(it.id || '').trim();
+            const name = String(it.name || '').trim();
+            if (id) scenarioHaTriggersById[id] = name || id;
+          }
         } catch (e) {
           scenarioItems = [];
           scenarioStates = {};
           scenarioRunning = {};
+          scenarioHaTriggersById = {};
           err.textContent = 'Errore caricamento scenari';
           renderScenariosList();
           return;
@@ -498,4 +519,3 @@
     </script>
   </body>
 </html>
-

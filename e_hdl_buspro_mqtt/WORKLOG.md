@@ -1,5 +1,12 @@
 # WORKLOG
 
+## 2026-04-08 (UI user: trigger esterno E-manager)
+- UI user scenari: quando uno scenario ha trigger esterno attivo, nasconde i controlli trigger orario e mostra `Trigger E-manager` con nome friendly del trigger.
+- UI user modifica scenario (`/lights?sc=1`): rinominata dicitura da `Automazione HA` a `Automazione E-manager`.
+- UI user: etichette visibili `HA` sostituite con `E-manager` (coperture/candidati scenario), senza cambiare la logica backend.
+- Fix integrita' `scenarios.html`: ripristino caratteri corrotti nel render e mantenimento stato espandi/trigger.
+- Version bump: 0.1.338 -> 0.1.339.
+
 ## 2026-04-08 (HA automation triggers for scenarios)
 - Added admin-managed list of HA scenario triggers (friendly names) with CRUD API and Admin UI section.
 - Added MQTT Discovery button entities for each HA scenario trigger: automation action can press these buttons.
