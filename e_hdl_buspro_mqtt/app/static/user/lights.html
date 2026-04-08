@@ -176,10 +176,14 @@
       .scRow{
         /* Layout overrides for scenario rows (base style from .row) */
         justify-content:space-between;
+        align-items:flex-start;
+        flex-wrap:wrap;
       }
       .scRow:first-child{border-top:none}
-      .scName{min-width:0;flex:1;font-size:16px;opacity:.90;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      .scMeta{font-size:12px;color:rgba(255,255,255,.55);margin-left:10px;white-space:nowrap}
+      .scLeft{min-width:0;flex:1;display:flex;flex-direction:column;gap:4px}
+      .scName{min-width:0;font-size:16px;opacity:.90;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .scMeta{font-size:12px;color:rgba(255,255,255,.55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .scBtns{margin-left:auto}
       .scEditor{display:none}
       .scEditor.show{display:block}
       .scGrid{display:flex;flex-direction:column;gap:10px}
@@ -293,6 +297,10 @@
         100%{opacity:0;transform:scale(1.2)}
       }
       @media(max-width:600px){
+        .scRow{align-items:flex-start}
+        .scLeft{width:100%}
+        .scName{font-size:16px}
+        .scBtns{width:100%;margin-left:0;justify-content:flex-start}
         .scItem{flex-direction:column;align-items:flex-start;gap:8px}
         .scItemCtrls{width:100%;justify-content:flex-start}
         .scRange{width:100%}
@@ -792,8 +800,11 @@
           }
           if (onoffEnabled) btns.push(`<button class="btn ${isOn ? 'danger' : 'primary'}" type="button" data-act="toggle" data-id="${escapeHtml(String(sc.id||''))}">${isOn ? 'Spegni' : 'Accendi'}</button>`);
           row.innerHTML = `
-            <div class="scName">${escapeHtml(name)}<span class="scMeta">${escapeHtml(String(count))} luci • ${escapeHtml(String(coverCount))} tapparelle</span></div>
-            <div class="btnRow">
+            <div class="scLeft">
+              <div class="scName">${escapeHtml(name)}</div>
+              <div class="scMeta">${escapeHtml(String(count))} luci &bull; ${escapeHtml(String(coverCount))} tapparelle</div>
+            </div>
+            <div class="btnRow scBtns">
               ${btns.join('')}
               <button class="btn" type="button" data-act="edit" data-id="${escapeHtml(String(sc.id||''))}">Modifica</button>
               <button class="btn danger" type="button" data-act="del" data-id="${escapeHtml(String(sc.id||''))}">Elimina</button>
@@ -1201,14 +1212,14 @@
           if (groupSel && groupSel !== '__all__' && groupKeyFromGroup(d.group) !== groupSel) continue;
           const name = String(d.name || idStr);
           if (search && !(idStr.toLowerCase().includes(search) || name.toLowerCase().includes(search))) continue;
-          candidates.push({ key, kind: isHa2 ? 'ha' : 'single', id: idStr, name, meta: `${idStr}${isHa2 ? ' • HA' : ''}` });
+          candidates.push({ key, kind: isHa2 ? 'ha' : 'single', id: idStr, name, meta: `${idStr}${isHa2 ? ' \u2022 HA' : ''}` });
         }
         for (const [gid, g] of grpMap.entries()) {
           const key = `group:${gid}`;
           if (existing.has(key)) continue;
           const name = String(g.name || gid);
           if (search && !(gid.toLowerCase().includes(search) || name.toLowerCase().includes(search))) continue;
-          candidates.push({ key, kind:'group', gid, name, meta: `Gruppo • ${gid}` });
+          candidates.push({ key, kind:'group', gid, name, meta: `Gruppo \u2022 ${gid}` });
         }
 
         candidates.sort((a,b) => String(a.name||a.key).localeCompare(String(b.name||b.key), undefined, { sensitivity:'base' }));
@@ -1274,7 +1285,7 @@
           const addr = addrFromItem(it);
           const d = devMap.get(addr);
           const title = String((d && d.name) || addr);
-          const sub = d ? `${addr} • ${d.dimmable ? 'dimmer' : 'on/off'}` : `${addr}`;
+          const sub = d ? `${addr} \u2022 ${d.dimmable ? 'dimmer' : 'on/off'}` : `${addr}`;
           const dimmable = !!(d && d.dimmable);
           const state = String(it.state || 'ON').toUpperCase() === 'OFF' ? 'OFF' : 'ON';
           const br = (it.brightness === null || it.brightness === undefined) ? null : Number(it.brightness);
@@ -1383,7 +1394,7 @@
           row.className = 'scAddRow';
           row.setAttribute('data-addr', addr);
           const meta = d.dimmable ? 'dimmer' : 'on/off';
-          row.innerHTML = `<div class="scAddName">${escapeHtml(String(d.name||addr))}</div><div class="scAddMeta">${escapeHtml(addr)} • ${escapeHtml(meta)}</div>`;
+          row.innerHTML = `<div class="scAddName">${escapeHtml(String(d.name||addr))}</div><div class="scAddMeta">${escapeHtml(addr)} \u2022 ${escapeHtml(meta)}</div>`;
           row.addEventListener('click', () => {
             animatePress(row);
             const it = (String(d.origin || '') === 'ha')

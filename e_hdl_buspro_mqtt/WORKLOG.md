@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-04-08 (modifica scenari: nomi sempre visibili)
+- UI /lights?sc=1: righe scenario ristrutturate in due blocchi (sinistra nome+meta, destra pulsanti).
+- Fix clipping nomi scenario: nome non viene più mangiato quando ci sono molti pulsanti.
+- Su mobile i pulsanti vanno a capo sotto il nome, mantenendo leggibilità e scroll verticale.
+- Version bump: 0.1.336 -> 0.1.337.
+
 ## 2026-04-08 (modifica scenari mobile scroll fix)
 - UI /lights?sc=1 (modifica scenari): modal scenari reso scrollabile su mobile con overflow:auto e -webkit-overflow-scrolling: touch.
 - Modal posizionato sotto area top (safe-area) per evitare copertura/overlap e consentire scroll verticale naturale come UI user.
