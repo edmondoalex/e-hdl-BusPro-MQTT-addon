@@ -58,7 +58,11 @@
       }
       .row:first-child{border-top:none}
       .name{font-size:19px;line-height:1.15;font-weight:420;opacity:.88;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .nameBtn{all:unset;display:inline-flex;align-items:center;gap:8px;max-width:100%;cursor:pointer}
+      .nameBtn .caret{font-size:12px;color:rgba(255,255,255,.58)}
       .meta{font-size:12px;color:rgba(255,255,255,.55);margin-top:6px}
+      .details{display:none}
+      .details.open{display:block}
       .trigRow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
       .trigLbl{font-size:11px;color:rgba(255,255,255,.62);letter-spacing:.06em;text-transform:uppercase}
       .trigTime{
@@ -67,6 +71,17 @@
         background:rgba(0,0,0,.24);
         color:rgba(242,245,255,.88);
         border-radius:10px;
+      }
+      .trigTime.active{
+        border-color:rgba(255,215,0,.48);
+        background:rgba(255,215,0,.14);
+        color:#fff3bf;
+        box-shadow:0 0 0 1px rgba(255,215,0,.20) inset;
+      }
+      .trigTime.inactive{
+        border-color:rgba(255,255,255,.14);
+        background:rgba(255,255,255,.06);
+        color:rgba(242,245,255,.75);
       }
       .trigHint{font-size:11px;color:rgba(255,255,255,.50)}
       .left{flex:1;min-width:0}
@@ -148,6 +163,7 @@
       let scenarioItems = [];
       let scenarioStates = {};
       let scenarioRunning = {};
+      let scenarioExpanded = {};
       function absUrl(path) { return new URL(path, window.location.href).toString(); }
       async function getJson(path, opts) {
         const r = await fetch(absUrl(path), opts);
@@ -223,6 +239,32 @@
         });
       }
 
+      async function disableScenarioTrigger(sc) {
+        const sid = String((sc && sc.id) || '').trim();
+        if (!sid) throw new Error('Scenario non valido');
+        const trig = (sc && typeof sc.trigger === 'object' && sc.trigger) ? sc.trigger : {};
+        let offsetMin = Number(trig.offset_min ?? 0);
+        if (!Number.isFinite(offsetMin)) offsetMin = 0;
+        const payload = {
+          name: String(sc.name || '').trim(),
+          items: Array.isArray(sc.items) ? sc.items : [],
+          covers: Array.isArray(sc.covers) ? sc.covers : [],
+          run_enabled: !!sc.run_enabled,
+          onoff_enabled: (sc.onoff_enabled === undefined) ? true : !!sc.onoff_enabled,
+          trigger: {
+            enabled: false,
+            type: String(trig.type || 'none').toLowerCase(),
+            time: String(trig.time || ''),
+            offset_min: Math.max(-1440, Math.min(1440, Math.round(offsetMin))),
+          },
+        };
+        await getJson(`api/user/light_scenarios/${encodeURIComponent(sid)}`, {
+          method:'PUT',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify(payload),
+        });
+      }
+
       function renderScenariosList() {
         const root = qs('list');
         const err = qs('err');
@@ -253,6 +295,7 @@
             const trigTime = (/^\d{2}:\d{2}$/.test(String(trig.time || '')) ? String(trig.time) : '');
             const runEnabled = !!sc.run_enabled;
             const onoffEnabled = (sc.onoff_enabled === undefined) ? true : !!sc.onoff_enabled;
+            const expanded = !!scenarioExpanded[sid];
             const btns = [];
             if (runEnabled) {
               btns.push(`<button class="btn pressFx" type="button" data-act="run" data-id="${escapeHtml(String(sc.id||''))}">Esegui</button>`);
@@ -263,13 +306,19 @@
             }
             row.innerHTML = `
               <div class="left">
-                <div class="name">${escapeHtml(name)}</div>
-                <div class="meta">${escapeHtml(String(n))} luci • ${escapeHtml(String(c))} tapparelle</div>
-                <div class="trigRow">
-                  <span class="trigLbl">Trigger</span>
-                  <input class="trigTime" type="time" step="60" data-act="trig-time" data-id="${escapeHtml(String(sc.id||''))}" value="${escapeHtml(trigTime)}" />
-                  <button class="btn pressFx" type="button" data-act="trig-save" data-id="${escapeHtml(String(sc.id||''))}">Salva ora</button>
-                  <span class="trigHint">${trigEnabled && trigType === 'time' ? 'attivo' : 'non attivo'}</span>
+                <button class="nameBtn pressFx" type="button" data-act="expand" data-id="${escapeHtml(String(sc.id||''))}">
+                  <span class="name">${escapeHtml(name)}</span>
+                  <span class="caret">${expanded ? '▾' : '▸'}</span>
+                </button>
+                <div class="details ${expanded ? 'open' : ''}">
+                  <div class="meta">${escapeHtml(String(n))} luci • ${escapeHtml(String(c))} tapparelle</div>
+                  <div class="trigRow">
+                    <span class="trigLbl">Trigger</span>
+                    <input class="trigTime ${trigEnabled ? 'active' : 'inactive'}" type="time" step="60" data-act="trig-time" data-id="${escapeHtml(String(sc.id||''))}" value="${escapeHtml(trigTime)}" />
+                    <button class="btn pressFx" type="button" data-act="trig-save" data-id="${escapeHtml(String(sc.id||''))}">Salva ora</button>
+                    <button class="btn pressFx ${trigEnabled ? 'danger' : ''}" type="button" data-act="trig-off" data-id="${escapeHtml(String(sc.id||''))}">Disattiva</button>
+                    <span class="trigHint">${trigEnabled && trigType === 'time' ? 'attivo' : 'non attivo'}</span>
+                  </div>
                 </div>
               </div>
               <div class="btnRow">${btns.join('')}</div>
@@ -281,7 +330,11 @@
                   err.textContent = '';
                   const sid2 = String(sc.id || '').trim();
                   const act = b.getAttribute('data-act') || '';
-                  if (act === 'run') {
+                  if (act === 'expand') {
+                    scenarioExpanded[sid2] = !scenarioExpanded[sid2];
+                    renderScenariosList();
+                    return;
+                  } else if (act === 'run') {
                     await runScenario(sc.id);
                   } else if (act === 'stop') {
                     await stopScenario(sc.id);
@@ -292,6 +345,8 @@
                     const tEl = row.querySelector('input[data-act="trig-time"]');
                     const tVal = String((tEl && tEl.value) || '').trim();
                     await saveScenarioTriggerTime(sc, tVal);
+                  } else if (act === 'trig-off') {
+                    await disableScenarioTrigger(sc);
                   }
                   await load();
                 } catch (e) {
@@ -429,3 +484,4 @@
     </script>
   </body>
 </html>
+

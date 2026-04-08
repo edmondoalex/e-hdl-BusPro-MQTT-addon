@@ -1,4 +1,12 @@
-﻿# WORKLOG
+# WORKLOG
+
+## 2026-04-08 (scenari compact + trigger expand)
+- UI /scenarios: lista compatta di default (nome + pulsanti esecuzione).
+- Click sul nome scenario: espande/chiude dettagli trigger (orario, salva, disattiva, stato).
+- Feedback trigger: campo orario giallo quando attivo, grigio quando non attivo.
+- Aggiunto pulsante Disattiva trigger nella riga scenario.
+- Version bump: 0.1.332 -> 0.1.333.
+
 
 ## 2026-01-19
 - Creato scheletro add-on (Dockerfile, config.json, backend FastAPI placeholder).
