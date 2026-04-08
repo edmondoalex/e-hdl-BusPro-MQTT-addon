@@ -1237,6 +1237,49 @@
             </div>
           </details>
 
+          <details class="acc" data-acc="scenario_config">
+            <summary>
+              <h2 style="margin:0;font-size:16px">Scenari: configurazione JSON</h2>
+            </summary>
+            <div class="accBody">
+              <div class="muted" style="margin-top:6px">
+                Visualizza e modifica la configurazione di un singolo scenario direttamente da Admin.
+                Il salvataggio usa le API esistenti di update scenario.
+              </div>
+
+              <div class="row3" style="margin-top:10px">
+                <div>
+                  <label>Scenario</label>
+                  <select id="scCfgSelect">
+                    <option value="">(seleziona scenario)</option>
+                  </select>
+                </div>
+                <div>
+                  <label>ID scenario</label>
+                  <input id="scCfgId" readonly placeholder="scenario_id" />
+                </div>
+                <div style="display:flex;align-items:end;gap:10px">
+                  <button class="btn secondary small" id="btnScCfgReload" type="button">Ricarica lista</button>
+                  <button class="btn secondary small" id="btnScCfgLoad" type="button">Carica</button>
+                </div>
+              </div>
+
+              <label style="margin-top:10px">Configurazione scenario (JSON)</label>
+              <textarea id="scCfgJson" rows="16" placeholder='{
+  "id": "...",
+  "name": "...",
+  "items": [],
+  "covers": []
+}' style="font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;"></textarea>
+
+              <div class="flex" style="margin-top:10px">
+                <button class="btn secondary small" id="btnScCfgValidate" type="button">Valida JSON</button>
+                <button class="btn small" id="btnScCfgSave" type="button">Salva scenario</button>
+                <span class="muted" id="scCfgMsg"></span>
+              </div>
+            </div>
+          </details>
+
           <details class="acc" data-acc="home2_order">
             <summary>
               <h2 style="margin:0;font-size:16px">Home2 ordine (misto)</h2>
@@ -4316,6 +4359,7 @@
 
       let hubLinks = [];
       let homeActions = [];
+      let scenarioItems = [];
       let home2Order = [];
       let hubIcons = null;
       let hubShow = null;
@@ -5031,21 +5075,94 @@
 
       async function refreshScenarioIdsDatalist() {
         const dl = document.getElementById('scenarioIds');
-        if (!dl) return;
-        dl.innerHTML = '';
+        const sel = qs('scCfgSelect');
+        const prev = sel ? String(sel.value || '').trim() : '';
+        if (dl) dl.innerHTML = '';
+        scenarioItems = [];
         try {
           const res = await getJson('api/user/light_scenarios');
           const items = Array.isArray(res && res.items) ? res.items : [];
+          scenarioItems = items.filter((sc) => sc && typeof sc === 'object');
           for (const sc of items) {
             const sid = String(sc.id || '').trim();
             if (!sid) continue;
-            const o = document.createElement('option');
-            o.value = sid;
-            const nm = String(sc.name || '').trim();
-            if (nm) o.label = nm;
-            dl.appendChild(o);
+            if (dl) {
+              const o = document.createElement('option');
+              o.value = sid;
+              const nm = String(sc.name || '').trim();
+              if (nm) o.label = nm;
+              dl.appendChild(o);
+            }
           }
-        } catch (e) {}
+          if (sel) {
+            sel.innerHTML = '<option value="">(seleziona scenario)</option>';
+            for (const sc of items) {
+              const sid = String(sc.id || '').trim();
+              if (!sid) continue;
+              const o = document.createElement('option');
+              o.value = sid;
+              const nm = String(sc.name || '').trim();
+              o.textContent = nm ? `${nm} [${sid}]` : sid;
+              sel.appendChild(o);
+            }
+            if (prev && items.some((x) => String((x && x.id) || '').trim() === prev)) {
+              sel.value = prev;
+            } else {
+              sel.value = '';
+            }
+          }
+        } catch (e) {
+          scenarioItems = [];
+          if (sel) sel.innerHTML = '<option value="">(seleziona scenario)</option>';
+        }
+      }
+
+      function setScenarioConfigEditor(sc) {
+        const msg = qs('scCfgMsg');
+        if (msg) msg.textContent = '';
+        const idEl = qs('scCfgId');
+        const ta = qs('scCfgJson');
+        if (!idEl || !ta) return;
+        if (!sc || typeof sc !== 'object') {
+          idEl.value = '';
+          ta.value = '';
+          return;
+        }
+        idEl.value = String(sc.id || '').trim();
+        ta.value = JSON.stringify(sc, null, 2);
+      }
+
+      function getSelectedScenarioFromCache() {
+        const sid = String((qs('scCfgSelect') && qs('scCfgSelect').value) || '').trim();
+        if (!sid) return null;
+        for (const sc of (scenarioItems || [])) {
+          if (!sc || typeof sc !== 'object') continue;
+          if (String(sc.id || '').trim() === sid) return sc;
+        }
+        return null;
+      }
+
+      function parseScenarioConfigJson() {
+        const ta = qs('scCfgJson');
+        const sid = String((qs('scCfgSelect') && qs('scCfgSelect').value) || '').trim();
+        const raw = String((ta && ta.value) || '').trim();
+        if (!sid) throw new Error('Seleziona uno scenario');
+        if (!raw) throw new Error('JSON vuoto');
+        let parsed = null;
+        try {
+          parsed = JSON.parse(raw);
+        } catch (e) {
+          throw new Error('JSON non valido');
+        }
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          throw new Error('Il JSON deve essere un oggetto');
+        }
+        const payloadId = String(parsed.id || '').trim();
+        if (payloadId && payloadId !== sid) {
+          throw new Error('ID nel JSON diverso dallo scenario selezionato');
+        }
+        parsed.id = sid;
+        return { sid, payload: parsed };
       }
 
       function applyHubConfig(data) {
@@ -5329,6 +5446,7 @@
       refreshHomeActions();
       refreshHome2Order();
       refreshScenarioIdsDatalist();
+      setScenarioConfigEditor(null);
       refreshHaDevices();
       refreshUiOpts();
       refreshPwaConfig();
@@ -5526,6 +5644,74 @@
       qs('haction_btnCancel').addEventListener('click', (ev) => {
         ev.preventDefault();
         setHomeActionEditing(null);
+      });
+
+      qs('scCfgSelect').addEventListener('change', () => {
+        const sc = getSelectedScenarioFromCache();
+        setScenarioConfigEditor(sc);
+      });
+
+      qs('btnScCfgReload').addEventListener('click', async () => {
+        const msg = qs('scCfgMsg');
+        if (msg) msg.textContent = '';
+        try {
+          await refreshScenarioIdsDatalist();
+          const sc = getSelectedScenarioFromCache();
+          setScenarioConfigEditor(sc);
+          if (msg) {
+            msg.textContent = 'Lista aggiornata';
+            setTimeout(() => { msg.textContent = ''; }, 1400);
+          }
+        } catch (e) {
+          if (msg) msg.textContent = (e && e.message) ? e.message : 'Errore';
+        }
+      });
+
+      qs('btnScCfgLoad').addEventListener('click', () => {
+        const msg = qs('scCfgMsg');
+        if (msg) msg.textContent = '';
+        const sc = getSelectedScenarioFromCache();
+        if (!sc) {
+          if (msg) msg.textContent = 'Scenario non trovato';
+          return;
+        }
+        setScenarioConfigEditor(sc);
+      });
+
+      qs('btnScCfgValidate').addEventListener('click', () => {
+        const msg = qs('scCfgMsg');
+        if (msg) msg.textContent = '';
+        try {
+          parseScenarioConfigJson();
+          if (msg) {
+            msg.textContent = 'JSON valido';
+            setTimeout(() => { msg.textContent = ''; }, 1400);
+          }
+        } catch (e) {
+          if (msg) msg.textContent = (e && e.message) ? e.message : 'Errore';
+        }
+      });
+
+      qs('btnScCfgSave').addEventListener('click', async () => {
+        const msg = qs('scCfgMsg');
+        if (msg) msg.textContent = '';
+        try {
+          const parsed = parseScenarioConfigJson();
+          await getJson(`api/user/light_scenarios/${encodeURIComponent(parsed.sid)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(parsed.payload),
+          });
+          await refreshScenarioIdsDatalist();
+          const sc = getSelectedScenarioFromCache();
+          setScenarioConfigEditor(sc);
+          if (msg) {
+            msg.textContent = 'Scenario salvato';
+            setTimeout(() => { msg.textContent = ''; }, 1600);
+          }
+        } catch (e) {
+          if (msg) msg.textContent = (e && e.message) ? e.message : 'Errore salvataggio';
+        }
       });
 
       qs('hl_btnCancel').addEventListener('click', () => {

@@ -998,3 +998,11 @@
 - Allineata la cartella locale a origin/main tramite fetch + reset sul commit 260a8dc.
 - Stato finale: main allineato a origin/main (versione 0.1.325), working tree pulito.
 
+
+## 2026-04-08 (admin scenario config)
+- Aggiunta sezione Admin 'Scenari: configurazione JSON' in / (index admin).
+- Nuove funzioni UI: selezione scenario, visualizzazione JSON, validazione JSON, salvataggio via API PUT /api/user/light_scenarios/{id}.
+- Nessuna modifica alla logica runtime di esecuzione scenari/tapparelle: intervento solo su interfaccia admin.
+
+- Version bump: 0.1.325 -> 0.1.326.
+
