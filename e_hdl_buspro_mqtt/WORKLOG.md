@@ -1006,3 +1006,9 @@
 
 - Version bump: 0.1.325 -> 0.1.326.
 
+
+## 2026-04-08 (scenario cover single parallel)
+- Esecuzione cover kind: single negli scenari: i comandi diretti (OPEN/CLOSE/STOP senza rampa) ora vengono schedulati in parallelo, non piu' in sequenza.
+- Obiettivo: ridurre lo sfasamento di partenza tra tapparelle nello stesso scenario.
+- Version bump: 0.1.326 -> 0.1.327.
+

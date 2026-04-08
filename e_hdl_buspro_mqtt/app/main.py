@@ -50,7 +50,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.326"
+ADDON_VERSION = "0.1.327"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -7183,7 +7183,25 @@ self.addEventListener('fetch', (event) => {{
                 # Best-effort: continue other lights
                 continue
 
+        async def _run_single_cover_direct(subnet_id: int, device_id: int, channel: int, cmd_eff: str) -> bool:
+            try:
+                if cmd_eff == "OPEN":
+                    await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                    _start_cover_sim(subnet_id, device_id, channel, "OPEN")
+                elif cmd_eff == "CLOSE":
+                    await gw.cover_close_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                    _start_cover_sim(subnet_id, device_id, channel, "CLOSE")
+                elif cmd_eff == "STOP":
+                    await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                    _start_cover_sim(subnet_id, device_id, channel, "STOP")
+                else:
+                    return False
+                return True
+            except Exception:
+                return False
+
         cover_sent = 0
+        single_direct_tasks: list[asyncio.Task] = []
         covers = sc.get("covers") or []
         if isinstance(covers, list):
             for it in covers:
@@ -7290,21 +7308,18 @@ self.addEventListener('fetch', (event) => {{
                             )
                         )
                         _track_scenario_task(str(sc.get("id") or ""), t)
+                        cover_sent += 1
                     else:
-                        if cmd_eff == "OPEN":
-                            await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
-                            _start_cover_sim(subnet_id, device_id, channel, "OPEN")
-                        elif cmd_eff == "CLOSE":
-                            await gw.cover_close_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
-                            _start_cover_sim(subnet_id, device_id, channel, "CLOSE")
-                        elif cmd_eff == "STOP":
-                            await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
-                            _start_cover_sim(subnet_id, device_id, channel, "STOP")
-                        else:
-                            continue
-                    cover_sent += 1
+                        t = asyncio.create_task(_run_single_cover_direct(subnet_id, device_id, channel, cmd_eff))
+                        _track_scenario_task(str(sc.get("id") or ""), t)
+                        single_direct_tasks.append(t)
                 except Exception:
                     continue
+        if single_direct_tasks:
+            results = await asyncio.gather(*single_direct_tasks, return_exceptions=True)
+            for res in results:
+                if res is True:
+                    cover_sent += 1
 
         # Best-effort: publish scenario switch state (optimistic)
         try:
