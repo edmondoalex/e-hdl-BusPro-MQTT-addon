@@ -135,6 +135,7 @@
 
     <script>
       const qs = (id) => document.getElementById(id);
+      let scenarioItems = [];
       let scenarioStates = {};
       let scenarioRunning = {};
       function absUrl(path) { return new URL(path, window.location.href).toString(); }
@@ -184,26 +185,11 @@
         });
       }
 
-      async function load() {
+      function renderScenariosList() {
         const root = qs('list');
         const err = qs('err');
         root.replaceChildren();
-        err.textContent = '';
-        try {
-          const meta = await getJson('api/meta');
-          window.__backGestureEnabled = !(meta && typeof meta.back_gesture_enabled === 'boolean') ? true : !!meta.back_gesture_enabled;
-        } catch (e) {}
-        let data = null;
-        try {
-          data = await getJson('api/user/light_scenarios');
-          const st = await getJson('api/user/light_scenarios_status');
-          scenarioStates = (st && st.states && typeof st.states === 'object') ? st.states : {};
-          scenarioRunning = (st && st.running && typeof st.running === 'object') ? st.running : {};
-        } catch (e) {
-          err.textContent = 'Errore caricamento scenari';
-          return;
-        }
-        const items = (data && data.items) ? data.items : [];
+        const items = Array.isArray(scenarioItems) ? scenarioItems : [];
         if (!Array.isArray(items) || !items.length) {
           const row = document.createElement('div');
           row.className = 'row';
@@ -265,6 +251,30 @@
           });
       }
 
+      async function load() {
+        const err = qs('err');
+        err.textContent = '';
+        try {
+          const meta = await getJson('api/meta');
+          window.__backGestureEnabled = !(meta && typeof meta.back_gesture_enabled === 'boolean') ? true : !!meta.back_gesture_enabled;
+        } catch (e) {}
+        try {
+          const data = await getJson('api/user/light_scenarios');
+          const st = await getJson('api/user/light_scenarios_status');
+          scenarioItems = (data && Array.isArray(data.items)) ? data.items : [];
+          scenarioStates = (st && st.states && typeof st.states === 'object') ? st.states : {};
+          scenarioRunning = (st && st.running && typeof st.running === 'object') ? st.running : {};
+        } catch (e) {
+          scenarioItems = [];
+          scenarioStates = {};
+          scenarioRunning = {};
+          err.textContent = 'Errore caricamento scenari';
+          renderScenariosList();
+          return;
+        }
+        renderScenariosList();
+      }
+
       qs('homeBtn').addEventListener('click', () => {
         animatePress(qs('homeBtn'));
         try { window.location.href = absUrl('home2'); } catch (e) {}
@@ -298,7 +308,7 @@
               if (sid && (st === 'ON' || st === 'OFF')) {
                 scenarioStates = scenarioStates && typeof scenarioStates === 'object' ? scenarioStates : {};
                 scenarioStates[sid] = st;
-                await load();
+                renderScenariosList();
               }
               return;
             }
@@ -308,7 +318,7 @@
               if (sid) {
                 scenarioRunning = scenarioRunning && typeof scenarioRunning === 'object' ? scenarioRunning : {};
                 scenarioRunning[sid] = !!d.running;
-                await load();
+                renderScenariosList();
               }
               return;
             }

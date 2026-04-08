@@ -1032,3 +1032,8 @@
 - UI `/scenarios` e modal scenari in `/lights` aggiornate: STOP rosso solo durante esecuzione; a fine scenario torna grigio.
 - Version bump: 0.1.329 -> 0.1.330.
 
+## 2026-04-08 (scenarios UI duplicate rows fix)
+- Fix pagina `/scenarios`: eliminato reload concorrente su eventi websocket (`light_scenario_state` / `light_scenario_running`) che poteva duplicare righe dopo `Esegui`.
+- Ora la pagina renderizza da cache locale e aggiorna solo lo stato visivo, senza richiamare `load()` ad ogni evento realtime.
+- Version bump: 0.1.330 -> 0.1.331.
+
