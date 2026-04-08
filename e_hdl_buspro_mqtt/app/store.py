@@ -414,7 +414,15 @@ class StateStore:
         if icon and not icon.startswith("mdi:"):
             raise ValueError("icon must be mdi:<name>")
 
-        return {
+        def _opt_entity(key: str) -> str:
+            v = str(payload.get(key) or "").strip().lower()
+            if not v:
+                return ""
+            if "." not in v:
+                raise ValueError(f"{key} must be an entity_id (e.g. sensor.xxx)")
+            return v
+
+        out = {
             "entity_id": entity_id,
             "domain": domain,
             "page": page,
@@ -422,6 +430,13 @@ class StateStore:
             "group": group,
             "icon": icon,
         }
+        # Optional external HA entities for lock metrics (used when page=locks).
+        out["lock_battery_entity_id"] = _opt_entity("lock_battery_entity_id")
+        out["lock_battery_low_entity_id"] = _opt_entity("lock_battery_low_entity_id")
+        out["lock_rssi_entity_id"] = _opt_entity("lock_rssi_entity_id")
+        out["lock_linkquality_entity_id"] = _opt_entity("lock_linkquality_entity_id")
+        out["lock_tamper_entity_id"] = _opt_entity("lock_tamper_entity_id")
+        return out
 
     def add_ha_device(self, payload: dict[str, Any]) -> dict[str, Any]:
         cleaned = self._normalize_ha_device(payload)

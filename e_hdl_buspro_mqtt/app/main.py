@@ -51,7 +51,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.340"
+ADDON_VERSION = "0.1.341"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -580,6 +580,98 @@ def create_app() -> FastAPI:
             metrics["tamper"] = tamper
 
         return {"entity_id": eid, "state": state, "metrics": metrics}
+
+    def _ha_state_num(st: dict[str, Any], *, keys: list[str] | None = None, min_v: int | None = None, max_v: int | None = None) -> int | None:
+        if not isinstance(st, dict):
+            return None
+        attrs = st.get("attributes") or {}
+        if not isinstance(attrs, dict):
+            attrs = {}
+        if keys:
+            for k in keys:
+                if attrs.get(k) is None:
+                    continue
+                try:
+                    iv = int(float(attrs.get(k)))
+                    if min_v is not None:
+                        iv = max(min_v, iv)
+                    if max_v is not None:
+                        iv = min(max_v, iv)
+                    return iv
+                except Exception:
+                    continue
+        raw = st.get("state")
+        try:
+            iv = int(float(raw))
+            if min_v is not None:
+                iv = max(min_v, iv)
+            if max_v is not None:
+                iv = min(max_v, iv)
+            return iv
+        except Exception:
+            return None
+
+    def _ha_state_bool(st: dict[str, Any], *, keys: list[str] | None = None) -> bool | None:
+        if not isinstance(st, dict):
+            return None
+        attrs = st.get("attributes") or {}
+        if not isinstance(attrs, dict):
+            attrs = {}
+        vals: list[Any] = []
+        if keys:
+            for k in keys:
+                if k in attrs:
+                    vals.append(attrs.get(k))
+        vals.append(st.get("state"))
+        for v in vals:
+            if v is None:
+                continue
+            if isinstance(v, bool):
+                return v
+            s = str(v).strip().lower()
+            if s in ("1", "true", "on", "yes", "y", "open", "detected", "active"):
+                return True
+            if s in ("0", "false", "off", "no", "n", "closed", "clear", "inactive"):
+                return False
+        return None
+
+    def _merge_lock_external_metrics(lock_metrics: dict[str, Any], by_eid: dict[str, dict[str, Any]], metric_map: dict[str, str]) -> dict[str, Any]:
+        out = dict(lock_metrics or {})
+        beid = str(metric_map.get("battery_level") or "").strip().lower()
+        if beid and isinstance(by_eid.get(beid), dict):
+            v = _ha_state_num(by_eid.get(beid) or {}, keys=["battery_level", "battery", "battery_percentage"], min_v=0, max_v=100)
+            if v is not None:
+                out["battery_level"] = v
+        bleid = str(metric_map.get("battery_low") or "").strip().lower()
+        if bleid and isinstance(by_eid.get(bleid), dict):
+            v = _ha_state_bool(by_eid.get(bleid) or {}, keys=["battery_low", "low_battery"])
+            if v is not None:
+                out["battery_low"] = v
+        reid = str(metric_map.get("rssi") or "").strip().lower()
+        if reid and isinstance(by_eid.get(reid), dict):
+            v = _ha_state_num(by_eid.get(reid) or {}, keys=["rssi"])
+            if v is not None:
+                out["rssi"] = v
+        leid = str(metric_map.get("linkquality") or "").strip().lower()
+        if leid and isinstance(by_eid.get(leid), dict):
+            v = _ha_state_num(by_eid.get(leid) or {}, keys=["linkquality", "lqi"], min_v=0, max_v=255)
+            if v is not None:
+                out["linkquality"] = v
+        teid = str(metric_map.get("tamper") or "").strip().lower()
+        if teid and isinstance(by_eid.get(teid), dict):
+            st = by_eid.get(teid) or {}
+            attrs = st.get("attributes") or {}
+            if not isinstance(attrs, dict):
+                attrs = {}
+            if attrs.get("tamper") is not None:
+                out["tamper"] = attrs.get("tamper")
+            elif attrs.get("problem") is not None:
+                out["tamper"] = attrs.get("problem")
+            else:
+                raw = str(st.get("state") or "").strip()
+                if raw and raw.lower() not in ("unknown", "unavailable"):
+                    out["tamper"] = raw
+        return out
 
     def _list_user_devices() -> list[dict[str, Any]]:
         devices = list(store.list_devices())
@@ -3658,6 +3750,8 @@ self.addEventListener('fetch', (event) => {{
                     eids: list[str] = []
                     domains: dict[str, str] = {}
                     pages: dict[str, str] = {}
+                    lock_metric_map: dict[str, dict[str, str]] = {}
+                    metric_eids: set[str] = set()
                     for it in ha_devices:
                         eid = str(it.get("entity_id") or "").strip().lower()
                         if not eid:
@@ -3669,9 +3763,34 @@ self.addEventListener('fetch', (event) => {{
                         eids.append(eid)
                         domains[eid] = dom
                         pages[eid] = page
+                        if page == "locks":
+                            mm: dict[str, str] = {}
+                            b = str(it.get("lock_battery_entity_id") or "").strip().lower()
+                            if b and "." in b:
+                                mm["battery_level"] = b
+                                metric_eids.add(b)
+                            bl = str(it.get("lock_battery_low_entity_id") or "").strip().lower()
+                            if bl and "." in bl:
+                                mm["battery_low"] = bl
+                                metric_eids.add(bl)
+                            r = str(it.get("lock_rssi_entity_id") or "").strip().lower()
+                            if r and "." in r:
+                                mm["rssi"] = r
+                                metric_eids.add(r)
+                            lq = str(it.get("lock_linkquality_entity_id") or "").strip().lower()
+                            if lq and "." in lq:
+                                mm["linkquality"] = lq
+                                metric_eids.add(lq)
+                            t = str(it.get("lock_tamper_entity_id") or "").strip().lower()
+                            if t and "." in t:
+                                mm["tamper"] = t
+                                metric_eids.add(t)
+                            if mm:
+                                lock_metric_map[eid] = mm
                     if not eids:
                         await asyncio.sleep(interval)
                         continue
+                    all_eids = list(dict.fromkeys([*eids, *metric_eids]))
 
                     raw = await asyncio.to_thread(_ha_request, "GET", "/api/states", payload=None, timeout_s=10)
                     if not isinstance(raw, list):
@@ -3682,7 +3801,7 @@ self.addEventListener('fetch', (event) => {{
                         if not isinstance(st, dict):
                             continue
                         eid = str(st.get("entity_id") or "").strip().lower()
-                        if eid in domains:
+                        if eid in all_eids:
                             by_eid[eid] = st
 
                     last: dict[str, Any] = getattr(api.state, "ha_states", {}) or {}
@@ -3741,6 +3860,9 @@ self.addEventListener('fetch', (event) => {{
                                 await hub.broadcast("ha_cover_state", mapped)
                         elif as_lock:
                             mapped = _map_ha_state_to_lock(st)
+                            mm = lock_metric_map.get(eid) or {}
+                            if mm:
+                                mapped["metrics"] = _merge_lock_external_metrics(dict(mapped.get("metrics") or {}), by_eid, mm)
                             prev = last.get(eid)
                             if prev != mapped:
                                 next_states[eid] = mapped

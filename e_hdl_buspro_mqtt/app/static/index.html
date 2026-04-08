@@ -1389,6 +1389,31 @@
                   </div>
                   <div></div>
                 </div>
+                <div class="row3" id="haLockMetricsRow" style="display:none">
+                  <div>
+                    <label>Lock: entity batteria (opz.)</label>
+                    <input id="ha_lock_battery_entity" placeholder="Es: sensor.porta_ingresso_battery" />
+                  </div>
+                  <div>
+                    <label>Lock: entity batteria bassa (opz.)</label>
+                    <input id="ha_lock_battery_low_entity" placeholder="Es: binary_sensor.porta_ingresso_battery_low" />
+                  </div>
+                  <div>
+                    <label>Lock: entity RSSI (opz.)</label>
+                    <input id="ha_lock_rssi_entity" placeholder="Es: sensor.porta_ingresso_rssi" />
+                  </div>
+                </div>
+                <div class="row3" id="haLockMetricsRow2" style="display:none">
+                  <div>
+                    <label>Lock: entity Link quality (opz.)</label>
+                    <input id="ha_lock_lqi_entity" placeholder="Es: sensor.porta_ingresso_linkquality" />
+                  </div>
+                  <div>
+                    <label>Lock: entity Tamper (opz.)</label>
+                    <input id="ha_lock_tamper_entity" placeholder="Es: binary_sensor.porta_ingresso_tamper" />
+                  </div>
+                  <div></div>
+                </div>
                 <div class="flex" style="margin-top:10px">
                   <button class="btn" id="ha_btnSubmit" type="submit">Aggiungi</button>
                   <button class="btn secondary" id="ha_btnCancel" type="button" style="display:none">Annulla</button>
@@ -1404,6 +1429,7 @@
                     <th>Gruppo</th>
                     <th>Nome</th>
                     <th>Icona</th>
+                    <th>Metriche Lock</th>
                     <th>Azioni</th>
                   </tr>
                 </thead>
@@ -5285,9 +5311,23 @@
         qs('ha_group').value = isEdit ? String(item.group || '') : '';
         qs('ha_name').value = isEdit ? String(item.name || '') : '';
         qs('ha_icon').value = isEdit ? String(item.icon || '') : '';
+        qs('ha_lock_battery_entity').value = isEdit ? String(item.lock_battery_entity_id || '') : '';
+        qs('ha_lock_battery_low_entity').value = isEdit ? String(item.lock_battery_low_entity_id || '') : '';
+        qs('ha_lock_rssi_entity').value = isEdit ? String(item.lock_rssi_entity_id || '') : '';
+        qs('ha_lock_lqi_entity').value = isEdit ? String(item.lock_linkquality_entity_id || '') : '';
+        qs('ha_lock_tamper_entity').value = isEdit ? String(item.lock_tamper_entity_id || '') : '';
         qs('ha_btnSubmit').textContent = isEdit ? 'Salva' : 'Aggiungi';
         qs('ha_btnCancel').style.display = isEdit ? '' : 'none';
         qs('ha_formMsg').textContent = '';
+        updateHaLockMetricInputs();
+      }
+
+      function updateHaLockMetricInputs() {
+        const isLocksPage = String((qs('ha_page') && qs('ha_page').value) || '').toLowerCase() === 'locks';
+        const row1 = qs('haLockMetricsRow');
+        const row2 = qs('haLockMetricsRow2');
+        if (row1) row1.style.display = isLocksPage ? '' : 'none';
+        if (row2) row2.style.display = isLocksPage ? '' : 'none';
       }
 
       function renderHaDevices() {
@@ -5304,6 +5344,13 @@
           const group = String(it.group || '').trim();
           const name = String(it.name || '').trim();
           const icon = String(it.icon || '').trim();
+          const lockMetrics = [
+            String(it.lock_battery_entity_id || '').trim() ? 'battery' : '',
+            String(it.lock_battery_low_entity_id || '').trim() ? 'battery_low' : '',
+            String(it.lock_rssi_entity_id || '').trim() ? 'rssi' : '',
+            String(it.lock_linkquality_entity_id || '').trim() ? 'linkquality' : '',
+            String(it.lock_tamper_entity_id || '').trim() ? 'tamper' : '',
+          ].filter(Boolean).join(', ');
 
           const tr = document.createElement('tr');
           tr.innerHTML = `
@@ -5312,6 +5359,7 @@
             <td>${escapeHtml(group)}</td>
             <td>${escapeHtml(name)}</td>
             <td>${icon ? `<span class="pill">${escapeHtml(icon)}</span>` : ''}</td>
+            <td>${escapeHtml(lockMetrics)}</td>
             <td>
               <button class="btn secondary small" data-act="edit">Modifica</button>
               <button class="btn danger small" data-act="del">Elimina</button>
@@ -5546,6 +5594,7 @@
       refreshScenarioHaTriggers();
       setScenarioHaTriggerEditing(null);
       refreshHaDevices();
+      updateHaLockMetricInputs();
       refreshUiOpts();
       refreshPwaConfig();
       refreshProxyTargets();
@@ -5602,7 +5651,12 @@
           const group = String(qs('ha_group').value || '').trim();
           const name = String(qs('ha_name').value || '').trim();
           const icon = String(qs('ha_icon').value || '').trim();
-          const payload = { entity_id, page, group, name, icon };
+          const lock_battery_entity_id = String(qs('ha_lock_battery_entity').value || '').trim();
+          const lock_battery_low_entity_id = String(qs('ha_lock_battery_low_entity').value || '').trim();
+          const lock_rssi_entity_id = String(qs('ha_lock_rssi_entity').value || '').trim();
+          const lock_linkquality_entity_id = String(qs('ha_lock_lqi_entity').value || '').trim();
+          const lock_tamper_entity_id = String(qs('ha_lock_tamper_entity').value || '').trim();
+          const payload = { entity_id, page, group, name, icon, lock_battery_entity_id, lock_battery_low_entity_id, lock_rssi_entity_id, lock_linkquality_entity_id, lock_tamper_entity_id };
           if (id) {
             await getJson(`api/ha_devices/${encodeURIComponent(id)}`, {
               method: 'PUT',
@@ -5630,6 +5684,7 @@
         ev.preventDefault();
         setHaEditing(null);
       });
+      qs('ha_page').addEventListener('change', () => updateHaLockMetricInputs());
 
       qs('guardForm').addEventListener('submit', async (ev) => {
         ev.preventDefault();

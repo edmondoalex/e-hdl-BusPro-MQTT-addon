@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-04-08 (locks: mapping sensori HA esterni)
+- Admin `Home Assistant devices`: per entita' con pagina `locks` aggiunti campi opzionali per mappare sensori esterni (`battery`, `battery_low`, `rssi`, `linkquality`, `tamper`).
+- Poll HA: per ogni lock in pagina `locks` legge anche le entita' esterne configurate e unisce i valori alle metriche lock.
+- UI user `/locks`: continua a mostrare metriche sotto lo stato, ora anche da sensori separati (non solo attributi della lock).
+- Version bump: 0.1.340 -> 0.1.341.
+
 ## 2026-04-08 (locks: metriche entita' HA in UI user)
 - Backend lock mapping HA: aggiunte metriche opzionali nel payload stato lock (`battery_level`, `battery_low`, `rssi`, `linkquality`, `tamper`), ricavate dagli attributi entita' HA.
 - UI user `/locks`: sotto lo stato lock ora mostra metriche disponibili (es. `Batteria 78%`, `RSSI -62 dBm`, `Tamper attivo`).
