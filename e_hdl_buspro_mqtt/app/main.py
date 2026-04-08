@@ -50,7 +50,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.329"
+ADDON_VERSION = "0.1.330"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -602,6 +602,7 @@ def create_app() -> FastAPI:
     api.state.sniffer = TelegramSniffer(share_dir="/share", maxlen=5000)
     api.state.cover_sim_tasks = {}
     api.state.scenario_tasks = {}
+    api.state.scenario_running = {}
     api.state.scenario_trigger_last = {}
     api.state.sun_cache = {"ts": 0.0, "next_rising": None, "next_setting": None}
 
@@ -1918,6 +1919,22 @@ self.addEventListener('fetch', (event) => {{
         except Exception:
             pass
         return state
+
+    async def _set_light_scenario_running(sid: str, running: bool) -> None:
+        sid_s = str(sid or "").strip()
+        if not sid_s:
+            return
+        m: dict[str, bool] = getattr(api.state, "scenario_running", {}) or {}
+        prev = bool(m.get(sid_s))
+        now = bool(running)
+        if prev == now:
+            return
+        m[sid_s] = now
+        api.state.scenario_running = m
+        try:
+            await hub.broadcast("light_scenario_running", {"id": sid_s, "running": now})
+        except Exception:
+            pass
 
     async def _publish_light_scenario_states_for_member(addr: str) -> None:
         membership = getattr(api.state, "light_scenario_membership", {}) or {}
@@ -6952,12 +6969,15 @@ self.addEventListener('fetch', (event) => {{
     async def list_light_scenarios_status():
         items = store.list_light_scenarios()
         out: dict[str, str] = {}
+        running_map: dict[str, bool] = {}
+        running_state: dict[str, bool] = getattr(api.state, "scenario_running", {}) or {}
         for sc in items:
             sid = str(sc.get("id") or "").strip()
             if not sid:
                 continue
             out[sid] = _scenario_switch_state(sc)
-        return {"states": out}
+            running_map[sid] = bool(running_state.get(sid))
+        return {"states": out, "running": running_map}
 
     @api.post("/api/user/light_scenarios")
     async def create_light_scenario(payload: dict[str, Any]):
@@ -7007,6 +7027,7 @@ self.addEventListener('fetch', (event) => {{
         sc = store.find_light_scenario(scenario_id=scenario_id)
         if not sc:
             raise HTTPException(status_code=404, detail="Not Found")
+        sid_current = str(sc.get("id") or "").strip()
         desired = None
         command = None
         if isinstance(payload, dict):
@@ -7032,6 +7053,10 @@ self.addEventListener('fetch', (event) => {{
                     s2.remove(_t)
                 if s2 is not None and not s2:
                     tasks2.pop(sid, None)
+                    try:
+                        asyncio.create_task(_set_light_scenario_running(sid, False))
+                    except Exception:
+                        pass
                 api.state.scenario_tasks = tasks2
             try:
                 task.add_done_callback(_done)
@@ -7061,7 +7086,7 @@ self.addEventListener('fetch', (event) => {{
             return "STOP"
 
         if command == "STOP":
-            _cancel_scenario_tasks(str(sc.get("id") or ""))
+            _cancel_scenario_tasks(sid_current)
             covers = sc.get("covers") or []
             if isinstance(covers, list):
                 for it in covers:
@@ -7105,7 +7130,10 @@ self.addEventListener('fetch', (event) => {{
                         _start_cover_sim(subnet_id, device_id, channel, "STOP")
                     except Exception:
                         continue
+            await _set_light_scenario_running(sid_current, False)
             return {"ok": True, "stopped": True}
+
+        await _set_light_scenario_running(sid_current, True)
 
         items = sc.get("items") or []
         if not isinstance(items, list) or not items:
@@ -7320,6 +7348,11 @@ self.addEventListener('fetch', (event) => {{
             for res in results:
                 if res is True:
                     cover_sent += 1
+
+        tasks_now: dict[str, set[asyncio.Task]] = getattr(api.state, "scenario_tasks", {}) or {}
+        s_now = tasks_now.get(sid_current)
+        if not s_now:
+            await _set_light_scenario_running(sid_current, False)
 
         # Best-effort: publish scenario switch state (optimistic)
         try:

@@ -447,6 +447,7 @@
       let countsQueued = false;
       let lightScenarios = [];
       let scenarioStates = {};
+      let scenarioRunning = {};
       let editingScenarioId = '';
       let editingScenarioName = '';
       let editingScenarioItems = [];
@@ -670,8 +671,10 @@
         try {
           const st = await getJson('api/user/light_scenarios_status');
           scenarioStates = (st && st.states && typeof st.states === 'object') ? st.states : {};
+          scenarioRunning = (st && st.running && typeof st.running === 'object') ? st.running : {};
         } catch (e) {
           scenarioStates = {};
+          scenarioRunning = {};
         }
         try { await ensureCoverGroupsCache(); } catch (e) {}
         renderLightScenarios();
@@ -765,12 +768,13 @@
           const count = Array.isArray(sc.items) ? sc.items.length : 0;
           const coverCount = Array.isArray(sc.covers) ? sc.covers.length : 0;
           const isOn = String((scenarioStates && scenarioStates[String(sc.id||'')]) || '').toUpperCase() === 'ON';
+          const isRunning = !!(scenarioRunning && scenarioRunning[String(sc.id||'')]);
           const runEnabled = !!sc.run_enabled;
           const onoffEnabled = (sc.onoff_enabled === undefined) ? true : !!sc.onoff_enabled;
           const btns = [];
           if (runEnabled) {
             btns.push(`<button class="btn" type="button" data-act="run" data-id="${escapeHtml(String(sc.id||''))}">Esegui</button>`);
-            btns.push(`<button class="btn ${isOn ? 'danger' : ''}" type="button" data-act="stop" data-id="${escapeHtml(String(sc.id||''))}">Stop</button>`);
+            btns.push(`<button class="btn ${isRunning ? 'danger' : ''}" type="button" data-act="stop" data-id="${escapeHtml(String(sc.id||''))}">Stop</button>`);
           }
           if (onoffEnabled) btns.push(`<button class="btn ${isOn ? 'danger' : 'primary'}" type="button" data-act="toggle" data-id="${escapeHtml(String(sc.id||''))}">${isOn ? 'Spegni' : 'Accendi'}</button>`);
           row.innerHTML = `
@@ -1578,6 +1582,16 @@
         try { renderLightScenarios(); } catch (e) {}
       }
 
+      function applyScenarioRunningEvent(ev) {
+        if (!ev) return;
+        const id = String(ev.id || '').trim();
+        if (!id) return;
+        scenarioRunning = scenarioRunning && typeof scenarioRunning === 'object' ? scenarioRunning : {};
+        scenarioRunning[id] = !!ev.running;
+        if (String(editingScenarioId || '').trim()) return;
+        try { renderLightScenarios(); } catch (e) {}
+      }
+
       function refreshDeviceIndex() {
         deviceByAddr.clear();
         for (const d of (lastDevices || [])) {
@@ -1894,6 +1908,10 @@
             }
             if (msg.type === 'light_scenario_state') {
               applyScenarioStateEvent(msg.data || {});
+              return;
+            }
+            if (msg.type === 'light_scenario_running') {
+              applyScenarioRunningEvent(msg.data || {});
               return;
             }
           } catch (e) {}

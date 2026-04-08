@@ -135,6 +135,8 @@
 
     <script>
       const qs = (id) => document.getElementById(id);
+      let scenarioStates = {};
+      let scenarioRunning = {};
       function absUrl(path) { return new URL(path, window.location.href).toString(); }
       async function getJson(path, opts) {
         const r = await fetch(absUrl(path), opts);
@@ -192,11 +194,11 @@
           window.__backGestureEnabled = !(meta && typeof meta.back_gesture_enabled === 'boolean') ? true : !!meta.back_gesture_enabled;
         } catch (e) {}
         let data = null;
-        let stMap = {};
         try {
           data = await getJson('api/user/light_scenarios');
           const st = await getJson('api/user/light_scenarios_status');
-          stMap = (st && st.states && typeof st.states === 'object') ? st.states : {};
+          scenarioStates = (st && st.states && typeof st.states === 'object') ? st.states : {};
+          scenarioRunning = (st && st.running && typeof st.running === 'object') ? st.running : {};
         } catch (e) {
           err.textContent = 'Errore caricamento scenari';
           return;
@@ -219,13 +221,14 @@
             const n = Array.isArray(sc.items) ? sc.items.length : 0;
             const c = Array.isArray(sc.covers) ? sc.covers.length : 0;
             const sid = String(sc.id || '').trim();
-            const on = String((stMap && stMap[sid]) || '').toUpperCase() === 'ON';
+            const on = String((scenarioStates && scenarioStates[sid]) || '').toUpperCase() === 'ON';
+            const running = !!(scenarioRunning && scenarioRunning[sid]);
             const runEnabled = !!sc.run_enabled;
             const onoffEnabled = (sc.onoff_enabled === undefined) ? true : !!sc.onoff_enabled;
             const btns = [];
             if (runEnabled) {
               btns.push(`<button class="btn pressFx" type="button" data-act="run" data-id="${escapeHtml(String(sc.id||''))}">Esegui</button>`);
-              btns.push(`<button class="btn pressFx ${on ? 'danger' : ''}" type="button" data-act="stop" data-id="${escapeHtml(String(sc.id||''))}">Stop</button>`);
+              btns.push(`<button class="btn pressFx ${running ? 'danger' : ''}" type="button" data-act="stop" data-id="${escapeHtml(String(sc.id||''))}">Stop</button>`);
             }
             if (onoffEnabled) {
               btns.push(`<button class="btn pressFx ${on ? 'danger' : 'primary'}" type="button" data-act="toggle" data-id="${escapeHtml(String(sc.id||''))}">${on ? 'Spegni' : 'Accendi'}</button>`);
@@ -249,7 +252,7 @@
                   } else if (act === 'stop') {
                     await stopScenario(sc.id);
                   } else if (act === 'toggle') {
-                    const nowOn = String((stMap && stMap[sid2]) || '').toUpperCase() === 'ON';
+                    const nowOn = String((scenarioStates && scenarioStates[sid2]) || '').toUpperCase() === 'ON';
                     await setScenario(sc.id, nowOn ? 'OFF' : 'ON');
                   }
                   await load();
@@ -276,7 +279,47 @@
         try { window.location.href = absUrl('lights?sc=1'); } catch (e) {}
       });
 
-      (async () => { await load(); })();
+      function wsUrl() {
+        const u = new URL('ws', window.location.href);
+        u.protocol = (location.protocol === 'https:') ? 'wss:' : 'ws:';
+        return u.toString();
+      }
+
+      function connectWs() {
+        const ws = new WebSocket(wsUrl());
+        ws.onclose = () => { setTimeout(connectWs, 1500); };
+        ws.onmessage = async (evt) => {
+          try {
+            const msg = JSON.parse(evt.data);
+            if (msg.type === 'light_scenario_state') {
+              const d = msg.data || {};
+              const sid = String(d.id || '').trim();
+              const st = String(d.state || '').trim().toUpperCase();
+              if (sid && (st === 'ON' || st === 'OFF')) {
+                scenarioStates = scenarioStates && typeof scenarioStates === 'object' ? scenarioStates : {};
+                scenarioStates[sid] = st;
+                await load();
+              }
+              return;
+            }
+            if (msg.type === 'light_scenario_running') {
+              const d = msg.data || {};
+              const sid = String(d.id || '').trim();
+              if (sid) {
+                scenarioRunning = scenarioRunning && typeof scenarioRunning === 'object' ? scenarioRunning : {};
+                scenarioRunning[sid] = !!d.running;
+                await load();
+              }
+              return;
+            }
+          } catch (e) {}
+        };
+      }
+
+      (async () => {
+        await load();
+        connectWs();
+      })();
     </script>
     <script>
       // Hidden back gesture: long-press top-left corner.

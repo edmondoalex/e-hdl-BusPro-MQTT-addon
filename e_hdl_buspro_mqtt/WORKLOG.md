@@ -1025,3 +1025,10 @@
 - Mantiene animazione press al click come gli altri pulsanti.
 - Version bump: 0.1.328 -> 0.1.329.
 
+## 2026-04-08 (scenario running state for STOP)
+- Separato stato scenario `running` dallo stato ON/OFF: STOP ora segue solo l'esecuzione reale dello scenario (task attive).
+- API `/api/user/light_scenarios_status` estesa con mappa `running` per scenario.
+- Broadcast websocket aggiunto: `light_scenario_running` per aggiornare la UI in tempo reale senza impattare la logica ON/OFF.
+- UI `/scenarios` e modal scenari in `/lights` aggiornate: STOP rosso solo durante esecuzione; a fine scenario torna grigio.
+- Version bump: 0.1.329 -> 0.1.330.
+
