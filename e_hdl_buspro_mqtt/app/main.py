@@ -51,7 +51,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.339"
+ADDON_VERSION = "0.1.340"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -525,7 +525,61 @@ def create_app() -> FastAPI:
             state = "OPENING"
         else:
             state = s.upper()
-        return {"entity_id": eid, "state": state}
+        attrs = st.get("attributes") or {}
+        if not isinstance(attrs, dict):
+            attrs = {}
+
+        def _pick_attr(*keys: str) -> Any:
+            for k in keys:
+                if k in attrs and attrs.get(k) is not None:
+                    return attrs.get(k)
+            return None
+
+        def _pick_int(*keys: str, min_v: int | None = None, max_v: int | None = None) -> int | None:
+            v = _pick_attr(*keys)
+            if v is None:
+                return None
+            try:
+                iv = int(float(v))
+            except Exception:
+                return None
+            if min_v is not None:
+                iv = max(min_v, iv)
+            if max_v is not None:
+                iv = min(max_v, iv)
+            return iv
+
+        def _pick_bool(*keys: str) -> bool | None:
+            v = _pick_attr(*keys)
+            if v is None:
+                return None
+            if isinstance(v, bool):
+                return v
+            s2 = str(v).strip().lower()
+            if s2 in ("1", "true", "on", "yes", "y"):
+                return True
+            if s2 in ("0", "false", "off", "no", "n"):
+                return False
+            return None
+
+        metrics: dict[str, Any] = {}
+        bat = _pick_int("battery_level", "battery", "battery_percentage", min_v=0, max_v=100)
+        if bat is not None:
+            metrics["battery_level"] = bat
+        bat_low = _pick_bool("battery_low", "low_battery")
+        if bat_low is not None:
+            metrics["battery_low"] = bat_low
+        rssi = _pick_int("rssi")
+        if rssi is not None:
+            metrics["rssi"] = rssi
+        lqi = _pick_int("linkquality", "lqi", min_v=0, max_v=255)
+        if lqi is not None:
+            metrics["linkquality"] = lqi
+        tamper = _pick_attr("tamper", "problem")
+        if tamper is not None:
+            metrics["tamper"] = tamper
+
+        return {"entity_id": eid, "state": state, "metrics": metrics}
 
     def _list_user_devices() -> list[dict[str, Any]]:
         devices = list(store.list_devices())

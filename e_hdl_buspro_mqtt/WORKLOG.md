@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-04-08 (locks: metriche entita' HA in UI user)
+- Backend lock mapping HA: aggiunte metriche opzionali nel payload stato lock (`battery_level`, `battery_low`, `rssi`, `linkquality`, `tamper`), ricavate dagli attributi entita' HA.
+- UI user `/locks`: sotto lo stato lock ora mostra metriche disponibili (es. `Batteria 78%`, `RSSI -62 dBm`, `Tamper attivo`).
+- Aggiornato aggiornamento realtime/snapshot per mantenere sincronizzate le metriche lock senza toccare i comandi lock/unlock/open.
+- Version bump: 0.1.339 -> 0.1.340.
+
 ## 2026-04-08 (UI user: trigger esterno E-manager)
 - UI user scenari: quando uno scenario ha trigger esterno attivo, nasconde i controlli trigger orario e mostra `Trigger E-manager` con nome friendly del trigger.
 - UI user modifica scenario (`/lights?sc=1`): rinominata dicitura da `Automazione HA` a `Automazione E-manager`.
