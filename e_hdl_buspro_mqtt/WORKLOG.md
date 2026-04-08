@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-04-08 (scenari top safe area)
+- Fix UI /scenarios: aggiunto spazio superiore con safe-area per evitare sovrapposizione con icone fisse (home/scenari/settings) quando le righe sono espanse.
+- main ora parte dall'alto (justify-content:flex-start) invece che centrato verticalmente.
+- Version bump: 0.1.333 -> 0.1.334.
+
 ## 2026-04-08 (scenari compact + trigger expand)
 - UI /scenarios: lista compatta di default (nome + pulsanti esecuzione).
 - Click sul nome scenario: espande/chiude dettagli trigger (orario, salva, disattiva, stato).
