@@ -225,7 +225,7 @@
             const btns = [];
             if (runEnabled) {
               btns.push(`<button class="btn pressFx" type="button" data-act="run" data-id="${escapeHtml(String(sc.id||''))}">Esegui</button>`);
-              btns.push(`<button class="btn danger pressFx" type="button" data-act="stop" data-id="${escapeHtml(String(sc.id||''))}">Stop</button>`);
+              btns.push(`<button class="btn pressFx ${on ? 'danger' : ''}" type="button" data-act="stop" data-id="${escapeHtml(String(sc.id||''))}">Stop</button>`);
             }
             if (onoffEnabled) {
               btns.push(`<button class="btn pressFx ${on ? 'danger' : 'primary'}" type="button" data-act="toggle" data-id="${escapeHtml(String(sc.id||''))}">${on ? 'Spegni' : 'Accendi'}</button>`);

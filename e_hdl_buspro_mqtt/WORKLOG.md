@@ -1018,3 +1018,10 @@
 - Nessuna modifica alla logica di esecuzione scenari; intervento solo UI.
 - Version bump: 0.1.327 -> 0.1.328.
 
+
+## 2026-04-08 (scenario stop button state color)
+- UI scenari: bottone STOP grigio quando scenario non attivo e rosso quando stato scenario = ON.
+- Applicato sia nella pagina /scenarios sia nel modal scenari di /lights.
+- Mantiene animazione press al click come gli altri pulsanti.
+- Version bump: 0.1.328 -> 0.1.329.
+
