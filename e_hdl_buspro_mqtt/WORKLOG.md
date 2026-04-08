@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-04-08 (modifica scenari mobile scroll fix)
+- UI /lights?sc=1 (modifica scenari): modal scenari reso scrollabile su mobile con overflow:auto e -webkit-overflow-scrolling: touch.
+- Modal posizionato sotto area top (safe-area) per evitare copertura/overlap e consentire scroll verticale naturale come UI user.
+- Desktop invariato: modal resta centrato con altezza massima precedente.
+- Version bump: 0.1.335 -> 0.1.336.
+
 ## 2026-04-08 (scenari centered desktop + safe mobile)
 - UI /scenarios: layout responsive corretto.
 - Desktop: lista scenari nuovamente centrata verticalmente.

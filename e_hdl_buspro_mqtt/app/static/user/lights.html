@@ -133,15 +133,19 @@
         background:rgba(0,0,0,.55);
         backdrop-filter: blur(10px);
         display:none;
-        align-items:center;
+        align-items:flex-start;
         justify-content:center;
-        padding:18px 14px;
+        padding:calc(env(safe-area-inset-top, 0px) + 72px) 14px 16px;
+        overflow:auto;
+        -webkit-overflow-scrolling:touch;
       }
       .modalBack.show{display:flex}
       .modal{
         width:min(760px, 100%);
-        max-height:min(78vh, 760px);
+        max-height:calc(100dvh - env(safe-area-inset-top, 0px) - 88px);
         overflow:auto;
+        -webkit-overflow-scrolling:touch;
+        overscroll-behavior:contain;
         border-radius:18px;
         border:1px solid var(--line);
         background:rgba(0,0,0,.05);
@@ -293,6 +297,15 @@
         .scItemCtrls{width:100%;justify-content:flex-start}
         .scRange{width:100%}
         .scItemTitle{white-space:normal}
+      }
+      @media(min-width:901px){
+        .modalBack{
+          align-items:center;
+          padding:18px 14px;
+        }
+        .modal{
+          max-height:min(78vh, 760px);
+        }
       }
     </style>
   </head>

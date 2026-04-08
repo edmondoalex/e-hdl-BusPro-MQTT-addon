@@ -50,7 +50,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.335"
+ADDON_VERSION = "0.1.336"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
