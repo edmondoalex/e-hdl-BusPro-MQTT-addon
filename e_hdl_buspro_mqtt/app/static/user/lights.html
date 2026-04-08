@@ -404,6 +404,19 @@
               </div>
               <div class="scItemSub" style="margin-top:6px">Offset in minuti (es. -15 prima di alba, +10 dopo)</div>
             </div>
+            <div class="scField">
+              <label>Automazione HA</label>
+              <div class="scChecks" style="gap:12px;flex-wrap:wrap">
+                <label style="display:flex;align-items:center;gap:8px">
+                  <input id="scHaTrigEnabled" type="checkbox" />
+                  Attivo
+                </label>
+                <select id="scHaTrigId" class="scSel">
+                  <option value="">Nessun trigger</option>
+                </select>
+              </div>
+              <div class="scItemSub" style="margin-top:6px">Scegli il trigger definito in Admin che puo' avviare questo scenario.</div>
+            </div>
             <div class="scItems" id="scItems"></div>
             <div class="scAddBox">
               <div class="scField" style="margin-bottom:8px">
@@ -468,6 +481,7 @@
       let renderQueued = false;
       let countsQueued = false;
       let lightScenarios = [];
+      let scenarioHaTriggers = [];
       let scenarioStates = {};
       let scenarioRunning = {};
       let editingScenarioId = '';
@@ -558,6 +572,30 @@
         const t = String((qs('scTrigType') && qs('scTrigType').value) || 'none').toLowerCase();
         const timeEl = qs('scTrigTime');
         if (timeEl) timeEl.disabled = t !== 'time';
+      }
+
+      function fillScenarioHaTriggerSelect(selectedId) {
+        const sel = qs('scHaTrigId');
+        if (!sel) return;
+        const cur = String(selectedId || '').trim();
+        sel.innerHTML = '<option value="">Nessun trigger</option>';
+        for (const tr of (scenarioHaTriggers || [])) {
+          if (!tr || typeof tr !== 'object') continue;
+          const id = String(tr.id || '').trim();
+          const name = String(tr.name || '').trim();
+          if (!id || !name) continue;
+          const opt = document.createElement('option');
+          opt.value = id;
+          opt.textContent = name;
+          sel.appendChild(opt);
+        }
+        sel.value = cur;
+      }
+
+      function getScenarioHaTrigger() {
+        const enabled = !!(qs('scHaTrigEnabled') && qs('scHaTrigEnabled').checked);
+        const id = String((qs('scHaTrigId') && qs('scHaTrigId').value) || '').trim();
+        return { ha_trigger_enabled: enabled && !!id, ha_trigger_id: id };
       }
 
       function animatePress(el) {
@@ -690,6 +728,12 @@
         const r = await getJson('api/user/light_scenarios');
         lightScenarios = (r && r.items) ? r.items : [];
         if (!Array.isArray(lightScenarios)) lightScenarios = [];
+        try {
+          const tr = await getJson('api/user/scenario_ha_triggers');
+          scenarioHaTriggers = (tr && Array.isArray(tr.items)) ? tr.items : [];
+        } catch (e) {
+          scenarioHaTriggers = [];
+        }
         try {
           const st = await getJson('api/user/light_scenarios_status');
           scenarioStates = (st && st.states && typeof st.states === 'object') ? st.states : {};
@@ -965,6 +1009,8 @@
         if (qs('scTrigType')) qs('scTrigType').value = String(trig.type || 'none');
         if (qs('scTrigTime')) qs('scTrigTime').value = String(trig.time || '');
         if (qs('scTrigOffset')) qs('scTrigOffset').value = String((trig.offset_min === undefined || trig.offset_min === null) ? 0 : trig.offset_min);
+        fillScenarioHaTriggerSelect(String(sc.ha_trigger_id || ''));
+        if (qs('scHaTrigEnabled')) qs('scHaTrigEnabled').checked = !!sc.ha_trigger_enabled;
         updateTriggerInputs();
 
         qs('scList').style.display = 'none';
@@ -995,6 +1041,8 @@
         if (qs('scTrigType')) qs('scTrigType').value = 'none';
         if (qs('scTrigTime')) qs('scTrigTime').value = '';
         if (qs('scTrigOffset')) qs('scTrigOffset').value = '0';
+        fillScenarioHaTriggerSelect('');
+        if (qs('scHaTrigEnabled')) qs('scHaTrigEnabled').checked = false;
         updateTriggerInputs();
         renderScenarioEditorItems();
         renderScenarioAddList();
@@ -1427,6 +1475,7 @@
             return;
           }
           const trigger = getScenarioTrigger();
+          const haTrigger = getScenarioHaTrigger();
           const items = (editingScenarioItems || []).map((it) => {
             const st = String(it.state || 'ON').toUpperCase() === 'OFF' ? 'OFF' : 'ON';
             let br = it.brightness;
@@ -1471,13 +1520,13 @@
             await getJson('api/user/light_scenarios', {
               method:'POST',
               headers:{'Content-Type':'application/json'},
-              body: JSON.stringify({ name, items, covers, run_enabled: flags.run_enabled, onoff_enabled: flags.onoff_enabled, trigger }),
+              body: JSON.stringify({ name, items, covers, run_enabled: flags.run_enabled, onoff_enabled: flags.onoff_enabled, trigger, ha_trigger_enabled: haTrigger.ha_trigger_enabled, ha_trigger_id: haTrigger.ha_trigger_id }),
             });
           } else {
             await getJson(`api/user/light_scenarios/${encodeURIComponent(sid)}`, {
               method:'PUT',
               headers:{'Content-Type':'application/json'},
-              body: JSON.stringify({ name, items, covers, run_enabled: flags.run_enabled, onoff_enabled: flags.onoff_enabled, trigger }),
+              body: JSON.stringify({ name, items, covers, run_enabled: flags.run_enabled, onoff_enabled: flags.onoff_enabled, trigger, ha_trigger_enabled: haTrigger.ha_trigger_enabled, ha_trigger_id: haTrigger.ha_trigger_id }),
             });
           }
           await loadLightScenarios();

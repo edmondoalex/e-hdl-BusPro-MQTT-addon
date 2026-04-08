@@ -96,6 +96,45 @@ def light_scenario_switch_discovery(
     return topic, payload
 
 
+def scenario_ha_trigger_button_discovery(
+    *,
+    discovery_prefix: str,
+    base_topic: str,
+    gateway_host: str,
+    gateway_port: int,
+    trigger: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    name = str(trigger.get("name") or "").strip() or "Trigger"
+    tid = str(trigger.get("id") or "").strip() or slugify(name)
+
+    nid = node_id(gateway_host, gateway_port)
+    oid = f"scenario_ha_trigger_{tid}"
+    uid = f"{nid}_scenario_ha_trigger_{tid}"
+
+    availability_topic = f"{base_topic}/availability"
+    cmd_topic = f"{base_topic}/cmd/scenario_ha_trigger/{tid}"
+
+    payload: dict[str, Any] = {
+        "name": name,
+        "unique_id": uid,
+        "availability_topic": availability_topic,
+        "payload_available": "online",
+        "payload_not_available": "offline",
+        "command_topic": cmd_topic,
+        "payload_press": "RUN",
+        "device": {
+            "identifiers": [f"buspro:scenario_ha_triggers:{nid}"],
+            "name": "BusPro Trigger Scenari HA",
+            "manufacturer": "HDL",
+            "model": "BusPro",
+        },
+        "icon": "mdi:gesture-tap-button",
+    }
+
+    topic = f"{discovery_prefix}/button/{nid}/{oid}/config"
+    return topic, payload
+
+
 def light_discovery(
     *,
     discovery_prefix: str,

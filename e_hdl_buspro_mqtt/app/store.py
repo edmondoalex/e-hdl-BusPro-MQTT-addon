@@ -56,6 +56,8 @@ class StateStore:
             "cover_groups_published": [],
             "light_scenarios": [],
             "light_scenarios_published": [],
+            "scenario_ha_triggers": [],
+            "scenario_ha_triggers_published": [],
             "hub_order": ["lights", "scenarios", "covers", "locks", "extra", "guard"],
             "ha_devices": [],
             "hub_links": [],
@@ -112,6 +114,8 @@ class StateStore:
         raw["ui"].setdefault("cover_groups_published", [])
         raw["ui"].setdefault("light_scenarios", [])
         raw["ui"].setdefault("light_scenarios_published", [])
+        raw["ui"].setdefault("scenario_ha_triggers", [])
+        raw["ui"].setdefault("scenario_ha_triggers_published", [])
         raw["ui"].setdefault("hub_order", self._default_ui().get("hub_order"))
         raw["ui"].setdefault("ha_devices", [])
         raw["ui"].setdefault("hub_links", [])
@@ -153,6 +157,10 @@ class StateStore:
             raw["ui"]["light_scenarios"] = []
         if not isinstance(raw["ui"].get("light_scenarios_published", []), list):
             raw["ui"]["light_scenarios_published"] = []
+        if not isinstance(raw["ui"].get("scenario_ha_triggers", []), list):
+            raw["ui"]["scenario_ha_triggers"] = []
+        if not isinstance(raw["ui"].get("scenario_ha_triggers_published", []), list):
+            raw["ui"]["scenario_ha_triggers_published"] = []
         if not isinstance(raw["ui"].get("hub_order", []), list):
             raw["ui"]["hub_order"] = list(self._default_ui().get("hub_order") or [])
         if not isinstance(raw["ui"].get("ha_devices", []), list):
@@ -306,6 +314,8 @@ class StateStore:
         raw["ui"].setdefault("cover_groups_published", [])
         raw["ui"].setdefault("light_scenarios", [])
         raw["ui"].setdefault("light_scenarios_published", [])
+        raw["ui"].setdefault("scenario_ha_triggers", [])
+        raw["ui"].setdefault("scenario_ha_triggers_published", [])
         raw["ui"].setdefault("hub_order", self._default_ui().get("hub_order"))
         raw["ui"].setdefault("ha_devices", [])
         raw["ui"].setdefault("hub_links", [])
@@ -345,6 +355,10 @@ class StateStore:
             ui["light_scenarios"] = []
         if not isinstance(ui.get("light_scenarios_published", []), list):
             ui["light_scenarios_published"] = []
+        if not isinstance(ui.get("scenario_ha_triggers", []), list):
+            ui["scenario_ha_triggers"] = []
+        if not isinstance(ui.get("scenario_ha_triggers_published", []), list):
+            ui["scenario_ha_triggers_published"] = []
         if not isinstance(ui.get("hub_order", []), list):
             ui["hub_order"] = list(self._default_ui().get("hub_order") or [])
         if not isinstance(ui.get("ha_devices", []), list):
@@ -677,6 +691,148 @@ class StateStore:
         self.write_raw(raw)
         return cleaned
 
+    def list_scenario_ha_triggers(self) -> list[dict[str, Any]]:
+        raw = self.read_raw()
+        ui = raw.get("ui") or {}
+        items = ui.get("scenario_ha_triggers") or []
+        if not isinstance(items, list):
+            return []
+        out: list[dict[str, Any]] = []
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            tid = str(it.get("id") or "").strip()
+            name = str(it.get("name") or "").strip()
+            if not tid or not name:
+                continue
+            out.append({"id": tid, "name": name})
+        return out
+
+    @staticmethod
+    def _normalize_scenario_ha_trigger(payload: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be an object")
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            raise ValueError("name is required")
+        if len(name) > 80:
+            name = name[:80].strip()
+        return {"name": name}
+
+    def add_scenario_ha_trigger(self, payload: dict[str, Any]) -> dict[str, Any]:
+        cleaned = self._normalize_scenario_ha_trigger(payload)
+        item = {"id": str(uuid.uuid4()), "name": cleaned["name"]}
+        raw = self.read_raw()
+        ui = dict(raw.get("ui") or {})
+        items = ui.get("scenario_ha_triggers") or []
+        if not isinstance(items, list):
+            items = []
+        out = [dict(it) for it in items if isinstance(it, dict)]
+        out.append(item)
+        ui["scenario_ha_triggers"] = out
+        raw["ui"] = ui
+        self.write_raw(raw)
+        return item
+
+    def update_scenario_ha_trigger(self, *, trigger_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+        tid = str(trigger_id or "").strip()
+        if not tid:
+            return None
+        cleaned = self._normalize_scenario_ha_trigger(payload)
+        raw = self.read_raw()
+        ui = dict(raw.get("ui") or {})
+        items = ui.get("scenario_ha_triggers") or []
+        if not isinstance(items, list):
+            return None
+        updated: dict[str, Any] | None = None
+        out: list[dict[str, Any]] = []
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            iid = str(it.get("id") or "").strip()
+            if iid != tid:
+                out.append(dict(it))
+                continue
+            updated = {"id": tid, "name": cleaned["name"]}
+            out.append(updated)
+        if updated is None:
+            return None
+        ui["scenario_ha_triggers"] = out
+        raw["ui"] = ui
+        self.write_raw(raw)
+        return updated
+
+    def delete_scenario_ha_trigger(self, *, trigger_id: str) -> bool:
+        tid = str(trigger_id or "").strip()
+        if not tid:
+            return False
+        raw = self.read_raw()
+        ui = dict(raw.get("ui") or {})
+        items = ui.get("scenario_ha_triggers") or []
+        if not isinstance(items, list):
+            return False
+        before = len([it for it in items if isinstance(it, dict)])
+        kept = [dict(it) for it in items if isinstance(it, dict) and str(it.get("id") or "").strip() != tid]
+        if len(kept) == before:
+            return False
+        # Also unlink deleted trigger from scenarios.
+        scenarios = ui.get("light_scenarios") or []
+        if isinstance(scenarios, list):
+            cleaned_scenarios: list[dict[str, Any]] = []
+            for sc in scenarios:
+                if not isinstance(sc, dict):
+                    continue
+                cur = dict(sc)
+                if str(cur.get("ha_trigger_id") or "").strip() == tid:
+                    cur["ha_trigger_id"] = ""
+                    cur["ha_trigger_enabled"] = False
+                cleaned_scenarios.append(cur)
+            ui["light_scenarios"] = cleaned_scenarios
+        ui["scenario_ha_triggers"] = kept
+        raw["ui"] = ui
+        self.write_raw(raw)
+        return True
+
+    def get_published_scenario_ha_trigger_ids(self) -> list[str]:
+        raw = self.read_raw()
+        ui = raw.get("ui") or {}
+        ids = ui.get("scenario_ha_triggers_published") or []
+        if not isinstance(ids, list):
+            return []
+        out: list[str] = []
+        for v in ids:
+            s = str(v or "").strip()
+            if s:
+                out.append(s)
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for s in out:
+            k = s.casefold()
+            if k in seen:
+                continue
+            seen.add(k)
+            cleaned.append(s)
+        return cleaned
+
+    def set_published_scenario_ha_trigger_ids(self, ids: list[str]) -> list[str]:
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for v in ids or []:
+            s = str(v or "").strip()
+            if not s:
+                continue
+            k = s.casefold()
+            if k in seen:
+                continue
+            seen.add(k)
+            cleaned.append(s)
+        raw = self.read_raw()
+        ui = dict(raw.get("ui") or {})
+        ui["scenario_ha_triggers_published"] = cleaned
+        raw["ui"] = ui
+        self.write_raw(raw)
+        return cleaned
+
     def list_light_scenarios(self) -> list[dict[str, Any]]:
         raw = self.read_raw()
         ui = raw.get("ui") or {}
@@ -691,6 +847,10 @@ class StateStore:
                     cur["run_enabled"] = False
                 if "onoff_enabled" not in cur:
                     cur["onoff_enabled"] = True
+                if "ha_trigger_enabled" not in cur:
+                    cur["ha_trigger_enabled"] = False
+                if "ha_trigger_id" not in cur:
+                    cur["ha_trigger_id"] = ""
                 out.append(cur)
         return out
 
@@ -887,6 +1047,14 @@ class StateStore:
             out["run_enabled"] = bool(payload.get("run_enabled"))
         if "onoff_enabled" in payload:
             out["onoff_enabled"] = bool(payload.get("onoff_enabled"))
+        if "ha_trigger_enabled" in payload:
+            out["ha_trigger_enabled"] = bool(payload.get("ha_trigger_enabled"))
+        if "ha_trigger_id" in payload:
+            out["ha_trigger_id"] = str(payload.get("ha_trigger_id") or "").strip()
+            if len(str(out["ha_trigger_id"])) > 80:
+                out["ha_trigger_id"] = str(out["ha_trigger_id"])[:80].strip()
+        if bool(out.get("ha_trigger_enabled")) and not str(out.get("ha_trigger_id") or "").strip():
+            out["ha_trigger_enabled"] = False
         trig_in = payload.get("trigger")
         if isinstance(trig_in, dict):
             t_type = str(trig_in.get("type") or "none").strip().lower()
@@ -914,6 +1082,8 @@ class StateStore:
         scenario_id = str(uuid.uuid4())
         run_enabled = bool(cleaned.get("run_enabled")) if "run_enabled" in cleaned else False
         onoff_enabled = bool(cleaned.get("onoff_enabled")) if "onoff_enabled" in cleaned else True
+        ha_trigger_enabled = bool(cleaned.get("ha_trigger_enabled")) if "ha_trigger_enabled" in cleaned else False
+        ha_trigger_id = str(cleaned.get("ha_trigger_id") or "").strip() if "ha_trigger_id" in cleaned else ""
         out = {
             "id": scenario_id,
             "name": cleaned["name"],
@@ -921,6 +1091,8 @@ class StateStore:
             "covers": cleaned.get("covers") or [],
             "run_enabled": run_enabled,
             "onoff_enabled": onoff_enabled,
+            "ha_trigger_enabled": ha_trigger_enabled,
+            "ha_trigger_id": ha_trigger_id,
         }
         if "trigger" in cleaned:
             out["trigger"] = cleaned.get("trigger") or {}
@@ -968,6 +1140,10 @@ class StateStore:
                 cur["run_enabled"] = bool(cleaned.get("run_enabled"))
             if "onoff_enabled" in cleaned:
                 cur["onoff_enabled"] = bool(cleaned.get("onoff_enabled"))
+            if "ha_trigger_enabled" in cleaned:
+                cur["ha_trigger_enabled"] = bool(cleaned.get("ha_trigger_enabled"))
+            if "ha_trigger_id" in cleaned:
+                cur["ha_trigger_id"] = str(cleaned.get("ha_trigger_id") or "").strip()
             if "trigger" in cleaned:
                 cur["trigger"] = cleaned.get("trigger") or {}
             updated = cur

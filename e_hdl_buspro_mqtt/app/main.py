@@ -37,6 +37,7 @@ from .discovery import (
     switch_discovery,
     light_scenario_button_discovery,
     light_scenario_switch_discovery,
+    scenario_ha_trigger_button_discovery,
     slugify,
     temperature_discovery,
 )
@@ -50,7 +51,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.337"
+ADDON_VERSION = "0.1.338"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -717,6 +718,8 @@ def create_app() -> FastAPI:
         if path.startswith("/api/user/light_scenarios"):
             return await call_next(request)
         if path == "/api/user/light_scenarios_status" and request.method.upper() == "GET":
+            return await call_next(request)
+        if path == "/api/user/scenario_ha_triggers" and request.method.upper() == "GET":
             return await call_next(request)
         if guard_enabled and path == "/api/guard_cameras" and request.method.upper() == "GET":
             return await call_next(request)
@@ -1717,6 +1720,11 @@ self.addEventListener('fetch', (event) => {{
     def _light_scenario_state_topic(*, sid: str) -> str:
         sid2 = str(sid or "").strip()
         return f"{settings.mqtt.base_topic}/state/light_scenario/{sid2}"
+
+    def _scenario_ha_trigger_config_topic(*, trigger_id: str) -> str:
+        nid = f"buspro_{settings.gateway.host.replace('.', '_')}_{settings.gateway.port}"
+        tid = str(trigger_id or "").strip()
+        return f"{settings.mqtt.discovery_prefix}/button/{nid}/scenario_ha_trigger_{tid}/config"
 
     def _rebuild_light_scenario_index() -> None:
         membership: dict[str, set[str]] = {}
@@ -2841,6 +2849,37 @@ self.addEventListener('fetch', (event) => {{
                 continue
 
         store.set_published_light_scenario_ids(current_sids)
+
+        # Scenario HA triggers (buttons for HA automations) + cleanup removed ones
+        ha_triggers = store.list_scenario_ha_triggers()
+        current_tids: list[str] = []
+        for tr in ha_triggers:
+            try:
+                tid = str(tr.get("id") or "").strip()
+            except Exception:
+                tid = ""
+            if tid:
+                current_tids.append(tid)
+
+        prev_tids = store.get_published_scenario_ha_trigger_ids()
+        for tid in prev_tids:
+            if tid not in current_tids:
+                mqtt.publish(_scenario_ha_trigger_config_topic(trigger_id=tid), "", retain=True)
+
+        for tr in ha_triggers:
+            try:
+                topic, payload = scenario_ha_trigger_button_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=settings.gateway.host,
+                    gateway_port=settings.gateway.port,
+                    trigger=tr,
+                )
+                mqtt.publish(topic, payload, retain=True)
+            except Exception:
+                continue
+
+        store.set_published_scenario_ha_trigger_ids(current_tids)
         _rebuild_light_scenario_index()
 
     @api.on_event("startup")
@@ -3896,6 +3935,7 @@ self.addEventListener('fetch', (event) => {{
         mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/light/+/+/+")
         mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/light_scenario/+")
         mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/light_scenario_switch/+")
+        mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/scenario_ha_trigger/+")
         mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/cover/+/+/+")
         mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/cover_raw/+/+/+")
         mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/cover_pos/+/+/+")
@@ -3925,6 +3965,10 @@ self.addEventListener('fetch', (event) => {{
                     cmd = payload.strip().upper()
                     if cmd in ("ON", "OFF"):
                         asyncio.run_coroutine_threadsafe(run_light_scenario(scenario_id=sid, payload={"state": cmd}), loop)
+                    return
+                if kind2 == "scenario_ha_trigger":
+                    tid = parts[-1]
+                    asyncio.run_coroutine_threadsafe(run_scenarios_by_ha_trigger(trigger_id=tid), loop)
                     return
                 if kind2 == "cover_group":
                     gid = parts[-1]
@@ -6973,6 +7017,21 @@ self.addEventListener('fetch', (event) => {{
             topics.append(_light_scenario_switch_config_topic(sid=sid))
             topics.append(_light_scenario_state_topic(sid=sid))
 
+        # Scenario HA triggers (admin-defined)
+        tids: set[str] = set()
+        for tr in store.list_scenario_ha_triggers():
+            try:
+                tid = str(tr.get("id") or "").strip()
+                if tid:
+                    tids.add(tid)
+            except Exception:
+                continue
+        for tid in store.get_published_scenario_ha_trigger_ids():
+            if tid:
+                tids.add(str(tid))
+        for tid in tids:
+            topics.append(_scenario_ha_trigger_config_topic(trigger_id=tid))
+
         # de-dupe topics preserving order
         uniq: list[str] = []
         seen: set[str] = set()
@@ -7006,6 +7065,51 @@ self.addEventListener('fetch', (event) => {{
             out[sid] = _scenario_switch_state(sc)
             running_map[sid] = bool(running_state.get(sid))
         return {"states": out, "running": running_map}
+
+    @api.get("/api/user/scenario_ha_triggers")
+    async def list_user_scenario_ha_triggers():
+        return {"items": store.list_scenario_ha_triggers()}
+
+    @api.get("/api/scenario_ha_triggers")
+    async def list_scenario_ha_triggers():
+        return {"items": store.list_scenario_ha_triggers()}
+
+    @api.post("/api/scenario_ha_triggers")
+    async def create_scenario_ha_trigger(payload: dict[str, Any]):
+        try:
+            out = store.add_scenario_ha_trigger(payload)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        try:
+            await _republish_discovery()
+        except Exception:
+            pass
+        return out
+
+    @api.put("/api/scenario_ha_triggers/{trigger_id}")
+    async def update_scenario_ha_trigger(trigger_id: str, payload: dict[str, Any]):
+        try:
+            out = store.update_scenario_ha_trigger(trigger_id=trigger_id, payload=payload)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        if out is None:
+            raise HTTPException(status_code=404, detail="Not Found")
+        try:
+            await _republish_discovery()
+        except Exception:
+            pass
+        return out
+
+    @api.delete("/api/scenario_ha_triggers/{trigger_id}")
+    async def delete_scenario_ha_trigger(trigger_id: str):
+        ok = store.delete_scenario_ha_trigger(trigger_id=trigger_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Not Found")
+        try:
+            await _republish_discovery()
+        except Exception:
+            pass
+        return {"ok": True}
 
     @api.post("/api/user/light_scenarios")
     async def create_light_scenario(payload: dict[str, Any]):
@@ -7388,6 +7492,30 @@ self.addEventListener('fetch', (event) => {{
         except Exception:
             pass
         return {"ok": True, "sent": sent, "cover_sent": cover_sent}
+
+    async def run_scenarios_by_ha_trigger(*, trigger_id: str) -> dict[str, Any]:
+        tid = str(trigger_id or "").strip()
+        if not tid:
+            return {"ok": False, "trigger_id": "", "matched": 0, "started": 0}
+        matched = 0
+        started = 0
+        for sc in store.list_light_scenarios():
+            if not isinstance(sc, dict):
+                continue
+            if not bool(sc.get("ha_trigger_enabled")):
+                continue
+            if str(sc.get("ha_trigger_id") or "").strip() != tid:
+                continue
+            sid = str(sc.get("id") or "").strip()
+            if not sid:
+                continue
+            matched += 1
+            try:
+                await run_light_scenario(sid, {"command": "RUN"})
+                started += 1
+            except Exception:
+                continue
+        return {"ok": True, "trigger_id": tid, "matched": matched, "started": started}
 
     @api.post("/api/control/light/{subnet_id}/{device_id}/{channel}")
     async def control_light(subnet_id: int, device_id: int, channel: int, payload: dict[str, Any]):

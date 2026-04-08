@@ -1,5 +1,13 @@
 # WORKLOG
 
+## 2026-04-08 (HA automation triggers for scenarios)
+- Added admin-managed list of HA scenario triggers (friendly names) with CRUD API and Admin UI section.
+- Added MQTT Discovery button entities for each HA scenario trigger: automation action can press these buttons.
+- Added trigger command handling: cmd/scenario_ha_trigger/<id> now starts all scenarios linked to that trigger.
+- Added per-scenario fields in user scenario editor: Automazione HA (enable + trigger selection).
+- User UI now reads trigger list and stores ha_trigger_enabled + ha_trigger_id in scenario payload.
+- Version bump: 0.1.337 -> 0.1.338.
+
 ## 2026-04-08 (modifica scenari: nomi sempre visibili)
 - UI /lights?sc=1: righe scenario ristrutturate in due blocchi (sinistra nome+meta, destra pulsanti).
 - Fix clipping nomi scenario: nome non viene più mangiato quando ci sono molti pulsanti.

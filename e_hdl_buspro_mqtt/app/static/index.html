@@ -1308,6 +1308,45 @@
             </div>
           </details>
 
+          <details class="acc" data-acc="scenario_ha_triggers">
+            <summary>
+              <h2 style="margin:0;font-size:16px">Scenari: Trigger da Automazioni HA</h2>
+            </summary>
+            <div class="accBody">
+              <div class="muted" style="margin-top:6px">
+                Crea trigger friendly da usare nelle automazioni Home Assistant.
+                Ogni trigger genera una entita' <code>button</code> via MQTT Discovery.
+                Nella UI utente ogni scenario puo' scegliere quale trigger lo avvia.
+              </div>
+
+              <form id="scHaTrigForm" style="margin-top:10px">
+                <input id="scHaTrigId" type="hidden" />
+                <div class="row3">
+                  <div>
+                    <label>Nome trigger</label>
+                    <input id="scHaTrigName" required placeholder="Es: Sveglia Mattina" />
+                  </div>
+                  <div style="display:flex;align-items:end;gap:10px">
+                    <button class="btn small" id="scHaTrigSubmit" type="submit">Aggiungi</button>
+                    <button class="btn secondary small" id="scHaTrigCancel" type="button" style="display:none">Annulla</button>
+                  </div>
+                </div>
+                <div class="muted" id="scHaTrigMsg" style="margin-top:8px"></div>
+              </form>
+
+              <table id="scHaTrigTable" aria-label="scenario ha triggers" style="margin-top:10px">
+                <thead>
+                  <tr>
+                    <th>Nome</th>
+                    <th>ID</th>
+                    <th>Azioni</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </details>
+
           <details class="acc" data-acc="ha_devices">
             <summary>
               <h2 style="margin:0;font-size:16px">Home Assistant devices (UI utente)</h2>
@@ -4360,6 +4399,7 @@
       let hubLinks = [];
       let homeActions = [];
       let scenarioItems = [];
+      let scenarioHaTriggers = [];
       let home2Order = [];
       let hubIcons = null;
       let hubShow = null;
@@ -5117,6 +5157,62 @@
         }
       }
 
+      function setScenarioHaTriggerEditing(item) {
+        const isEdit = !!(item && item.id);
+        qs('scHaTrigId').value = isEdit ? String(item.id || '') : '';
+        qs('scHaTrigName').value = isEdit ? String(item.name || '') : '';
+        qs('scHaTrigSubmit').textContent = isEdit ? 'Salva' : 'Aggiungi';
+        qs('scHaTrigCancel').style.display = isEdit ? '' : 'none';
+        qs('scHaTrigMsg').textContent = '';
+      }
+
+      function renderScenarioHaTriggers() {
+        const table = document.getElementById('scHaTrigTable');
+        if (!table) return;
+        const body = table.querySelector('tbody');
+        body.innerHTML = '';
+        const items = Array.isArray(scenarioHaTriggers) ? scenarioHaTriggers : [];
+        for (const it of items) {
+          const id = String(it.id || '').trim();
+          const name = String(it.name || '').trim();
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${escapeHtml(name)}</td>
+            <td><code>${escapeHtml(id)}</code></td>
+            <td>
+              <button class="btn secondary small" data-act="edit">Modifica</button>
+              <button class="btn danger small" data-act="del">Elimina</button>
+            </td>
+          `;
+          tr.querySelector('[data-act="edit"]').addEventListener('click', (ev) => {
+            ev.preventDefault();
+            setScenarioHaTriggerEditing(it);
+          });
+          tr.querySelector('[data-act="del"]').addEventListener('click', async (ev) => {
+            ev.preventDefault();
+            if (!confirm(`Eliminare trigger "${name || id}"?`)) return;
+            try {
+              await getJson(`api/scenario_ha_triggers/${encodeURIComponent(id)}`, { method: 'DELETE' });
+              await refreshScenarioHaTriggers();
+              await refreshScenarioIdsDatalist();
+            } catch (e) {
+              qs('scHaTrigMsg').textContent = 'Errore eliminazione trigger';
+            }
+          });
+          body.appendChild(tr);
+        }
+      }
+
+      async function refreshScenarioHaTriggers() {
+        try {
+          const res = await getJson('api/scenario_ha_triggers');
+          scenarioHaTriggers = Array.isArray(res && res.items) ? res.items : [];
+        } catch (e) {
+          scenarioHaTriggers = [];
+        }
+        renderScenarioHaTriggers();
+      }
+
       function setScenarioConfigEditor(sc) {
         const msg = qs('scCfgMsg');
         if (msg) msg.textContent = '';
@@ -5447,6 +5543,8 @@
       refreshHome2Order();
       refreshScenarioIdsDatalist();
       setScenarioConfigEditor(null);
+      refreshScenarioHaTriggers();
+      setScenarioHaTriggerEditing(null);
       refreshHaDevices();
       refreshUiOpts();
       refreshPwaConfig();
@@ -5676,6 +5774,47 @@
           return;
         }
         setScenarioConfigEditor(sc);
+      });
+
+      qs('scHaTrigForm').addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        const msg = qs('scHaTrigMsg');
+        if (msg) msg.textContent = '';
+        try {
+          const id = String(qs('scHaTrigId').value || '').trim();
+          const name = String(qs('scHaTrigName').value || '').trim();
+          if (!name) {
+            if (msg) msg.textContent = 'Nome trigger obbligatorio';
+            return;
+          }
+          if (id) {
+            await getJson(`api/scenario_ha_triggers/${encodeURIComponent(id)}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name }),
+            });
+          } else {
+            await getJson('api/scenario_ha_triggers', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name }),
+            });
+          }
+          await refreshScenarioHaTriggers();
+          await refreshScenarioIdsDatalist();
+          setScenarioHaTriggerEditing(null);
+          if (msg) {
+            msg.textContent = 'Salvato';
+            setTimeout(() => { msg.textContent = ''; }, 1400);
+          }
+        } catch (e) {
+          if (msg) msg.textContent = (e && e.message) ? e.message : 'Errore';
+        }
+      });
+
+      qs('scHaTrigCancel').addEventListener('click', (ev) => {
+        ev.preventDefault();
+        setScenarioHaTriggerEditing(null);
       });
 
       qs('btnScCfgValidate').addEventListener('click', () => {
