@@ -51,7 +51,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.345"
+ADDON_VERSION = "0.1.346"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -7469,12 +7469,10 @@ self.addEventListener('fetch', (event) => {{
 
         sent = 0
         # Extra pacing for scenario light bursts (in addition to gateway pacing).
-        # Tuned to reduce telegram loss on busy BusPro networks.
         scenario_light_delay_s = max(
             0.0,
-            float(getattr(settings, "light_cmd_interval_s", 0.12) or 0.0) + 0.12,
+            float(getattr(settings, "light_cmd_interval_s", 0.12) or 0.0) + 0.08,
         )
-        buspro_light_targets: list[dict[str, Any]] = []
         for it in items:
             if not isinstance(it, dict):
                 continue
@@ -7541,15 +7539,6 @@ self.addEventListener('fetch', (event) => {{
             except Exception:
                 br255 = None
 
-            buspro_light_targets.append(
-                {
-                    "subnet_id": subnet_id,
-                    "device_id": device_id,
-                    "channel": channel,
-                    "on": on,
-                    "brightness255": br255,
-                }
-            )
             try:
                 await gw.set_light(subnet_id=subnet_id, device_id=device_id, channel=channel, on=on, brightness255=br255)
                 sent += 1
@@ -7567,91 +7556,6 @@ self.addEventListener('fetch', (event) => {{
                     e,
                 )
                 continue
-
-        # Scenario reliability pass for BusPro lights:
-        # read back and retry mismatched targets sequentially with pacing.
-        if buspro_light_targets:
-            for t in buspro_light_targets:
-                try:
-                    await gw.read_light_status(
-                        subnet_id=int(t["subnet_id"]),
-                        device_id=int(t["device_id"]),
-                        channel=int(t["channel"]),
-                    )
-                except Exception:
-                    continue
-
-            await asyncio.sleep(0.35)
-
-            states_now = store.get_states()
-            retry_targets: list[dict[str, Any]] = []
-            for t in buspro_light_targets:
-                addr = f"{int(t['subnet_id'])}.{int(t['device_id'])}.{int(t['channel'])}"
-                st = states_now.get(f"light:{addr}") or {}
-                cur = str(st.get("state") or "").upper()
-                want = "ON" if bool(t.get("on")) else "OFF"
-                if cur != want:
-                    retry_targets.append(t)
-
-            if retry_targets:
-                _LOGGER.warning(
-                    "scenario %s: retrying %s/%s BusPro light targets after readback mismatch (paced)",
-                    sid_current,
-                    len(retry_targets),
-                    len(buspro_light_targets),
-                )
-                def _target_addr(tx: dict[str, Any]) -> str:
-                    return f"{int(tx['subnet_id'])}.{int(tx['device_id'])}.{int(tx['channel'])}"
-
-                def _target_matches(tx: dict[str, Any], states_map: dict[str, Any]) -> bool:
-                    addr = _target_addr(tx)
-                    st = states_map.get(f"light:{addr}") or {}
-                    cur = str(st.get("state") or "").upper()
-                    want = "ON" if bool(tx.get("on")) else "OFF"
-                    return cur == want
-
-                still_bad: list[str] = []
-                for t in retry_targets:
-                    ok = False
-                    for _attempt in range(2):
-                        try:
-                            await gw.set_light(
-                                subnet_id=int(t["subnet_id"]),
-                                device_id=int(t["device_id"]),
-                                channel=int(t["channel"]),
-                                on=bool(t["on"]),
-                                brightness255=(int(t["brightness255"]) if t.get("brightness255") is not None else None),
-                            )
-                        except Exception:
-                            pass
-
-                        if scenario_light_delay_s > 0:
-                            await asyncio.sleep(scenario_light_delay_s)
-
-                        try:
-                            await gw.read_light_status(
-                                subnet_id=int(t["subnet_id"]),
-                                device_id=int(t["device_id"]),
-                                channel=int(t["channel"]),
-                            )
-                        except Exception:
-                            pass
-
-                        await asyncio.sleep(0.20)
-                        if _target_matches(t, store.get_states()):
-                            ok = True
-                            break
-
-                    if not ok:
-                        still_bad.append(_target_addr(t))
-
-                if still_bad:
-                    _LOGGER.warning(
-                        "scenario %s: BusPro light targets still mismatched after paced retry (%s): %s",
-                        sid_current,
-                        len(still_bad),
-                        ", ".join(still_bad[:20]),
-                    )
 
         async def _run_single_cover_direct(subnet_id: int, device_id: int, channel: int, cmd_eff: str) -> bool:
             try:

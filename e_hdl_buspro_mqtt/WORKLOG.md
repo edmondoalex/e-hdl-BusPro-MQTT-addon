@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-04-16 (scenario rollback verify/retry, keep pacing)
+- Runtime scenari luci BusPro: rimossa la logica di verifica+retry per-target introdotta in `0.1.345` (causava comportamento instabile in alcuni impianti).
+- Mantenuto pacing esplicito tra comandi scenario luce, con delay moderato, per ridurre burst sul bus senza effetti collaterali.
+- Version bump: 0.1.345 -> 0.1.346.
+
 ## 2026-04-16 (scenario BusPro pacing + per-target verify)
 - Runtime scenari luci BusPro: aggiunto delay esplicito tra comandi consecutivi nello scenario (oltre al pacing del gateway) per ridurre perdita telegrammi su burst.
 - Verifica scenario: retry sequenziale per-target con `read_light_status` dopo ogni tentativo (fino a 2 tentativi) e log degli indirizzi ancora fuori stato.
