@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-04-16 (scenario reliability: readback + retry)
+- Runtime scenari luci BusPro: aggiunta verifica stato post-invio (`read_light_status`) e retry automatico una volta solo sui target rimasti fuori stato.
+- Logging: aggiunti warning con conteggio mismatch/retry e lista indirizzi che restano fuori target dopo il retry.
+- Version bump: 0.1.343 -> 0.1.344.
+
 ## 2026-04-16 (build fix BUILD_FROM fallback)
 - Dockerfile: aggiunto default per `ARG BUILD_FROM` (`ghcr.io/home-assistant/amd64-base:3.19`) per evitare build failure quando Supervisor non passa il build-arg.
 - Version bump: 0.1.342 -> 0.1.343.

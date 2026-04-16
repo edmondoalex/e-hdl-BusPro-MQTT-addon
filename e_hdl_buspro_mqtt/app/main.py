@@ -51,7 +51,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.343"
+ADDON_VERSION = "0.1.344"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -7468,6 +7468,7 @@ self.addEventListener('fetch', (event) => {{
         items = list(dedup_items.values())
 
         sent = 0
+        buspro_light_targets: list[dict[str, Any]] = []
         for it in items:
             if not isinstance(it, dict):
                 continue
@@ -7533,6 +7534,16 @@ self.addEventListener('fetch', (event) => {{
                 br255 = int(br) if (br is not None and on) else None
             except Exception:
                 br255 = None
+
+            buspro_light_targets.append(
+                {
+                    "subnet_id": subnet_id,
+                    "device_id": device_id,
+                    "channel": channel,
+                    "on": on,
+                    "brightness255": br255,
+                }
+            )
             try:
                 await gw.set_light(subnet_id=subnet_id, device_id=device_id, channel=channel, on=on, brightness255=br255)
                 sent += 1
@@ -7548,6 +7559,78 @@ self.addEventListener('fetch', (event) => {{
                     e,
                 )
                 continue
+
+        # Scenario reliability pass for BusPro lights:
+        # after initial dispatch, read back and retry only mismatched targets once.
+        if buspro_light_targets:
+            for t in buspro_light_targets:
+                try:
+                    await gw.read_light_status(
+                        subnet_id=int(t["subnet_id"]),
+                        device_id=int(t["device_id"]),
+                        channel=int(t["channel"]),
+                    )
+                except Exception:
+                    continue
+
+            await asyncio.sleep(0.30)
+
+            states_now = store.get_states()
+            retry_targets: list[dict[str, Any]] = []
+            for t in buspro_light_targets:
+                addr = f"{int(t['subnet_id'])}.{int(t['device_id'])}.{int(t['channel'])}"
+                st = states_now.get(f"light:{addr}") or {}
+                cur = str(st.get("state") or "").upper()
+                want = "ON" if bool(t.get("on")) else "OFF"
+                if cur != want:
+                    retry_targets.append(t)
+
+            if retry_targets:
+                _LOGGER.warning(
+                    "scenario %s: retrying %s/%s BusPro light targets after readback mismatch",
+                    sid_current,
+                    len(retry_targets),
+                    len(buspro_light_targets),
+                )
+                for t in retry_targets:
+                    try:
+                        await gw.set_light(
+                            subnet_id=int(t["subnet_id"]),
+                            device_id=int(t["device_id"]),
+                            channel=int(t["channel"]),
+                            on=bool(t["on"]),
+                            brightness255=(int(t["brightness255"]) if t.get("brightness255") is not None else None),
+                        )
+                    except Exception:
+                        continue
+
+                for t in retry_targets:
+                    try:
+                        await gw.read_light_status(
+                            subnet_id=int(t["subnet_id"]),
+                            device_id=int(t["device_id"]),
+                            channel=int(t["channel"]),
+                        )
+                    except Exception:
+                        continue
+                await asyncio.sleep(0.25)
+
+                states_end = store.get_states()
+                still_bad: list[str] = []
+                for t in retry_targets:
+                    addr = f"{int(t['subnet_id'])}.{int(t['device_id'])}.{int(t['channel'])}"
+                    st = states_end.get(f"light:{addr}") or {}
+                    cur = str(st.get("state") or "").upper()
+                    want = "ON" if bool(t.get("on")) else "OFF"
+                    if cur != want:
+                        still_bad.append(addr)
+                if still_bad:
+                    _LOGGER.warning(
+                        "scenario %s: BusPro light targets still mismatched after retry (%s): %s",
+                        sid_current,
+                        len(still_bad),
+                        ", ".join(still_bad[:20]),
+                    )
 
         async def _run_single_cover_direct(subnet_id: int, device_id: int, channel: int, cmd_eff: str) -> bool:
             try:
