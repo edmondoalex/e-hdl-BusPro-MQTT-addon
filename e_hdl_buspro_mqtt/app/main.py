@@ -51,7 +51,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.347"
+ADDON_VERSION = "0.1.348"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -7531,6 +7531,11 @@ self.addEventListener('fetch', (event) => {{
             elif desired is None:
                 state = base_state
             if state not in ("ON", "OFF"):
+                continue
+            # RUN behavior safety: when no explicit desired state is provided,
+            # do not send OFF commands for scenario lights.
+            # OFF remains available only for explicit scenario OFF/toggle paths.
+            if desired is None and state == "OFF":
                 continue
             on = state == "ON"
             br = it.get("brightness")

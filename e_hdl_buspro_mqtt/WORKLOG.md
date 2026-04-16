@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-04-16 (RUN scenarios: ignore OFF light items)
+- Runtime scenari luci: in esecuzione `RUN` (senza stato esplicito) vengono inviati solo comandi `ON`; gli item `OFF` vengono ignorati.
+- I comandi `OFF` restano disponibili solo nei percorsi espliciti ON/OFF/toggle scenario.
+- Version bump: 0.1.347 -> 0.1.348.
+
 ## 2026-04-16 (gateway queue race fix under load)
 - BusPro gateway: fix race condition nei worker code (`light`/`cover`) tra controllo coda vuota e `event.clear()`, che poteva perdere wakeup e lasciare job in coda non eseguiti.
 - Event clear ora avviene sotto lock condiviso con enqueue, evitando comandi persi in burst (scenario o comandi multipli ravvicinati).
