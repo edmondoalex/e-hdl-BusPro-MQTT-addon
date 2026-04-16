@@ -1,5 +1,9 @@
 # WORKLOG
 
+## 2026-04-16 (build fix BUILD_FROM fallback)
+- Dockerfile: aggiunto default per `ARG BUILD_FROM` (`ghcr.io/home-assistant/amd64-base:3.19`) per evitare build failure quando Supervisor non passa il build-arg.
+- Version bump: 0.1.342 -> 0.1.343.
+
 ## 2026-04-16 (scenario list + target dedupe)
 - UI user `/lights` scenari: rimossi limiti artificiali nelle liste "Aggiungi" (luci e tapparelle), così non risultano più parziali.
 - UI scenari: inclusi tutti i dispositivi luce rilevanti per l'editor scenario (anche categorizzati `Switch/Extra` lato BusPro e pagina `extra` lato HA).

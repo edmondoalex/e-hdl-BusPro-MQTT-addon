@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio 
 import base64
@@ -51,7 +51,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.342"
+ADDON_VERSION = "0.1.343"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -3173,7 +3173,7 @@ self.addEventListener('fetch', (event) => {{
             if not isinstance(payload, (list, tuple)) or len(payload) != 2:
                 return None
 
-            # Default for "auto" on 2-byte payloads: many HDL sensors encode in 0.5Â°C steps.
+            # Default for "auto" on 2-byte payloads: many HDL sensors encode in 0.5°C steps.
             scale: float | None = None
             if fmt in ("short_half", "half", "0.5", "x0.5"):
                 scale = 0.5
@@ -4285,7 +4285,7 @@ self.addEventListener('fetch', (event) => {{
 
     @api.get("/index.html", response_class=HTMLResponse)
     async def index_html(request: Request):
-        # Used by Ingress entry to avoid double-slash URLs (â€¦/hassio_ingress/<token>//).
+        # Used by Ingress entry to avoid double-slash URLs (…/hassio_ingress/<token>//).
         index_path = os.path.join(static_dir, "index.html")
         with open(index_path, "r", encoding="utf-8") as f:
             html = f.read()
