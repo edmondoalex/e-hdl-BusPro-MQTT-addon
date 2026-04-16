@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-04-16 (scenario BusPro pacing + per-target verify)
+- Runtime scenari luci BusPro: aggiunto delay esplicito tra comandi consecutivi nello scenario (oltre al pacing del gateway) per ridurre perdita telegrammi su burst.
+- Verifica scenario: retry sequenziale per-target con `read_light_status` dopo ogni tentativo (fino a 2 tentativi) e log degli indirizzi ancora fuori stato.
+- Version bump: 0.1.344 -> 0.1.345.
+
 ## 2026-04-16 (scenario reliability: readback + retry)
 - Runtime scenari luci BusPro: aggiunta verifica stato post-invio (`read_light_status`) e retry automatico una volta solo sui target rimasti fuori stato.
 - Logging: aggiunti warning con conteggio mismatch/retry e lista indirizzi che restano fuori target dopo il retry.
