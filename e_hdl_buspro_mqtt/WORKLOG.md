@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-04-16 (remove ON reinforcement flicker, keep single paced pass)
+- Runtime scenari luci BusPro: rimossa la seconda passata di rinforzo `ON` (causava effetto lampeggio su alcuni impianti).
+- Mantenuta una sola passata comandi con pacing aumentato per maggiore stabilità senza "albero di Natale".
+- Version bump: 0.1.349 -> 0.1.350.
+
 ## 2026-04-16 (scenario ON reinforcement pass)
 - Runtime scenari luci BusPro: aggiunta seconda passata di rinforzo `ON` (con pacing) sui target accesi nello scenario.
 - Obiettivo: migliorare affidabilità quando lo scenario contiene molte luci (es. 16) e alcuni telegrammi ON vengono persi al primo passaggio.
