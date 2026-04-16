@@ -51,7 +51,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.348"
+ADDON_VERSION = "0.1.349"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -7473,6 +7473,7 @@ self.addEventListener('fetch', (event) => {{
             0.0,
             float(getattr(settings, "light_cmd_interval_s", 0.12) or 0.0) + 0.08,
         )
+        buspro_on_targets: list[tuple[int, int, int, int | None]] = []
         for it in items:
             if not isinstance(it, dict):
                 continue
@@ -7547,6 +7548,8 @@ self.addEventListener('fetch', (event) => {{
             try:
                 await gw.set_light(subnet_id=subnet_id, device_id=device_id, channel=channel, on=on, brightness255=br255)
                 sent += 1
+                if on:
+                    buspro_on_targets.append((subnet_id, device_id, channel, br255))
                 if scenario_light_delay_s > 0:
                     await asyncio.sleep(scenario_light_delay_s)
             except Exception as e:
@@ -7561,6 +7564,32 @@ self.addEventListener('fetch', (event) => {{
                     e,
                 )
                 continue
+
+        # Reinforcement pass for scenario ON lights on BusPro:
+        # when controlling many outputs, replay ON once to reduce missed telegrams.
+        if buspro_on_targets and desired != "OFF":
+            try:
+                await asyncio.sleep(max(0.20, scenario_light_delay_s))
+            except Exception:
+                pass
+            _LOGGER.info(
+                "scenario %s: ON reinforcement pass for %s BusPro lights",
+                sid_current,
+                len(buspro_on_targets),
+            )
+            for subnet_id, device_id, channel, br255 in buspro_on_targets:
+                try:
+                    await gw.set_light(
+                        subnet_id=int(subnet_id),
+                        device_id=int(device_id),
+                        channel=int(channel),
+                        on=True,
+                        brightness255=(int(br255) if br255 is not None else None),
+                    )
+                    if scenario_light_delay_s > 0:
+                        await asyncio.sleep(scenario_light_delay_s)
+                except Exception:
+                    continue
 
         async def _run_single_cover_direct(subnet_id: int, device_id: int, channel: int, cmd_eff: str) -> bool:
             try:

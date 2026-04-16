@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-04-16 (scenario ON reinforcement pass)
+- Runtime scenari luci BusPro: aggiunta seconda passata di rinforzo `ON` (con pacing) sui target accesi nello scenario.
+- Obiettivo: migliorare affidabilità quando lo scenario contiene molte luci (es. 16) e alcuni telegrammi ON vengono persi al primo passaggio.
+- Version bump: 0.1.348 -> 0.1.349.
+
 ## 2026-04-16 (RUN scenarios: ignore OFF light items)
 - Runtime scenari luci: in esecuzione `RUN` (senza stato esplicito) vengono inviati solo comandi `ON`; gli item `OFF` vengono ignorati.
 - I comandi `OFF` restano disponibili solo nei percorsi espliciti ON/OFF/toggle scenario.
