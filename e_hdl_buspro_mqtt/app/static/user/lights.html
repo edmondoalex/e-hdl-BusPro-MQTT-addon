@@ -768,14 +768,14 @@
       function deviceByAddrLookup() {
         const m = new Map();
         for (const d of (lastDevices || [])) {
-          if (!isLightListDevice(d)) continue;
+          if (!isScenarioListDevice(d)) continue;
           m.set(addrOf(d), d);
         }
         return m;
       }
 
       function groupsFromDevices() {
-        const allLights = (lastDevices || []).filter(isLightListDevice);
+        const allLights = (lastDevices || []).filter(isScenarioListDevice);
         const groups = new Map(); // key -> label
         for (const d of allLights) {
           const key = groupKeyFromGroup(d.group);
@@ -1291,7 +1291,7 @@
           return;
         }
 
-        for (const c of candidates.slice(0, 80)) {
+        for (const c of candidates) {
           const row = document.createElement('div');
           row.className = 'scAddRow';
           row.setAttribute('data-key', c.key);
@@ -1436,8 +1436,7 @@
             const name = String((d && d.name) || '').toLowerCase();
             return addr.toLowerCase().includes(search) || name.includes(search);
           })
-          .sort((a,b) => String(a.d.name||a.addr).localeCompare(String(b.d.name||b.addr), undefined, {sensitivity:'base'}))
-          .slice(0, 80);
+          .sort((a,b) => String(a.d.name||a.addr).localeCompare(String(b.d.name||b.addr), undefined, {sensitivity:'base'}));
 
         if (!all.length) {
           const empty = document.createElement('div');
@@ -1642,6 +1641,17 @@
         if (String(d.type || 'light').toLowerCase() !== 'light') return false;
         if (String(d.origin || '') === 'ha') return String(d.page || 'lights') === 'lights';
         return !isExtraSwitch(d);
+      }
+
+      function isScenarioListDevice(d) {
+        if (String(d.type || 'light').toLowerCase() !== 'light') return false;
+        if (String(d.origin || '') === 'ha') {
+          const page = String(d.page || 'lights').toLowerCase();
+          return page === 'lights' || page === 'extra';
+        }
+        // For scenario editing include all BusPro light outputs, even if categorized
+        // as Switch/Extra for list-page purposes.
+        return true;
       }
 
       function isActiveLight(d) {

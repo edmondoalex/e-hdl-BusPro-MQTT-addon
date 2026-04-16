@@ -895,7 +895,7 @@ class StateStore:
         if not isinstance(items_in, list):
             raise ValueError("items must be a list")
 
-        items: list[dict[str, Any]] = []
+        items_map: dict[str, dict[str, Any]] = {}
         for it in items_in:
             if not isinstance(it, dict):
                 continue
@@ -919,14 +919,12 @@ class StateStore:
                         br255 = None
                     if br255 is not None:
                         br255 = max(0, min(255, br255))
-                items.append(
-                    {
-                        "entity_id": entity_id,
-                        "domain": domain,
-                        "state": st,
-                        "brightness": br255,
-                    }
-                )
+                items_map[f"ha:{entity_id}"] = {
+                    "entity_id": entity_id,
+                    "domain": domain,
+                    "state": st,
+                    "brightness": br255,
+                }
                 continue
 
             try:
@@ -948,15 +946,14 @@ class StateStore:
                     br255 = None
                 if br255 is not None:
                     br255 = max(0, min(255, br255))
-            items.append(
-                {
-                    "subnet_id": subnet_id,
-                    "device_id": device_id,
-                    "channel": channel,
-                    "state": st,
-                    "brightness": br255,
-                }
-            )
+            items_map[f"buspro:{subnet_id}.{device_id}.{channel}"] = {
+                "subnet_id": subnet_id,
+                "device_id": device_id,
+                "channel": channel,
+                "state": st,
+                "brightness": br255,
+            }
+        items: list[dict[str, Any]] = list(items_map.values())
 
         covers_in = payload.get("covers") or []
         if covers_in is None:

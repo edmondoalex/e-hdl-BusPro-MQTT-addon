@@ -51,7 +51,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.341"
+ADDON_VERSION = "0.1.342"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -7443,9 +7443,29 @@ self.addEventListener('fetch', (event) => {{
 
         await _set_light_scenario_running(sid_current, True)
 
-        items = sc.get("items") or []
-        if not isinstance(items, list) or not items:
-            items = []
+        items_raw = sc.get("items") or []
+        if not isinstance(items_raw, list) or not items_raw:
+            items_raw = []
+
+        # Safety: de-duplicate scenario light targets by final key, keeping the latest
+        # configured command for each target. This avoids conflicting ON/OFF commands
+        # on the same address/entity when legacy/edited scenarios contain duplicates.
+        dedup_items: dict[str, dict[str, Any]] = {}
+        for it in items_raw:
+            if not isinstance(it, dict):
+                continue
+            eid = str(it.get("entity_id") or "").strip().lower()
+            if eid and "." in eid:
+                dedup_items[f"ha:{eid}"] = it
+                continue
+            try:
+                subnet_id = int(it.get("subnet_id"))
+                device_id = int(it.get("device_id"))
+                channel = int(it.get("channel"))
+            except Exception:
+                continue
+            dedup_items[f"buspro:{subnet_id}.{device_id}.{channel}"] = it
+        items = list(dedup_items.values())
 
         sent = 0
         for it in items:
@@ -7486,7 +7506,8 @@ self.addEventListener('fetch', (event) => {{
                             pass
                     await asyncio.to_thread(_ha_request, "POST", "/api/services/light/turn_on", payload=data, timeout_s=10)
                     sent += 1
-                except Exception:
+                except Exception as e:
+                    _LOGGER.warning("scenario %s: failed HA light/switch target=%s state=%s err=%s", sid_current, eid, state, e)
                     continue
                 continue
 
@@ -7515,8 +7536,17 @@ self.addEventListener('fetch', (event) => {{
             try:
                 await gw.set_light(subnet_id=subnet_id, device_id=device_id, channel=channel, on=on, brightness255=br255)
                 sent += 1
-            except Exception:
+            except Exception as e:
                 # Best-effort: continue other lights
+                _LOGGER.warning(
+                    "scenario %s: failed BusPro light target=%s.%s.%s state=%s err=%s",
+                    sid_current,
+                    subnet_id,
+                    device_id,
+                    channel,
+                    state,
+                    e,
+                )
                 continue
 
         async def _run_single_cover_direct(subnet_id: int, device_id: int, channel: int, cmd_eff: str) -> bool:

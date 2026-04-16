@@ -1,5 +1,12 @@
 # WORKLOG
 
+## 2026-04-16 (scenario list + target dedupe)
+- UI user `/lights` scenari: rimossi limiti artificiali nelle liste "Aggiungi" (luci e tapparelle), così non risultano più parziali.
+- UI scenari: inclusi tutti i dispositivi luce rilevanti per l'editor scenario (anche categorizzati `Switch/Extra` lato BusPro e pagina `extra` lato HA).
+- Store scenari: deduplica dei target luce in salvataggio (`entity_id`/indirizzo), mantenendo l'ultima configurazione.
+- Runtime scenari: deduplica difensiva dei target prima dell'invio e warning di log mirati sui target che falliscono.
+- Version bump: 0.1.341 -> 0.1.342.
+
 ## 2026-04-08 (locks: mapping sensori HA esterni)
 - Admin `Home Assistant devices`: per entita' con pagina `locks` aggiunti campi opzionali per mappare sensori esterni (`battery`, `battery_low`, `rssi`, `linkquality`, `tamper`).
 - Poll HA: per ogni lock in pagina `locks` legge anche le entita' esterne configurate e unisce i valori alle metriche lock.
