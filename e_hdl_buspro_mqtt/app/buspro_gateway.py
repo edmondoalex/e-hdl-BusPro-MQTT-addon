@@ -310,7 +310,13 @@ class BusproGateway:
                     if self._light_cmd_interval_s > 0:
                         await asyncio.sleep(self._light_cmd_interval_s)
 
-                self._light_cmd_event.clear()
+                # Clear event only while holding the same lock used by enqueue, to avoid
+                # lost wakeups when a new job arrives between "queue empty" and clear().
+                async with self._light_cmd_lock:
+                    if self._light_cmd_jobs:
+                        self._light_cmd_event.set()
+                    else:
+                        self._light_cmd_event.clear()
         except asyncio.CancelledError:
             return
 
@@ -396,7 +402,12 @@ class BusproGateway:
                     # Small delay between telegrams to avoid UDP flood.
                     await asyncio.sleep(self._cover_cmd_interval_s)
 
-                self._cover_cmd_event.clear()
+                # Clear event only under lock to avoid lost wakeups.
+                async with self._cover_cmd_lock:
+                    if self._cover_cmd_jobs:
+                        self._cover_cmd_event.set()
+                    else:
+                        self._cover_cmd_event.clear()
         except asyncio.CancelledError:
             return
 

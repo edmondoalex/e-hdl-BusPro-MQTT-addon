@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-04-16 (gateway queue race fix under load)
+- BusPro gateway: fix race condition nei worker code (`light`/`cover`) tra controllo coda vuota e `event.clear()`, che poteva perdere wakeup e lasciare job in coda non eseguiti.
+- Event clear ora avviene sotto lock condiviso con enqueue, evitando comandi persi in burst (scenario o comandi multipli ravvicinati).
+- Version bump: 0.1.346 -> 0.1.347.
+
 ## 2026-04-16 (scenario rollback verify/retry, keep pacing)
 - Runtime scenari luci BusPro: rimossa la logica di verifica+retry per-target introdotta in `0.1.345` (causava comportamento instabile in alcuni impianti).
 - Mantenuto pacing esplicito tra comandi scenario luce, con delay moderato, per ridurre burst sul bus senza effetti collaterali.
