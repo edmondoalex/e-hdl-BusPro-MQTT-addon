@@ -1089,6 +1089,13 @@
 - MQTT discovery: aggiunte entita' cover clone "no%" (solo OPEN/CLOSE/STOP, senza posizione) per ogni cover e per ogni cover group; raggruppate sotto device `BusPro Cover no %`.
 - Version bump: 0.1.179 -> 0.1.180.
 
+## 2026-04-17 (scenario combination on/off without logic module)
+- Aggiunto supporto opzionale `combination_targets` negli scenari luce (persistenza e validazione store).
+- `run_light_scenario`: se presenti `combination_targets`, invia `UniversalSwitchControl` (ON/OFF) e salta il burst ON/OFF canale-per-canale, riducendo traffico UDP e comandi conflittuali.
+- `BusproGateway`: aggiunti cache + invio `set_universal_switch(...)`.
+- Fix pybuspro `UniversalSwitch`: usa `SwitchStatusOnOff` (0/1) invece di `OnOff` (0/255) per payload coerente con `UniversalSwitchControl`.
+- Version bump: 0.1.350 -> 0.1.351.
+
 ## 2026-01-25 (cover no% assumed_state)
 - MQTT discovery: per le entita' "no%" aggiunto `assumed_state: true` per avere sempre i comandi Up/Down/Stop disponibili anche se lo stato/posizione in HA e' desincronizzato.
 - Version bump: 0.1.180 -> 0.1.181.

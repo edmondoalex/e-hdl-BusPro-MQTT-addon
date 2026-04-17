@@ -7443,6 +7443,28 @@ self.addEventListener('fetch', (event) => {{
 
         await _set_light_scenario_running(sid_current, True)
 
+        combination_targets_raw = sc.get("combination_targets") or []
+        combination_targets: list[dict[str, int]] = []
+        if isinstance(combination_targets_raw, list):
+            for ct in combination_targets_raw:
+                if not isinstance(ct, dict):
+                    continue
+                try:
+                    subnet_id = int(ct.get("subnet_id"))
+                    device_id = int(ct.get("device_id"))
+                    switch_number = int(ct.get("switch_number"))
+                except Exception:
+                    continue
+                if switch_number < 1 or switch_number > 255:
+                    continue
+                combination_targets.append(
+                    {
+                        "subnet_id": subnet_id,
+                        "device_id": device_id,
+                        "switch_number": switch_number,
+                    }
+                )
+
         items_raw = sc.get("items") or []
         if not isinstance(items_raw, list) or not items_raw:
             items_raw = []
@@ -7468,6 +7490,30 @@ self.addEventListener('fetch', (event) => {{
         items = list(dedup_items.values())
 
         sent = 0
+        if combination_targets:
+            combo_on = False if desired == "OFF" else True
+            for ct in combination_targets:
+                try:
+                    await gw.set_universal_switch(
+                        subnet_id=int(ct["subnet_id"]),
+                        device_id=int(ct["device_id"]),
+                        switch_number=int(ct["switch_number"]),
+                        on=combo_on,
+                    )
+                    sent += 1
+                except Exception as e:
+                    _LOGGER.warning(
+                        "scenario %s: failed combination target=%s.%s sw=%s state=%s err=%s",
+                        sid_current,
+                        ct.get("subnet_id"),
+                        ct.get("device_id"),
+                        ct.get("switch_number"),
+                        "ON" if combo_on else "OFF",
+                        e,
+                    )
+            # If combination targets are configured, skip per-light item burst to avoid duplicate/conflicting commands.
+            items = []
+
         # Extra pacing for scenario light bursts (in addition to gateway pacing).
         scenario_light_delay_s = max(
             0.0,

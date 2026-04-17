@@ -866,6 +866,8 @@ class StateStore:
                     cur["ha_trigger_enabled"] = False
                 if "ha_trigger_id" not in cur:
                     cur["ha_trigger_id"] = ""
+                if "combination_targets" not in cur or not isinstance(cur.get("combination_targets"), list):
+                    cur["combination_targets"] = []
                 out.append(cur)
         return out
 
@@ -1054,7 +1056,36 @@ class StateStore:
                 }
             )
 
-        out: dict[str, Any] = {"name": name, "items": items, "covers": covers}
+        combination_targets_in = payload.get("combination_targets")
+        if combination_targets_in is None:
+            combination_targets_in = []
+        if not isinstance(combination_targets_in, list):
+            raise ValueError("combination_targets must be a list")
+        combination_targets_map: dict[str, dict[str, int]] = {}
+        for it in combination_targets_in:
+            if not isinstance(it, dict):
+                continue
+            try:
+                subnet_id = int(it.get("subnet_id"))
+                device_id = int(it.get("device_id"))
+                switch_number = int(it.get("switch_number"))
+            except Exception:
+                continue
+            if switch_number < 1 or switch_number > 255:
+                continue
+            combination_targets_map[f"{subnet_id}.{device_id}.{switch_number}"] = {
+                "subnet_id": subnet_id,
+                "device_id": device_id,
+                "switch_number": switch_number,
+            }
+        combination_targets: list[dict[str, int]] = list(combination_targets_map.values())
+
+        out: dict[str, Any] = {
+            "name": name,
+            "items": items,
+            "covers": covers,
+            "combination_targets": combination_targets,
+        }
         if "run_enabled" in payload:
             out["run_enabled"] = bool(payload.get("run_enabled"))
         if "onoff_enabled" in payload:
@@ -1101,6 +1132,7 @@ class StateStore:
             "name": cleaned["name"],
             "items": cleaned["items"],
             "covers": cleaned.get("covers") or [],
+            "combination_targets": cleaned.get("combination_targets") or [],
             "run_enabled": run_enabled,
             "onoff_enabled": onoff_enabled,
             "ha_trigger_enabled": ha_trigger_enabled,
@@ -1148,6 +1180,8 @@ class StateStore:
                 cur["items"] = cleaned["items"]
             if "covers" in cleaned:
                 cur["covers"] = cleaned.get("covers") or []
+            if "combination_targets" in cleaned:
+                cur["combination_targets"] = cleaned.get("combination_targets") or []
             if "run_enabled" in cleaned:
                 cur["run_enabled"] = bool(cleaned.get("run_enabled"))
             if "onoff_enabled" in cleaned:

@@ -10,6 +10,7 @@ from .pybuspro.buspro import Buspro
 from .pybuspro.devices.cover import Cover as BPCover
 from .pybuspro.devices.control import _CoverControl
 from .pybuspro.devices.light import Light as BPLight
+from .pybuspro.devices.universal_switch import UniversalSwitch as BPUniversalSwitch
 from .pybuspro.helpers.enums import CoverStatus
 
 _LOGGER = logging.getLogger("buspro_gateway")
@@ -86,6 +87,8 @@ class BusproGateway:
         self._covers: dict[tuple[int, int, int], BPCover] = {}
         self._cover_states: dict[tuple[int, int, int], CoverState] = {}
         self._cover_listeners: list[Callable[[CoverKey, CoverState], None]] = []
+        self._universal_switches: dict[tuple[int, int, int], BPUniversalSwitch] = {}
+        self._universal_switch_cmd_lock = asyncio.Lock()
 
         # Light command scheduler: coalesce + pace UDP telegrams to avoid flooding (e.g. dimmer slider).
         self._light_cmd_lock = asyncio.Lock()
@@ -268,6 +271,7 @@ class BusproGateway:
             self._cover_cmd_keys.clear()
             self._cover_cmd_inflight.clear()
             self._cover_cmd_event.clear()
+            self._universal_switches.clear()
             await self._buspro.stop()
         finally:
             self._started = False
@@ -554,6 +558,37 @@ class BusproGateway:
         except Exception as e:
             self._last_error = str(e)
             _LOGGER.warning("cover read_status failed: %s", e)
+
+    def ensure_universal_switch(self, *, subnet_id: int, device_id: int, switch_number: int) -> BPUniversalSwitch:
+        key = (subnet_id, device_id, switch_number)
+        dev = self._universal_switches.get(key)
+        if dev is not None:
+            return dev
+        dev = BPUniversalSwitch(self._buspro, (subnet_id, device_id), switch_number, "")
+        self._universal_switches[key] = dev
+        return dev
+
+    async def set_universal_switch(
+        self,
+        *,
+        subnet_id: int,
+        device_id: int,
+        switch_number: int,
+        on: bool,
+    ) -> None:
+        async with self._universal_switch_cmd_lock:
+            self._auto_set_send_target_from_rx()
+            dev = self.ensure_universal_switch(
+                subnet_id=subnet_id,
+                device_id=device_id,
+                switch_number=switch_number,
+            )
+            if on:
+                await dev.set_on()
+            else:
+                await dev.set_off()
+            if self._light_cmd_interval_s > 0:
+                await asyncio.sleep(self._light_cmd_interval_s)
 
     async def set_light(
         self,
