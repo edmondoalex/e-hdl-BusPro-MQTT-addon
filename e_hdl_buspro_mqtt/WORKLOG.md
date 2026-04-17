@@ -1089,6 +1089,11 @@
 - MQTT discovery: aggiunte entita' cover clone "no%" (solo OPEN/CLOSE/STOP, senza posizione) per ogni cover e per ogni cover group; raggruppate sotto device `BusPro Cover no %`.
 - Version bump: 0.1.179 -> 0.1.180.
 
+## 2026-04-17 (manifest arch deprecation fix: armv7 -> armhf)
+- Add-on manifest aggiornato per warning Supervisor: sostituito `armv7` con `armhf` in `arch`.
+- Aggiornato `build_from` corrispondente da `armv7-base` a `armhf-base`.
+- Version bump: 0.1.355 -> 0.1.356.
+
 ## 2026-04-17 (RUN supports all-OFF scenarios for BusPro lights)
 - Runtime scenario (`run_light_scenario`): per target BusPro, `RUN` ora applica `OFF` quando lo scenario contiene solo stati OFF.
 - Mantiene protezione legacy sui mix ON/OFF: in `RUN` evita OFF solo se nello scenario esistono anche target ON.
