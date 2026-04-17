@@ -1056,36 +1056,35 @@ class StateStore:
                 }
             )
 
-        combination_targets_in = payload.get("combination_targets")
-        if combination_targets_in is None:
-            combination_targets_in = []
-        if not isinstance(combination_targets_in, list):
-            raise ValueError("combination_targets must be a list")
-        combination_targets_map: dict[str, dict[str, int]] = {}
-        for it in combination_targets_in:
-            if not isinstance(it, dict):
-                continue
-            try:
-                subnet_id = int(it.get("subnet_id"))
-                device_id = int(it.get("device_id"))
-                switch_number = int(it.get("switch_number"))
-            except Exception:
-                continue
-            if switch_number < 1 or switch_number > 255:
-                continue
-            combination_targets_map[f"{subnet_id}.{device_id}.{switch_number}"] = {
-                "subnet_id": subnet_id,
-                "device_id": device_id,
-                "switch_number": switch_number,
-            }
-        combination_targets: list[dict[str, int]] = list(combination_targets_map.values())
-
         out: dict[str, Any] = {
             "name": name,
             "items": items,
             "covers": covers,
-            "combination_targets": combination_targets,
         }
+        if "combination_targets" in payload:
+            combination_targets_in = payload.get("combination_targets")
+            if combination_targets_in is None:
+                combination_targets_in = []
+            if not isinstance(combination_targets_in, list):
+                raise ValueError("combination_targets must be a list")
+            combination_targets_map: dict[str, dict[str, int]] = {}
+            for it in combination_targets_in:
+                if not isinstance(it, dict):
+                    continue
+                try:
+                    subnet_id = int(it.get("subnet_id"))
+                    device_id = int(it.get("device_id"))
+                    switch_number = int(it.get("switch_number"))
+                except Exception:
+                    continue
+                if switch_number < 1 or switch_number > 255:
+                    continue
+                combination_targets_map[f"{subnet_id}.{device_id}.{switch_number}"] = {
+                    "subnet_id": subnet_id,
+                    "device_id": device_id,
+                    "switch_number": switch_number,
+                }
+            out["combination_targets"] = list(combination_targets_map.values())
         if "run_enabled" in payload:
             out["run_enabled"] = bool(payload.get("run_enabled"))
         if "onoff_enabled" in payload:
