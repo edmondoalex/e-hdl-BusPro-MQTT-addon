@@ -297,6 +297,9 @@
         100%{opacity:0;transform:scale(1.2)}
       }
       @media(max-width:600px){
+        .modalTop{flex-direction:column;align-items:flex-start;gap:8px}
+        .modalTop .btnRow{width:100%;justify-content:flex-start}
+        .modalTop .btn{height:34px;padding:0 10px;font-size:13px}
         .scRow{align-items:flex-start}
         .scLeft{width:100%}
         .scName{font-size:16px}
@@ -356,6 +359,7 @@
             </select>
             <button id="scNewBtn" class="btn" type="button">Nuovo scenario</button>
             <button id="scSaveOnBtn" class="btn primary" type="button">Salva (solo accese)</button>
+            <button id="scSaveOffBtn" class="btn" type="button">Salva (solo spente)</button>
             <button id="scSaveAllBtn" class="btn" type="button">Salva (tutte)</button>
             <button id="scCloseBtn" class="btn" type="button">Chiudi</button>
           </div>
@@ -1545,7 +1549,7 @@
         }
       }
 
-      function buildScenarioItems({ onlyOn }) {
+      function buildScenarioItems({ onlyOn, onlyOff }) {
         const items = [];
         const groupSel = selectedScenarioGroupKey();
         const lights = (lastDevices || []).filter(isLightListDevice);
@@ -1555,6 +1559,7 @@
           const st = stateByAddr.get(addr) || { state:'?', brightness:0 };
           const on = String(st.state || '').toUpperCase() === 'ON';
           if (onlyOn && !on) continue;
+          if (onlyOff && on) continue;
           const it = { subnet_id: Number(d.subnet_id), device_id: Number(d.device_id), channel: Number(d.channel), state: on ? 'ON' : 'OFF' };
           if (on && d.dimmable) {
             const b = Number(st.brightness ?? 0);
@@ -1566,7 +1571,7 @@
         return items;
       }
 
-      async function saveScenario({ onlyOn }) {
+      async function saveScenario({ onlyOn, onlyOff }) {
         const err = qs('scErr');
         try {
           if (err) err.textContent = '';
@@ -1577,7 +1582,7 @@
             if (err) err.textContent = 'Seleziona RUN o ON/OFF';
             return;
           }
-          const items = buildScenarioItems({ onlyOn });
+          const items = buildScenarioItems({ onlyOn, onlyOff });
           if (!items.length) {
             if (err) err.textContent = 'Nessuna luce da salvare';
             return;
@@ -2065,6 +2070,7 @@
       qs('scCloseBtn').addEventListener('click', () => { animatePress(qs('scCloseBtn')); closeScenarios(); });
       qs('scNewBtn').addEventListener('click', () => { animatePress(qs('scNewBtn')); openNewScenarioEditor(); });
       qs('scSaveOnBtn').addEventListener('click', () => { animatePress(qs('scSaveOnBtn')); saveScenario({ onlyOn: true }); });
+      qs('scSaveOffBtn').addEventListener('click', () => { animatePress(qs('scSaveOffBtn')); saveScenario({ onlyOff: true }); });
       qs('scSaveAllBtn').addEventListener('click', () => { animatePress(qs('scSaveAllBtn')); saveScenario({ onlyOn: false }); });
       qs('scBackBtn').addEventListener('click', () => { animatePress(qs('scBackBtn')); closeScenarioEditor(); });
       qs('scSaveEditBtn').addEventListener('click', () => { animatePress(qs('scSaveEditBtn')); saveScenarioEdits(); });

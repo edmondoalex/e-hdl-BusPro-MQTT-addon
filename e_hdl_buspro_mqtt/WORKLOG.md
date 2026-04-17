@@ -1089,6 +1089,12 @@
 - MQTT discovery: aggiunte entita' cover clone "no%" (solo OPEN/CLOSE/STOP, senza posizione) per ogni cover e per ogni cover group; raggruppate sotto device `BusPro Cover no %`.
 - Version bump: 0.1.179 -> 0.1.180.
 
+## 2026-04-17 (scenario quick save: only OFF + mobile-safe modal top)
+- UI scenari in `/lights`: aggiunto pulsante rapido `Salva (solo spente)` accanto a `solo accese` e `tutte`.
+- Logica `buildScenarioItems/saveScenario`: supportato filtro `onlyOff` (salva solo luci in stato OFF).
+- Mobile hardening (`max-width:600px`): header modal scenari in colonna con bottoni compatti per evitare overflow su smartphone.
+- Version bump: 0.1.353 -> 0.1.354.
+
 ## 2026-04-17 (diagnostic logs for scenario ON/RUN vs combination path)
 - Aggiunti log runtime su `run_light_scenario` con: `command`, `desired`, conteggio `items`, `covers`, `combination_targets`.
 - Aggiunto log dedicato quando viene usato il path `combination_targets` con stato inviato (`ON`/`OFF`) e numero target.
