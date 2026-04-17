@@ -343,6 +343,11 @@
           <path d="M19.4 15a7.9 7.9 0 0 0 .1-2l2-1.1-2-3.5-2.3.7a7.7 7.7 0 0 0-1.7-1l-.3-2.4H11l-.3 2.4a7.7 7.7 0 0 0-1.7 1L6.7 8.4l-2 3.5 2 1.1a7.9 7.9 0 0 0 .1 2l-2 1.1 2 3.5 2.3-.7a7.7 7.7 0 0 0 1.7 1l.3 2.4h4.1l.3-2.4a7.7 7.7 0 0 0 1.7-1l2.3.7 2-3.5z" fill="none"/>
         </svg>
       </button>
+      <button id="extraPageBtn" class="filterBtn" type="button" aria-label="Vai a extra">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 3l3 5.2 6 .9-4.3 4.2 1 5.9-5.7-3-5.7 3 1-5.9L3 9.1l6-.9z" fill="none"/>
+        </svg>
+      </button>
     </div>
     <main>
       <div id="list" class="list"></div>
@@ -2065,6 +2070,10 @@
       qs('scenesPageBtn').addEventListener('click', () => {
         animatePress(qs('scenesPageBtn'));
         try { window.location.href = absUrl('scenarios'); } catch (e) {}
+      });
+      qs('extraPageBtn').addEventListener('click', () => {
+        animatePress(qs('extraPageBtn'));
+        try { window.location.href = absUrl('extra'); } catch (e) {}
       });
       qs('scenesSettingsBtn').addEventListener('click', () => { animatePress(qs('scenesSettingsBtn')); openScenarios(); });
       qs('scCloseBtn').addEventListener('click', () => { animatePress(qs('scCloseBtn')); closeScenarios(); });

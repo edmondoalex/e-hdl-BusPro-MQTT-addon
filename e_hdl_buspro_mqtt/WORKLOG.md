@@ -1089,6 +1089,11 @@
 - MQTT discovery: aggiunte entita' cover clone "no%" (solo OPEN/CLOSE/STOP, senza posizione) per ogni cover e per ogni cover group; raggruppate sotto device `BusPro Cover no %`.
 - Version bump: 0.1.179 -> 0.1.180.
 
+## 2026-04-17 (lights page quick nav to extra)
+- Pagina utente `/lights`: aggiunto pulsante top `Vai a extra` (`extraPageBtn`) accanto ai pulsanti esistenti.
+- Navigazione diretta a `/extra` con lo stesso feedback touch (`animatePress`) degli altri pulsanti.
+- Version bump: 0.1.356 -> 0.1.357.
+
 ## 2026-04-17 (manifest arch deprecation fix: armv7 -> armhf)
 - Add-on manifest aggiornato per warning Supervisor: sostituito `armv7` con `armhf` in `arch`.
 - Aggiornato `build_from` corrispondente da `armv7-base` a `armhf-base`.
