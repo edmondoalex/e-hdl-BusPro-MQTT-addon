@@ -1089,6 +1089,12 @@
 - MQTT discovery: aggiunte entita' cover clone "no%" (solo OPEN/CLOSE/STOP, senza posizione) per ogni cover e per ogni cover group; raggruppate sotto device `BusPro Cover no %`.
 - Version bump: 0.1.179 -> 0.1.180.
 
+## 2026-04-17 (diagnostic logs for scenario ON/RUN vs combination path)
+- Aggiunti log runtime su `run_light_scenario` con: `command`, `desired`, conteggio `items`, `covers`, `combination_targets`.
+- Aggiunto log dedicato quando viene usato il path `combination_targets` con stato inviato (`ON`/`OFF`) e numero target.
+- Obiettivo: isolare con certezza se il percorso ON/RUN sta inviando solo combination o anche comandi legacy.
+- Version bump: 0.1.352 -> 0.1.353.
+
 ## 2026-04-17 (preserve combination targets on normal scenario edits)
 - Fix store scenario update flow: `combination_targets` viene aggiornato solo se esplicitamente presente nel payload.
 - Evita che la UI standard (che non invia ancora il campo) lo azzeri involontariamente durante modifica/salvataggio.

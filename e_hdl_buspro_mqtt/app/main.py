@@ -7464,10 +7464,18 @@ self.addEventListener('fetch', (event) => {{
                         "switch_number": switch_number,
                     }
                 )
-
         items_raw = sc.get("items") or []
         if not isinstance(items_raw, list) or not items_raw:
             items_raw = []
+        _LOGGER.warning(
+            "scenario %s: start command=%s desired=%s items=%s covers=%s combination_targets=%s",
+            sid_current,
+            command or "",
+            desired or "",
+            len(items_raw),
+            len(sc.get("covers") or []) if isinstance(sc.get("covers"), list) else 0,
+            len(combination_targets),
+        )
 
         # Safety: de-duplicate scenario light targets by final key, keeping the latest
         # configured command for each target. This avoids conflicting ON/OFF commands
@@ -7492,6 +7500,12 @@ self.addEventListener('fetch', (event) => {{
         sent = 0
         if combination_targets:
             combo_on = False if desired == "OFF" else True
+            _LOGGER.warning(
+                "scenario %s: using combination path state=%s targets=%s",
+                sid_current,
+                "ON" if combo_on else "OFF",
+                len(combination_targets),
+            )
             for ct in combination_targets:
                 try:
                     await gw.set_universal_switch(
