@@ -2,7 +2,7 @@
     "name":  "e-hdl BusPro MQTT",
     "slug":  "e_hdl_buspro_mqtt",
     "description":  "BusPro UDP bridge with MQTT Discovery + Web UI.",
-    "version":  "0.1.354",
+    "version":  "0.1.355",
     "startup":  "services",
     "boot":  "auto",
     "homeassistant_api":  true,
@@ -110,4 +110,5 @@
     "panel_title":  "BusPro",
     "panel_icon":  "mdi:lan-connect"
 }
+
 

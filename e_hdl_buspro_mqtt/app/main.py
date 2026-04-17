@@ -7496,6 +7496,10 @@ self.addEventListener('fetch', (event) => {{
                 continue
             dedup_items[f"buspro:{subnet_id}.{device_id}.{channel}"] = it
         items = list(dedup_items.values())
+        has_on_items = any(
+            isinstance(it, dict) and str(it.get("state") or "").strip().upper() == "ON"
+            for it in items
+        )
 
         sent = 0
         if combination_targets:
@@ -7592,10 +7596,10 @@ self.addEventListener('fetch', (event) => {{
                 state = base_state
             if state not in ("ON", "OFF"):
                 continue
-            # RUN behavior safety: when no explicit desired state is provided,
-            # do not send OFF commands for scenario lights.
-            # OFF remains available only for explicit scenario OFF/toggle paths.
-            if desired is None and state == "OFF":
+            # RUN behavior safety:
+            # - mixed scenarios: keep legacy behavior (avoid OFF on RUN)
+            # - all-OFF scenarios (e.g. "solo spente"): allow OFF on RUN
+            if desired is None and state == "OFF" and has_on_items:
                 continue
             on = state == "ON"
             br = it.get("brightness")

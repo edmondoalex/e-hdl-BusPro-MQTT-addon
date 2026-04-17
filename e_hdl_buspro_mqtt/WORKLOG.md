@@ -1089,6 +1089,12 @@
 - MQTT discovery: aggiunte entita' cover clone "no%" (solo OPEN/CLOSE/STOP, senza posizione) per ogni cover e per ogni cover group; raggruppate sotto device `BusPro Cover no %`.
 - Version bump: 0.1.179 -> 0.1.180.
 
+## 2026-04-17 (RUN supports all-OFF scenarios for BusPro lights)
+- Runtime scenario (`run_light_scenario`): per target BusPro, `RUN` ora applica `OFF` quando lo scenario contiene solo stati OFF.
+- Mantiene protezione legacy sui mix ON/OFF: in `RUN` evita OFF solo se nello scenario esistono anche target ON.
+- Risolve il caso d'uso `Salva (solo spente)` che prima non spegneva con `RUN`.
+- Version bump: 0.1.354 -> 0.1.355.
+
 ## 2026-04-17 (scenario quick save: only OFF + mobile-safe modal top)
 - UI scenari in `/lights`: aggiunto pulsante rapido `Salva (solo spente)` accanto a `solo accese` e `tutte`.
 - Logica `buildScenarioItems/saveScenario`: supportato filtro `onlyOff` (salva solo luci in stato OFF).
