@@ -231,6 +231,23 @@
         padding:6px 8px;
         font-size:12px;
       }
+      .scCoverItem{
+        flex-direction:column;
+        align-items:flex-start;
+        gap:8px;
+      }
+      .scCoverItem .scItemLeft{
+        width:100%;
+        min-width:0;
+      }
+      .scCoverItem .scItemCtrls{
+        width:100%;
+        justify-content:flex-start;
+        gap:8px;
+      }
+      .scCoverItem .scItemRamp{
+        flex-wrap:wrap;
+      }
       .scSel{
         height:34px;padding:0 10px;
         border:1px solid rgba(255,255,255,.14);
@@ -1204,7 +1221,7 @@
           const canUseTwoPhase = !isHa;
 
           const row = document.createElement('div');
-          row.className = 'scItem';
+          row.className = 'scItem scCoverItem';
           row.setAttribute('data-key', key);
           row.innerHTML = `
             <div class="scItemLeft">

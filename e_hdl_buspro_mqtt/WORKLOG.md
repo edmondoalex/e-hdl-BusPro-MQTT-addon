@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-04-22 (scenario covers UI: action buttons always visible)
+- UI editor scenari tapparelle: introdotta classe layout dedicata per righe cover (`scCoverItem`) con controlli su piu' righe e wrapping robusto.
+- Pulsanti `Su/Giu/Stop/Rimuovi` e campi `2 fasi Su` sempre visibili senza clipping a destra.
+- Fix valido su desktop, tablet e smartphone.
+- Version bump: 0.1.362 -> 0.1.363.
+
 ## 2026-04-22 (scenario covers UI: names visible with two-phase controls)
 - UI scenari tapparelle: fix layout riga editor per evitare che il nome/address cover venga schiacciato con i nuovi controlli `2 fasi Su`.
 - Migliorata responsivita' a larghezze intermedie (tablet/desktop stretto): i controlli vanno sotto e il nome resta leggibile.
