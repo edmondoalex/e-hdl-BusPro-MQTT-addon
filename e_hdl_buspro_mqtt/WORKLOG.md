@@ -1089,6 +1089,16 @@
 - MQTT discovery: aggiunte entita' cover clone "no%" (solo OPEN/CLOSE/STOP, senza posizione) per ogni cover e per ogni cover group; raggruppate sotto device `BusPro Cover no %`.
 - Version bump: 0.1.179 -> 0.1.180.
 
+## 2026-04-22 (admin dedicated guide page with blocks, figures, examples)
+- Nuova pagina Admin dedicata: `/admin-guide` con spiegazione completa addon "da zero" a blocchi.
+- Aggiunto link `Guida` nella navbar della pagina Admin (`index.html`) con apertura diretta.
+- Guida arricchita con:
+  - riferimenti a blocchi (A/B/C/D),
+  - Figura 1 (schema a blocchi inline SVG),
+  - esempi pratici guidati (VMC dimmer, scenario Vado via),
+  - checklist operativa e tabella troubleshooting.
+- Version bump: 0.1.357 -> 0.1.359.
+
 ## 2026-04-17 (lights page quick nav to extra)
 - Pagina utente `/lights`: aggiunto pulsante top `Vai a extra` (`extraPageBtn`) accanto ai pulsanti esistenti.
 - Navigazione diretta a `/extra` con lo stesso feedback touch (`animatePress`) degli altri pulsanti.

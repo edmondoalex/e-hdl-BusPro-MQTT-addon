@@ -84,6 +84,7 @@
           <a href="#" id="navUserLights">Luci</a>
           <a href="#" id="navUserCovers">Cover</a>
           <a href="#" id="navUserExtra">EXTRA</a>
+          <a href="#" id="navGuide">Guida</a>
           <a href="#" id="navAdmin" class="active">Admin</a>
         </div>
         <span class="pill" id="mqttPill">MQTT: ?</span>
@@ -4411,7 +4412,8 @@
         const nl = qs('navUserLights'); 
         const nc = qs('navUserCovers'); 
         const ne = qs('navUserExtra'); 
-        if (!nh && !nh2 && !nl && !nc && !ne) return; 
+        const ng = qs('navGuide');
+        if (!nh && !nh2 && !nl && !nc && !ne && !ng) return; 
         const proto = location.protocol || 'http:'; 
         const host = location.hostname; 
         const base = `${proto}//${host}:8124`; 
@@ -4420,6 +4422,7 @@
         if (nl) { nl.href = `${base}/lights`; nl.target = '_blank'; nl.rel = 'noopener'; } 
         if (nc) { nc.href = `${base}/covers`; nc.target = '_blank'; nc.rel = 'noopener'; } 
         if (ne) { ne.href = `${base}/extra`; ne.target = '_blank'; ne.rel = 'noopener'; } 
+        if (ng) { ng.href = `${base}/admin-guide`; ng.target = '_blank'; ng.rel = 'noopener'; }
       } 
 
       let hubLinks = [];

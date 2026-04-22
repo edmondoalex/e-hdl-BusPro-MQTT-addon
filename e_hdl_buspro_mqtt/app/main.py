@@ -4298,6 +4298,12 @@ self.addEventListener('fetch', (event) => {{
             pass
         return resp
 
+    @api.get("/admin-guide", response_class=HTMLResponse)
+    async def admin_guide():
+        p = os.path.join(static_dir, "admin_guide.html")
+        with open(p, "r", encoding="utf-8") as f:
+            return f.read()
+
     @api.get("/home", response_class=HTMLResponse)
     async def user_home():
         p = os.path.join(static_dir, "user", "home.html")

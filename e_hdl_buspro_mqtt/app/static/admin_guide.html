@@ -1,0 +1,271 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BusPro - Guida Completa</title>
+    <style>
+      :root{--bg:#0b1220;--card:#111a2e;--muted:#9aa4b2;--text:#eef2ff;--line:#223055;--accent:#6ea8fe;--ok:#7CFFB2;--warn:#ffd54a}
+      body{margin:0;font-family:system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#070b14, #0b1220);color:var(--text)}
+      header{padding:18px 22px;border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(11,18,32,.94);backdrop-filter: blur(6px);z-index:20}
+      h1{margin:0;font-size:20px}
+      main{max-width:1100px;margin:0 auto;padding:16px 22px 28px}
+      .top{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+      .btn{display:inline-block;text-decoration:none;background:var(--accent);border:0;color:#081022;padding:9px 12px;border-radius:10px;cursor:pointer;font-weight:620}
+      .btn.secondary{background:transparent;border:1px solid var(--line);color:var(--text)}
+      .muted{color:var(--muted)}
+      .card{background:rgba(17,26,46,.9);border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:12px}
+      .grid{display:grid;grid-template-columns:1fr;gap:12px}
+      @media(min-width:980px){.grid{grid-template-columns:1fr 1fr}}
+      .kpi{border:1px solid var(--line);border-radius:12px;padding:10px;background:rgba(11,18,32,.5)}
+      .kpi b{display:block}
+      details{border:1px solid var(--line);border-radius:12px;background:rgba(11,18,32,.45);padding:0;overflow:hidden}
+      summary{cursor:pointer;list-style:none;padding:12px 14px;font-weight:650}
+      summary::-webkit-details-marker{display:none}
+      .body{padding:0 14px 12px}
+      .body p{line-height:1.5}
+      ul,ol{margin:8px 0 8px 18px}
+      code{background:#0b1220;border:1px solid var(--line);padding:2px 6px;border-radius:8px}
+      .note{border-left:3px solid var(--accent);padding:8px 10px;background:rgba(110,168,254,.08);border-radius:8px}
+      .ok{color:var(--ok)}
+      .warn{color:var(--warn)}
+      .toc a{color:var(--text)}
+      table{width:100%;border-collapse:collapse;margin-top:8px}
+      th,td{border-bottom:1px solid var(--line);padding:8px 6px;text-align:left;vertical-align:top}
+      th{color:var(--muted);font-weight:600}
+      .fig{margin-top:10px;border:1px solid var(--line);border-radius:12px;background:rgba(11,18,32,.6);padding:10px}
+      .figcap{margin-top:6px;font-size:12px;color:var(--muted)}
+      .ex{margin-top:10px;border:1px dashed rgba(255,255,255,.22);border-radius:10px;padding:10px;background:rgba(255,255,255,.03)}
+      .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="top">
+        <h1>Guida Completa Add-on e-hdl BusPro MQTT</h1>
+        <a class="btn secondary" href="./">Torna ad Admin</a>
+        <a class="btn secondary" href="./home2" target="_blank" rel="noopener">Apri Home2</a>
+      </div>
+      <div class="muted" style="margin-top:6px">Spiegazione da zero, a blocchi semplici, con logica pratica: cosa fare, dove cliccare, cosa aspettarsi.</div>
+    </header>
+    <main>
+      <div class="card">
+        <div class="grid">
+          <div class="kpi"><b>Obiettivo</b> Collegare impianto HDL BusPro a Home Assistant con comandi, stati, scenari, coperture, sensori.</div>
+          <div class="kpi"><b>Regola base</b> Prima crea bene i dispositivi, poi scenari, poi trigger automazioni.</div>
+          <div class="kpi"><b>Dove lavori</b> Admin = configurazione. Pagine utente = uso quotidiano.</div>
+          <div class="kpi"><b>Se qualcosa non torna</b> Usa <code>Ripubblica discovery</code> e controlla i log addon.</div>
+        </div>
+      </div>
+
+      <div class="card toc">
+        <b>Indice rapido</b>
+        <ol>
+          <li><a href="#mappa">Mappa mentale del sistema</a></li>
+          <li><a href="#primo-avvio">Primo avvio senza errori</a></li>
+          <li><a href="#dispositivi">Dispositivi: come aggiungerli bene</a></li>
+          <li><a href="#scenari">Scenari: RUN, ON/OFF, trigger</a></li>
+          <li><a href="#covers">Tapparelle: Su/Giu/Stop, Min, Step</a></li>
+          <li><a href="#ha">Entita Home Assistant esterne</a></li>
+          <li><a href="#mqtt">MQTT discovery e pulizia</a></li>
+          <li><a href="#diagnosi">Diagnosi problemi tipici</a></li>
+          <li><a href="#checklist">Checklist finale</a></li>
+        </ol>
+      </div>
+
+      <div class="card" id="riferimenti">
+        <b>Riferimenti visuali della guida</b>
+        <ul>
+          <li><b>Blocco A</b>: BusPro UDP (parla con moduli HDL)</li>
+          <li><b>Blocco B</b>: Store configurazione addon</li>
+          <li><b>Blocco C</b>: MQTT discovery/stati verso Home Assistant</li>
+          <li><b>Blocco D</b>: UI Admin e UI Utente</li>
+          <li><b>Figura 1</b>: Schema a blocchi del flusso</li>
+          <li><b>Esempio 1</b>: Creo una luce dimmer</li>
+          <li><b>Esempio 2</b>: Scenario "Vado via"</li>
+        </ul>
+      </div>
+
+      <details id="mappa" open>
+        <summary>1) Mappa mentale del sistema (molto importante)</summary>
+        <div class="body">
+          <p>Pensa all'addon come a 4 blocchi:</p>
+          <ol>
+            <li><b>BusPro UDP</b>: parla con i moduli HDL (luci, cover, sensori).</li>
+            <li><b>Store interno</b>: salva configurazione (dispositivi, scenari, gruppi, trigger).</li>
+            <li><b>MQTT Discovery</b>: crea/aggiorna entita in Home Assistant.</li>
+            <li><b>UI Web</b>: Admin per configurare, pagine utente per usare.</li>
+          </ol>
+          <div class="note">Se capisci questo, capisci il 90% dell'addon.</div>
+          <div class="fig">
+            <svg viewBox="0 0 980 210" width="100%" height="auto" aria-label="Schema a blocchi addon">
+              <rect x="10" y="20" width="210" height="78" rx="10" fill="#0f1a31" stroke="#223055"/>
+              <text x="24" y="50" fill="#eef2ff" font-size="14" font-family="Arial">Blocco A</text>
+              <text x="24" y="72" fill="#9aa4b2" font-size="12" font-family="Arial">BusPro UDP</text>
+
+              <rect x="260" y="20" width="210" height="78" rx="10" fill="#0f1a31" stroke="#223055"/>
+              <text x="274" y="50" fill="#eef2ff" font-size="14" font-family="Arial">Blocco B</text>
+              <text x="274" y="72" fill="#9aa4b2" font-size="12" font-family="Arial">Store Config</text>
+
+              <rect x="510" y="20" width="210" height="78" rx="10" fill="#0f1a31" stroke="#223055"/>
+              <text x="524" y="50" fill="#eef2ff" font-size="14" font-family="Arial">Blocco C</text>
+              <text x="524" y="72" fill="#9aa4b2" font-size="12" font-family="Arial">MQTT Discovery</text>
+
+              <rect x="760" y="20" width="210" height="78" rx="10" fill="#0f1a31" stroke="#223055"/>
+              <text x="774" y="50" fill="#eef2ff" font-size="14" font-family="Arial">Blocco D</text>
+              <text x="774" y="72" fill="#9aa4b2" font-size="12" font-family="Arial">UI Admin/Utente</text>
+
+              <line x1="220" y1="59" x2="260" y2="59" stroke="#6ea8fe" stroke-width="2"/>
+              <line x1="470" y1="59" x2="510" y2="59" stroke="#6ea8fe" stroke-width="2"/>
+              <line x1="720" y1="59" x2="760" y2="59" stroke="#6ea8fe" stroke-width="2"/>
+              <text x="10" y="145" fill="#9aa4b2" font-size="12" font-family="Arial">Figura 1 - Flusso principale: impianto -> addon -> Home Assistant -> controllo utente</text>
+            </svg>
+            <div class="figcap">Figura 1: schema a blocchi (A-B-C-D) usato in tutta la guida.</div>
+          </div>
+        </div>
+      </details>
+
+      <details id="primo-avvio" open>
+        <summary>2) Primo avvio senza errori</summary>
+        <div class="body">
+          <ol>
+            <li>In opzioni addon imposta <code>gateway_host</code> e <code>gateway_port</code>.</li>
+            <li>Controlla <code>MQTT host/port</code> corretti.</li>
+            <li>Avvia addon e verifica pillole stato in header Admin (MQTT, Gateway, UDP).</li>
+            <li>Se vedi entita vecchie/sbagliate in HA: usa <code>Reset discovery</code> con cautela.</li>
+          </ol>
+          <p class="warn">Attenzione: Reset discovery rimuove retained config BusPro e poi ripubblica.</p>
+        </div>
+      </details>
+
+      <details id="dispositivi" open>
+        <summary>3) Dispositivi: come aggiungerli bene</summary>
+        <div class="body">
+          <p>Nel blocco <b>Dispositivi</b> inserisci: nome, gruppo UI, subnet/device/channel, categoria, icona, dimmable.</p>
+          <table>
+            <thead><tr><th>Campo</th><th>Uso pratico</th><th>Errore comune</th></tr></thead>
+            <tbody>
+              <tr><td>Gruppo (User UI)</td><td>Ordine visivo pagine utente</td><td>Lasciarlo vuoto e poi non trovare il device</td></tr>
+              <tr><td>Categoria</td><td>Come viene pubblicato in HA (light/switch ecc.)</td><td>Mettere Switch e aspettarsi slider %</td></tr>
+              <tr><td>Dimmable</td><td>Abilita brightness (0..255)</td><td>Mettere No su canale che vuoi regolare</td></tr>
+            </tbody>
+          </table>
+          <p class="note"><b>Regola %:</b> se vuoi percentuale in HA, il canale deve uscire come <code>light</code>, non <code>switch</code>.</p>
+          <div class="ex">
+            <b>Esempio 1 - Creo una VMC con slider %</b>
+            <ol>
+              <li>Nome: <code>VMC FAN</code></li>
+              <li>Addr: <code>1.185.60</code></li>
+              <li>Categoria: custom <code>Extra</code> (non Switch)</li>
+              <li>Dimmable: <code>Si</code></li>
+              <li>Risultato in HA: entita <code>light.buspro_extra_vmc_fan</code> con brightness</li>
+            </ol>
+          </div>
+        </div>
+      </details>
+
+      <details id="scenari" open>
+        <summary>4) Scenari: RUN, ON/OFF, trigger (spiegato semplice)</summary>
+        <div class="body">
+          <p><b>RUN</b> = esegui lo scenario come e stato salvato.<br/>
+          <b>ON/OFF</b> = usa la logica switch scenario (puo invertire in base alla configurazione scenario).</p>
+          <ul>
+            <li>Per scenari affidabili (es. Vado Via, Sveglia) usa: <code>RUN attivo</code>, <code>ON/OFF disattivo</code>.</li>
+            <li>Per uso manuale tipo "toggle rapido", puoi lasciare ON/OFF attivo.</li>
+          </ul>
+          <p><b>Trigger scenario</b>:</p>
+          <ol>
+            <li>In Admin crea Trigger E-manager (nome friendly).</li>
+            <li>Nello scenario (editor in pagina Luci) abilita Automazione E-manager e scegli trigger.</li>
+            <li>In HA/Alexa chiama il trigger con <code>button.press</code> o publish MQTT.</li>
+          </ol>
+          <div class="ex">
+            <b>Esempio 2 - Scenario "Vado via"</b>
+            <ul>
+              <li>Luci: tutte <code>OFF</code></li>
+              <li>Tapparelle: tutte <code>Giu</code> (close)</li>
+              <li>Flag consigliati: <code>RUN=on</code>, <code>ON/OFF=off</code></li>
+              <li>Trigger E-manager: <code>VADO_VIA_HA</code> attivo</li>
+            </ul>
+            <div class="mono">MQTT trigger: buspro/cmd/scenario_ha_trigger/VADO_VIA_HA payload RUN</div>
+          </div>
+        </div>
+      </details>
+
+      <details id="covers" open>
+        <summary>5) Tapparelle: Su/Giu/Stop, Min, Step</summary>
+        <div class="body">
+          <ul>
+            <li><code>Su</code> = OPEN</li>
+            <li><code>Giu</code> = CLOSE</li>
+            <li><code>Stop</code> = STOP</li>
+          </ul>
+          <p><b>Min/Step</b> sono per rampa a impulsi, non per comando diretto classico:</p>
+          <ul>
+            <li>Min = 0: comando diretto continuo (step ignorato).</li>
+            <li>Min alto + Step: alterna impulsi e stop, utile per movimento piu dolce/lungo.</li>
+          </ul>
+          <p class="note">Per "Vado via": di norma tutte su <code>Giu</code> e RUN.</p>
+        </div>
+      </details>
+
+      <details id="ha" open>
+        <summary>6) Entita Home Assistant esterne</summary>
+        <div class="body">
+          <p>Sezione <b>Home Assistant devices (UI utente)</b> serve per mostrare entita HA in pagine utente addon.</p>
+          <ul>
+            <li>Non crea un device BusPro nuovo.</li>
+            <li>Non passa da MQTT discovery BusPro: usa API HA.</li>
+          </ul>
+          <p>Esempio: aggiungi <code>light.sala</code> in pagina <code>extra</code> per controllarla dalla UI addon.</p>
+        </div>
+      </details>
+
+      <details id="mqtt" open>
+        <summary>7) MQTT discovery e pulizia</summary>
+        <div class="body">
+          <ul>
+            <li><b>Ripubblica discovery</b>: refresh normale, sicuro.</li>
+            <li><b>MQTT cleanup</b>: pulizia mirata di config/state vecchi su un addr.</li>
+            <li><b>Reset discovery</b>: reset forte retained + ripubblicazione completa.</li>
+          </ul>
+          <p>Quando usarli:</p>
+          <ol>
+            <li>Rinomina leggera -> Ripubblica discovery.</li>
+            <li>Cambio subnet/device/channel -> MQTT cleanup mirato.</li>
+            <li>Entita fantasma persistenti -> Reset discovery.</li>
+          </ol>
+        </div>
+      </details>
+
+      <details id="diagnosi" open>
+        <summary>8) Diagnosi problemi tipici</summary>
+        <div class="body">
+          <table>
+            <thead><tr><th>Sintomo</th><th>Causa probabile</th><th>Azione</th></tr></thead>
+            <tbody>
+              <tr><td>Scenario accende/spegne cose strane</td><td>Scenario duplicato o trigger esterno in conflitto</td><td>Controlla nomi scenari e automazioni Alexa/HA duplicate</td></tr>
+              <tr><td>Entita non compare in HA</td><td>Discovery non aggiornato</td><td>Ripubblica discovery, poi ricarica integrazione MQTT</td></tr>
+              <tr><td>% non visibile</td><td>Entity pubblicata come switch</td><td>Usa categoria non-switch + dimmable si</td></tr>
+              <tr><td>Cover sfasate</td><td>Tempi/calibrazione errati</td><td>Ricontrolla opening up/down e start delay</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
+
+      <details id="checklist" open>
+        <summary>9) Checklist finale "fatto bene"</summary>
+        <div class="body">
+          <ol>
+            <li class="ok">Gateway e MQTT online</li>
+            <li class="ok">Dispositivi con addr corretti e categoria coerente</li>
+            <li class="ok">Scenari testati con RUN</li>
+            <li class="ok">Trigger E-manager collegati ai soli scenari necessari</li>
+            <li class="ok">Backup esportato dopo le modifiche</li>
+          </ol>
+          <p class="note">Se vuoi, questa guida puo diventare anche una sezione "wizard" con check automatici. Posso aggiungerla.</p>
+        </div>
+      </details>
+    </main>
+  </body>
+</html>
