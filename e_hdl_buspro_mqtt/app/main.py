@@ -51,7 +51,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.350"
+ADDON_VERSION = "0.1.361"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -2561,6 +2561,59 @@ self.addEventListener('fetch', (event) => {{
                 await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
             except Exception:
                 pass
+            return
+
+    async def _run_cover_two_phase_open_buspro(
+        *,
+        gw: BusproGateway,
+        subnet_id: int,
+        device_id: int,
+        channel: int,
+        phase1_pct: int,
+        phase2_delay_minutes: int,
+    ) -> None:
+        try:
+            try:
+                pct = max(1, min(99, int(phase1_pct or 25)))
+            except Exception:
+                pct = 25
+            try:
+                delay_min = max(0, min(240, int(phase2_delay_minutes or 4)))
+            except Exception:
+                delay_min = 4
+
+            try:
+                await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                _start_cover_sim(subnet_id, device_id, channel, "OPEN")
+            except Exception:
+                return
+
+            up_s, _down_s = _cover_times(subnet_id, device_id, channel)
+            phase1_s = max(0.2, float(up_s or 0.0) * (float(pct) / 100.0))
+            if phase1_s > 0:
+                await asyncio.sleep(phase1_s)
+                try:
+                    await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                    _start_cover_sim(subnet_id, device_id, channel, "STOP")
+                except Exception:
+                    return
+
+            delay_s = float(delay_min) * 60.0
+            if delay_s > 0:
+                await asyncio.sleep(delay_s)
+
+            try:
+                await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                _start_cover_sim(subnet_id, device_id, channel, "OPEN")
+            except Exception:
+                return
+        except asyncio.CancelledError:
+            try:
+                await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
+            except Exception:
+                pass
+            return
+        except Exception:
             return
 
     def _find_cover_group_by_gid(gid: str) -> dict[str, Any] | None:
@@ -7682,6 +7735,21 @@ self.addEventListener('fetch', (event) => {{
                     step_seconds = 5
                 ramp_minutes = max(0, min(240, ramp_minutes))
                 step_seconds = max(1, min(120, step_seconds))
+                two_phase_open_raw = it.get("two_phase_open")
+                if isinstance(two_phase_open_raw, str):
+                    two_phase_open = two_phase_open_raw.strip().lower() in ("1", "true", "yes", "on")
+                else:
+                    two_phase_open = bool(two_phase_open_raw)
+                try:
+                    phase1_pct = int(float(it.get("phase1_pct") or 25))
+                except Exception:
+                    phase1_pct = 25
+                phase1_pct = max(1, min(99, phase1_pct))
+                try:
+                    phase2_delay_minutes = int(float(it.get("phase2_delay_minutes") or 4))
+                except Exception:
+                    phase2_delay_minutes = 4
+                phase2_delay_minutes = max(0, min(240, phase2_delay_minutes))
                 kind = str(it.get("kind") or "single").strip().lower()
                 if kind == "ha":
                     if not _ha_enabled():
@@ -7706,7 +7774,30 @@ self.addEventListener('fetch', (event) => {{
                     gid = str(it.get("group_id") or "").strip()
                     if not gid:
                         continue
-                    if ramp_minutes > 0 and step_seconds > 0 and cmd_eff in ("OPEN", "CLOSE"):
+                    if two_phase_open and cmd_eff == "OPEN":
+                        g = _find_cover_group_by_gid(gid) or {}
+                        members = g.get("members") or []
+                        for m in members:
+                            addr = str(m or "").strip()
+                            if not addr:
+                                continue
+                            try:
+                                subnet_id, device_id, channel = [int(x) for x in addr.split(".")]
+                            except Exception:
+                                continue
+                            t = asyncio.create_task(
+                                _run_cover_two_phase_open_buspro(
+                                    gw=gw,
+                                    subnet_id=subnet_id,
+                                    device_id=device_id,
+                                    channel=channel,
+                                    phase1_pct=phase1_pct,
+                                    phase2_delay_minutes=phase2_delay_minutes,
+                                )
+                            )
+                            _track_scenario_task(str(sc.get("id") or ""), t)
+                        cover_sent += 1
+                    elif ramp_minutes > 0 and step_seconds > 0 and cmd_eff in ("OPEN", "CLOSE"):
                         g = _find_cover_group_by_gid(gid) or {}
                         members = g.get("members") or []
                         for m in members:
@@ -7746,7 +7837,20 @@ self.addEventListener('fetch', (event) => {{
                     continue
                 try:
                     # Scenario single covers: use direct (raw) commands only.
-                    if ramp_minutes > 0 and step_seconds > 0 and cmd_eff in ("OPEN", "CLOSE"):
+                    if two_phase_open and cmd_eff == "OPEN":
+                        t = asyncio.create_task(
+                            _run_cover_two_phase_open_buspro(
+                                gw=gw,
+                                subnet_id=subnet_id,
+                                device_id=device_id,
+                                channel=channel,
+                                phase1_pct=phase1_pct,
+                                phase2_delay_minutes=phase2_delay_minutes,
+                            )
+                        )
+                        _track_scenario_task(str(sc.get("id") or ""), t)
+                        cover_sent += 1
+                    elif ramp_minutes > 0 and step_seconds > 0 and cmd_eff in ("OPEN", "CLOSE"):
                         t = asyncio.create_task(
                             _run_cover_ramp_buspro(
                                 gw=gw,

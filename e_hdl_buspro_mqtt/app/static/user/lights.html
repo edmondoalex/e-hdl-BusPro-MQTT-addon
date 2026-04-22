@@ -996,14 +996,17 @@
             const pos = (it.position === null || it.position === undefined) ? null : Math.max(0, Math.min(100, Number(it.position)));
             const ramp_minutes = Math.max(0, Math.min(240, Number(it.ramp_minutes ?? 0) || 0));
             const step_seconds = Math.max(1, Math.min(120, Number(it.step_seconds ?? 5) || 5));
+            const two_phase_open = !!it.two_phase_open;
+            const phase1_pct = Math.max(1, Math.min(99, Number(it.phase1_pct ?? 25) || 25));
+            const phase2_delay_minutes = Math.max(0, Math.min(240, Number(it.phase2_delay_minutes ?? 4) || 4));
             if (cmd === 'SET_POSITION') {
               cmd = 'STOP';
             }
             if (kind === 'group') {
-              return { kind: 'group', group_id: String(it.group_id || it.id || '').trim(), command: cmd, position: null, ramp_minutes, step_seconds };
+              return { kind: 'group', group_id: String(it.group_id || it.id || '').trim(), command: cmd, position: null, ramp_minutes, step_seconds, two_phase_open, phase1_pct, phase2_delay_minutes };
             }
             if (kind === 'ha') {
-              return { kind: 'ha', entity_id: String(it.entity_id || '').trim().toLowerCase(), command: cmd, position: null, ramp_minutes, step_seconds };
+              return { kind: 'ha', entity_id: String(it.entity_id || '').trim().toLowerCase(), command: cmd, position: null, ramp_minutes, step_seconds, two_phase_open, phase1_pct, phase2_delay_minutes };
             }
             return {
               kind: 'single',
@@ -1014,9 +1017,17 @@
               position: null,
               ramp_minutes,
               step_seconds,
+              two_phase_open,
+              phase1_pct,
+              phase2_delay_minutes,
             };
           })
-          .filter(it => (it.kind === 'group' ? !!it.group_id : (Number.isFinite(it.subnet_id) && Number.isFinite(it.device_id) && Number.isFinite(it.channel))))
+          .filter(it => (it.kind === 'group'
+            ? !!it.group_id
+            : (it.kind === 'ha'
+              ? !!it.entity_id
+              : (Number.isFinite(it.subnet_id) && Number.isFinite(it.device_id) && Number.isFinite(it.channel))))
+          )
           .filter(it => ['OPEN','CLOSE','STOP'].includes(String(it.command||'')));
 
         const nameInput = qs('scNameInput');
@@ -1182,6 +1193,10 @@
             : `${escapeHtml(coverAddrFromItem(it))}${isHa ? ' &bull; E-manager' : ''}`;
           const rampMin = Math.max(0, Math.min(240, Number(it.ramp_minutes ?? 0) || 0));
           const stepSec = Math.max(1, Math.min(120, Number(it.step_seconds ?? 5) || 5));
+          const twoPhase = !!it.two_phase_open;
+          const phase1Pct = Math.max(1, Math.min(99, Number(it.phase1_pct ?? 25) || 25));
+          const phase2Delay = Math.max(0, Math.min(240, Number(it.phase2_delay_minutes ?? 4) || 4));
+          const canUseTwoPhase = !isHa;
 
           const row = document.createElement('div');
           row.className = 'scItem';
@@ -1200,6 +1215,14 @@
                 <input type="number" min="0" max="240" step="1" value="${escapeHtml(String(rampMin))}" data-act="c_ramp" data-key="${escapeHtml(key)}" />
                 <label>Step s</label>
                 <input type="number" min="1" max="120" step="1" value="${escapeHtml(String(stepSec))}" data-act="c_step" data-key="${escapeHtml(key)}" />
+                <label style="display:flex;align-items:center;gap:6px;white-space:nowrap;${canUseTwoPhase ? '' : 'opacity:.45;'}">
+                  <input type="checkbox" data-act="c_2p" data-key="${escapeHtml(key)}" ${twoPhase ? 'checked' : ''} ${canUseTwoPhase ? '' : 'disabled'} />
+                  2 fasi Su
+                </label>
+                <label>%1</label>
+                <input type="number" min="1" max="99" step="1" value="${escapeHtml(String(phase1Pct))}" data-act="c_2p_pct" data-key="${escapeHtml(key)}" ${(twoPhase && canUseTwoPhase) ? '' : 'disabled'} />
+                <label>Delay m</label>
+                <input type="number" min="0" max="240" step="1" value="${escapeHtml(String(phase2Delay))}" data-act="c_2p_delay" data-key="${escapeHtml(key)}" ${(twoPhase && canUseTwoPhase) ? '' : 'disabled'} />
               </div>
               <button class="btn danger" type="button" data-act="c_del" data-key="${escapeHtml(key)}">Rimuovi</button>
             </div>
@@ -1252,6 +1275,27 @@
             const key = inp.getAttribute('data-key') || '';
             const v = Math.max(1, Math.min(120, Number(inp.value || 5) || 5));
             for (const it of (editingScenarioCovers || [])) if (coverKeyFromItem(it) === key) { it.step_seconds = v; }
+          });
+        });
+        root.querySelectorAll('input[data-act="c_2p"]').forEach((inp) => {
+          inp.addEventListener('change', () => {
+            const key = inp.getAttribute('data-key') || '';
+            for (const it of (editingScenarioCovers || [])) if (coverKeyFromItem(it) === key) { it.two_phase_open = !!inp.checked; }
+            renderScenarioEditorCovers();
+          });
+        });
+        root.querySelectorAll('input[data-act="c_2p_pct"]').forEach((inp) => {
+          inp.addEventListener('change', () => {
+            const key = inp.getAttribute('data-key') || '';
+            const v = Math.max(1, Math.min(99, Number(inp.value || 25) || 25));
+            for (const it of (editingScenarioCovers || [])) if (coverKeyFromItem(it) === key) { it.phase1_pct = v; }
+          });
+        });
+        root.querySelectorAll('input[data-act="c_2p_delay"]').forEach((inp) => {
+          inp.addEventListener('change', () => {
+            const key = inp.getAttribute('data-key') || '';
+            const v = Math.max(0, Math.min(240, Number(inp.value || 4) || 4));
+            for (const it of (editingScenarioCovers || [])) if (coverKeyFromItem(it) === key) { it.phase2_delay_minutes = v; }
           });
         });
         restoreScenarioScroll(scScroll);
@@ -1308,12 +1352,12 @@
           row.addEventListener('click', () => {
             animatePress(row);
             if (c.kind === 'group') {
-              editingScenarioCovers = (editingScenarioCovers || []).concat([{ kind:'group', group_id: String(c.gid), command:'STOP', position:null, ramp_minutes:0, step_seconds:5 }]);
+              editingScenarioCovers = (editingScenarioCovers || []).concat([{ kind:'group', group_id: String(c.gid), command:'STOP', position:null, ramp_minutes:0, step_seconds:5, two_phase_open:false, phase1_pct:25, phase2_delay_minutes:4 }]);
             } else if (c.kind === 'ha') {
-              editingScenarioCovers = (editingScenarioCovers || []).concat([{ kind:'ha', entity_id: String(c.id || '').trim().toLowerCase(), command:'STOP', position:null, ramp_minutes:0, step_seconds:5 }]);
+              editingScenarioCovers = (editingScenarioCovers || []).concat([{ kind:'ha', entity_id: String(c.id || '').trim().toLowerCase(), command:'STOP', position:null, ramp_minutes:0, step_seconds:5, two_phase_open:false, phase1_pct:25, phase2_delay_minutes:4 }]);
             } else {
               const parts = String(c.id).split('.').map(Number);
-              editingScenarioCovers = (editingScenarioCovers || []).concat([{ kind:'single', subnet_id: parts[0], device_id: parts[1], channel: parts[2], command:'STOP', position:null, ramp_minutes:0, step_seconds:5 }]);
+              editingScenarioCovers = (editingScenarioCovers || []).concat([{ kind:'single', subnet_id: parts[0], device_id: parts[1], channel: parts[2], command:'STOP', position:null, ramp_minutes:0, step_seconds:5, two_phase_open:false, phase1_pct:25, phase2_delay_minutes:4 }]);
             }
             renderScenarioEditorCovers();
             renderScenarioCoverAddList();
@@ -1513,11 +1557,14 @@
             const cmd = String(it.command || '').toUpperCase();
             const ramp_minutes = Math.max(0, Math.min(240, Number(it.ramp_minutes ?? 0) || 0));
             const step_seconds = Math.max(1, Math.min(120, Number(it.step_seconds ?? 5) || 5));
+            const two_phase_open = !!it.two_phase_open;
+            const phase1_pct = Math.max(1, Math.min(99, Number(it.phase1_pct ?? 25) || 25));
+            const phase2_delay_minutes = Math.max(0, Math.min(240, Number(it.phase2_delay_minutes ?? 4) || 4));
             if (kind === 'group') {
-              return { kind: 'group', group_id: String(it.group_id || '').trim(), command: cmd, position: null, ramp_minutes, step_seconds };
+              return { kind: 'group', group_id: String(it.group_id || '').trim(), command: cmd, position: null, ramp_minutes, step_seconds, two_phase_open, phase1_pct, phase2_delay_minutes };
             }
             if (kind === 'ha') {
-              return { kind: 'ha', entity_id: String(it.entity_id || '').trim().toLowerCase(), command: cmd, position: null, ramp_minutes, step_seconds };
+              return { kind: 'ha', entity_id: String(it.entity_id || '').trim().toLowerCase(), command: cmd, position: null, ramp_minutes, step_seconds, two_phase_open, phase1_pct, phase2_delay_minutes };
             }
             return {
               kind: 'single',
@@ -1528,6 +1575,9 @@
               position: null,
               ramp_minutes,
               step_seconds,
+              two_phase_open,
+              phase1_pct,
+              phase2_delay_minutes,
             };
           });
           if (!items.length && !covers.length) {

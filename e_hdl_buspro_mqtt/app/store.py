@@ -995,6 +995,32 @@ class StateStore:
                     step_seconds_i = 5
             step_seconds_i = max(1, min(120, step_seconds_i))
 
+            two_phase_raw = it.get("two_phase_open")
+            if isinstance(two_phase_raw, str):
+                two_phase_open = two_phase_raw.strip().lower() in ("1", "true", "yes", "on")
+            else:
+                two_phase_open = bool(two_phase_raw)
+
+            phase1_pct = it.get("phase1_pct")
+            if phase1_pct is None or phase1_pct == "":
+                phase1_pct_i = 25
+            else:
+                try:
+                    phase1_pct_i = int(float(phase1_pct))
+                except Exception:
+                    phase1_pct_i = 25
+            phase1_pct_i = max(1, min(99, phase1_pct_i))
+
+            phase2_delay = it.get("phase2_delay_minutes")
+            if phase2_delay is None or phase2_delay == "":
+                phase2_delay_i = 4
+            else:
+                try:
+                    phase2_delay_i = int(float(phase2_delay))
+                except Exception:
+                    phase2_delay_i = 4
+            phase2_delay_i = max(0, min(240, phase2_delay_i))
+
             pos = it.get("position")
             if cmd == "SET_POSITION":
                 try:
@@ -1017,6 +1043,9 @@ class StateStore:
                         "position": pos_i,
                         "ramp_minutes": ramp_minutes_i,
                         "step_seconds": step_seconds_i,
+                        "two_phase_open": two_phase_open,
+                        "phase1_pct": phase1_pct_i,
+                        "phase2_delay_minutes": phase2_delay_i,
                     }
                 )
                 continue
@@ -1033,6 +1062,9 @@ class StateStore:
                         "position": pos_i,
                         "ramp_minutes": ramp_minutes_i,
                         "step_seconds": step_seconds_i,
+                        "two_phase_open": two_phase_open,
+                        "phase1_pct": phase1_pct_i,
+                        "phase2_delay_minutes": phase2_delay_i,
                     }
                 )
                 continue
@@ -1053,6 +1085,9 @@ class StateStore:
                     "position": pos_i,
                     "ramp_minutes": ramp_minutes_i,
                     "step_seconds": step_seconds_i,
+                    "two_phase_open": two_phase_open,
+                    "phase1_pct": phase1_pct_i,
+                    "phase2_delay_minutes": phase2_delay_i,
                 }
             )
 

@@ -1,5 +1,12 @@
 # WORKLOG
 
+## 2026-04-22 (scenario covers: two-phase OPEN in RUN)
+- Scenari tapparelle (`/lights?sc=1`): aggiunta opzione per item cover `2 fasi Su` con parametri `%1` e `Delay m` (mobile-safe, stessi controlli anche su smartphone).
+- Store scenari: persistenza/normalizzazione campi `two_phase_open`, `phase1_pct`, `phase2_delay_minutes` per cover single/group/ha.
+- Runtime RUN scenari: se cover `OPEN` con `2 fasi Su` attivo, esegue `OPEN` -> stop dopo `%1` del tempo salita -> attesa `Delay m` -> `OPEN` finale.
+- Supportato sia per cover singole sia per gruppi cover (comportamento invariato per CLOSE/STOP e per rampe classiche).
+- Version bump: 0.1.360 -> 0.1.361.
+
 ## 2026-04-16 (remove ON reinforcement flicker, keep single paced pass)
 - Runtime scenari luci BusPro: rimossa la seconda passata di rinforzo `ON` (causava effetto lampeggio su alcuni impianti).
 - Mantenuta una sola passata comandi con pacing aumentato per maggiore stabilità senza "albero di Natale".
