@@ -7603,9 +7603,11 @@ self.addEventListener('fetch', (event) => {{
             if state not in ("ON", "OFF"):
                 continue
             # RUN behavior safety:
-            # - mixed scenarios: keep legacy behavior (avoid OFF on RUN)
-            # - all-OFF scenarios (e.g. "solo spente"): allow OFF on RUN
-            if desired is None and state == "OFF" and has_on_items:
+            # - legacy default (ON/OFF enabled): mixed scenarios avoid OFF on RUN
+            # - explicit RUN-only scenarios (ON/OFF disabled): apply OFF too, so RUN can enforce a full scene
+            #   (e.g. "Cinema": keep only selected lights ON, switch all others OFF)
+            onoff_enabled = bool(sc.get("onoff_enabled")) if ("onoff_enabled" in sc) else True
+            if desired is None and state == "OFF" and has_on_items and onoff_enabled:
                 continue
             on = state == "ON"
             br = it.get("brightness")

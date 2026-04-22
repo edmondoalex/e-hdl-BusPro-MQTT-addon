@@ -1089,6 +1089,12 @@
 - MQTT discovery: aggiunte entita' cover clone "no%" (solo OPEN/CLOSE/STOP, senza posizione) per ogni cover e per ogni cover group; raggruppate sotto device `BusPro Cover no %`.
 - Version bump: 0.1.179 -> 0.1.180.
 
+## 2026-04-22 (RUN mixed scene applies OFF when ON/OFF disabled)
+- Runtime scenari BusPro (`run_light_scenario`): per scenari misti ON+OFF, `RUN` ora applica anche gli OFF quando `onoff_enabled` e' disattivo.
+- Mantiene comportamento legacy quando `onoff_enabled` e' attivo (evita OFF in RUN sugli scenari misti).
+- Caso coperto: scenario "Cinema" che deve lasciare accese solo alcune luci e spegnere le altre con RUN.
+- Version bump: 0.1.359 -> 0.1.360.
+
 ## 2026-04-22 (admin dedicated guide page with blocks, figures, examples)
 - Nuova pagina Admin dedicata: `/admin-guide` con spiegazione completa addon "da zero" a blocchi.
 - Aggiunto link `Guida` nella navbar della pagina Admin (`index.html`) con apertura diretta.
