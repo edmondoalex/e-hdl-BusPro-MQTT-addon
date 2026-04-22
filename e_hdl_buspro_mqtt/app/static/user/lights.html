@@ -216,10 +216,10 @@
         background:rgba(0,0,0,.05);
       }
       .scItem:first-child{border-top:none}
-      .scItemLeft{min-width:0;flex:1}
+      .scItemLeft{min-width:190px;flex:1 1 260px}
       .scItemTitle{font-size:15px;opacity:.90;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      .scItemSub{font-size:12px;color:rgba(255,255,255,.55);margin-top:3px;max-width:100%;word-break:break-word}
-      .scItemCtrls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+      .scItemSub{font-size:12px;color:rgba(255,255,255,.55);margin-top:3px;max-width:100%;word-break:normal;overflow-wrap:anywhere}
+      .scItemCtrls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end;flex:1 1 520px}
       .scItemRamp{display:flex;gap:8px;align-items:center}
       .scItemRamp label{font-size:12px;color:rgba(255,255,255,.52)}
       .scItemRamp input{
@@ -307,6 +307,11 @@
         .scItem{flex-direction:column;align-items:flex-start;gap:8px}
         .scItemCtrls{width:100%;justify-content:flex-start}
         .scRange{width:100%}
+        .scItemTitle{white-space:normal}
+      }
+      @media(max-width:1100px){
+        .scItem{flex-direction:column;align-items:flex-start;gap:8px}
+        .scItemCtrls{width:100%;justify-content:flex-start}
         .scItemTitle{white-space:normal}
       }
       @media(min-width:901px){

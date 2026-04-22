@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-04-22 (scenario covers UI: names visible with two-phase controls)
+- UI scenari tapparelle: fix layout riga editor per evitare che il nome/address cover venga schiacciato con i nuovi controlli `2 fasi Su`.
+- Migliorata responsivita' a larghezze intermedie (tablet/desktop stretto): i controlli vanno sotto e il nome resta leggibile.
+- Aggiornato wrapping meta riga per evitare rendering verticale dell'indirizzo.
+- Version bump: 0.1.361 -> 0.1.362.
+
 ## 2026-04-22 (scenario covers: two-phase OPEN in RUN)
 - Scenari tapparelle (`/lights?sc=1`): aggiunta opzione per item cover `2 fasi Su` con parametri `%1` e `Delay m` (mobile-safe, stessi controlli anche su smartphone).
 - Store scenari: persistenza/normalizzazione campi `two_phase_open`, `phase1_pct`, `phase2_delay_minutes` per cover single/group/ha.
