@@ -51,7 +51,7 @@ from .store import StateStore
 _LOGGER = logging.getLogger("buspro_addon")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
-ADDON_VERSION = "0.1.363"
+ADDON_VERSION = "0.1.364"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -1642,8 +1642,11 @@ self.addEventListener('fetch', (event) => {{
         pos = int(st.position) if (use_pos and st.position is not None) else None
         store.set_cover_state(subnet_id=subnet, device_id=did, channel=ch, state=state, position=pos)
         mqtt.publish(state_topic, state, retain=True)
+        # Always update position topic to avoid stale retained values in HA.
         if pos is not None:
             mqtt.publish(pos_topic, str(pos), retain=True)
+        else:
+            mqtt.publish(pos_topic, "", retain=True)
 
     def _publish_temp_value(dev: dict[str, Any], value: float, ts: float | None = None) -> None:
         subnet = int(dev["subnet_id"])
@@ -2106,6 +2109,11 @@ self.addEventListener('fetch', (event) => {{
         pos_i = int(position) if position is not None else None
         store.set_cover_group_state(group_id=gid, state=state_u, position=pos_i)
         mqtt.publish(f"{settings.mqtt.base_topic}/state/cover_group_state/{gid}", state_u, retain=True)
+        # Keep group position topic in sync (or clear it) to prevent stale HA values.
+        if pos_i is not None:
+            mqtt.publish(f"{settings.mqtt.base_topic}/state/cover_group_pos/{gid}", str(pos_i), retain=True)
+        else:
+            mqtt.publish(f"{settings.mqtt.base_topic}/state/cover_group_pos/{gid}", "", retain=True)
 
     def _rebuild_cover_group_index() -> None:
         groups = store.list_cover_groups()
@@ -4109,12 +4117,18 @@ self.addEventListener('fetch', (event) => {{
                             mqtt.publish(f"{settings.mqtt.base_topic}/state/cover_state/{int(subnet_s)}/{int(dev_s)}/{int(ch_s)}", str(st.get("state") or ""), retain=True)
                         if st.get("position") is not None:
                             mqtt.publish(f"{settings.mqtt.base_topic}/state/cover_pos/{int(subnet_s)}/{int(dev_s)}/{int(ch_s)}", str(int(st.get("position"))), retain=True)
+                        else:
+                            mqtt.publish(f"{settings.mqtt.base_topic}/state/cover_pos/{int(subnet_s)}/{int(dev_s)}/{int(ch_s)}", "", retain=True)
                 if isinstance(k, str) and k.startswith("cover_group:"):
                     gid = k.split(":", 1)[1]
                     st = v or {}
                     if isinstance(st, dict):
                         if "state" in st:
                             mqtt.publish(f"{settings.mqtt.base_topic}/state/cover_group_state/{gid}", str(st.get("state") or ""), retain=True)
+                        if st.get("position") is not None:
+                            mqtt.publish(f"{settings.mqtt.base_topic}/state/cover_group_pos/{gid}", str(int(st.get("position"))), retain=True)
+                        else:
+                            mqtt.publish(f"{settings.mqtt.base_topic}/state/cover_group_pos/{gid}", "", retain=True)
                 if isinstance(k, str) and k.startswith("temp:"):
                     addr = k.split(":", 1)[1]
                     subnet_s, dev_s, ch_s = addr.split(".")

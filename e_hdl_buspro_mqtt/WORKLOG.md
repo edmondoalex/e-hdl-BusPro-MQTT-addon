@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-04-24 (cover position retained stale fix for HA)
+- Cover MQTT publish: il topic posizione (`state/cover_pos/...`) ora viene sempre aggiornato; quando posizione non disponibile viene inviato payload vuoto retained per cancellare valori vecchi.
+- Cover group MQTT publish: stessa correzione su `state/cover_group_pos/...` (prima il topic posizione gruppo poteva restare non aggiornato).
+- Restore stati all'avvio: ora pubblica anche clear dei topic posizione cover/group quando `position` e' `null`, evitando percentuali stale in Home Assistant.
+- Version bump: 0.1.363 -> 0.1.364.
+
 ## 2026-04-22 (scenario covers UI: action buttons always visible)
 - UI editor scenari tapparelle: introdotta classe layout dedicata per righe cover (`scCoverItem`) con controlli su piu' righe e wrapping robusto.
 - Pulsanti `Su/Giu/Stop/Rimuovi` e campi `2 fasi Su` sempre visibili senza clipping a destra.
