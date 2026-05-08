@@ -1,5 +1,17 @@
 # WORKLOG
 
+## 2026-05-08 (e-SunMind strict pass-through debug mode)
+- Proxy `ext_proxy` per target `e-SunMind` in modalita' pass-through:
+  - disabilitato rewrite/injection del body HTML/CSS
+  - nessuna modifica a `index`/`assets` contenuti.
+- Forward headers `Accept-Encoding` disabilitato per `e-SunMind` (evita transcodifica/compressione lato upstream per debug integrita').
+- Timeout fetch upstream portato a 120s (stabile per payload grandi e reti lente).
+- Cache disabilitata su HTML/CSS/JS e su `/assets/*` `e-SunMind` (`no-store`, no validator headers).
+- MIME statici forzati per `e-SunMind`:
+  - `.js` -> `application/javascript; charset=utf-8`
+  - `.css` -> `text/css; charset=utf-8`
+- Version bump: 0.1.379 -> 0.1.380.
+
 ## 2026-05-08 (bootstrap debug script hardened for WebView parser)
 - Ridotto e semplificato il blocco debug JS iniettato dal proxy per massima compatibilita' WebView:
   - rimosso uso di `fetch`/`sendBeacon`/`Blob` per debug

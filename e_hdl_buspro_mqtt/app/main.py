@@ -1439,13 +1439,19 @@ self.addEventListener('fetch', (event) => {{
 </script>
 """.strip()
 
-    def _fetch_upstream(method: str, url: str, headers: dict[str, str], body: bytes | None) -> tuple[int, dict[str, list[str]], bytes]:
+    def _fetch_upstream(
+        method: str,
+        url: str,
+        headers: dict[str, str],
+        body: bytes | None,
+        timeout_s: int = 120,
+    ) -> tuple[int, dict[str, list[str]], bytes]:
         req = urllib.request.Request(url=url, method=method.upper())
         for k, v in headers.items():
             req.add_header(k, v)
         data = body if body is not None and method.upper() not in ("GET", "HEAD") else None
         try:
-            with urllib.request.urlopen(req, data=data, timeout=12) as resp:
+            with urllib.request.urlopen(req, data=data, timeout=max(5, int(timeout_s or 120))) as resp:
                 status = int(getattr(resp, "status", 200))
                 raw_headers = resp.headers
                 out_headers: dict[str, list[str]] = {}
@@ -1485,6 +1491,7 @@ self.addEventListener('fetch', (event) => {{
     @api.api_route("/ext/{name}/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
     async def ext_proxy(name: str, request: Request, path: str = ""):
         # User-side reverse proxy for configured local targets.
+        is_sunmind = str(name or "").strip().lower() == "e-sunmind"
         target = store.find_proxy_target(name=name)
         if not target:
             _LOGGER.debug("ext_proxy target not found: name=%s path=%s", name, request.url.path)
@@ -1613,6 +1620,8 @@ self.addEventListener('fetch', (event) => {{
                 continue
             if lk == "origin":
                 continue
+            if is_sunmind and lk == "accept-encoding":
+                continue
             fwd_headers[k] = v
         # Avoid conditional cache revalidation (304) on proxied resources.
         # Some embedded WebViews can keep stale bundles and break bootstrap.
@@ -1632,6 +1641,7 @@ self.addEventListener('fetch', (event) => {{
                 upstream_url,
                 fwd_headers,
                 body,
+                120,
             )
         except Exception:
             _LOGGER.exception("ext_proxy upstream error: name=%s upstream=%s", name, upstream_url)
@@ -1667,9 +1677,10 @@ self.addEventListener('fetch', (event) => {{
             if vals:
                 out_headers[k] = vals[-1]
 
-        # Rewrite HTML/CSS bodies best-effort
+        # Rewrite HTML/CSS bodies best-effort.
+        # For e-SunMind keep strict pass-through (no body rewrite/injection).
         ct = (content_type or "").lower()
-        if payload and ("text/html" in ct or "text/css" in ct):
+        if (not is_sunmind) and payload and ("text/html" in ct or "text/css" in ct):
             try:
                 charset = "utf-8"
                 if "charset=" in ct:
@@ -1688,9 +1699,10 @@ self.addEventListener('fetch', (event) => {{
             except Exception:
                 pass
 
-        # WebView (Control4/Android/iOS) can keep stale HTML while JS/CSS are newer.
-        # Force fresh HTML on every load to avoid bootstrap/runtime mismatches.
-        if "text/html" in ct or "text/css" in ct or "javascript" in ct:
+        # Disable cache while debugging WebView issues.
+        if "text/html" in ct or "text/css" in ct or "javascript" in ct or (
+            is_sunmind and str(path or "").strip().lstrip("/").startswith("assets/")
+        ):
             out_headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
             out_headers["Pragma"] = "no-cache"
             out_headers["Expires"] = "0"
@@ -1698,6 +1710,14 @@ self.addEventListener('fetch', (event) => {{
             out_headers.pop("etag", None)
             out_headers.pop("Last-Modified", None)
             out_headers.pop("last-modified", None)
+
+        # Enforce stable MIME for proxied static assets when upstream is ambiguous.
+        if is_sunmind:
+            p_norm = str(path or "").strip().lstrip("/").lower()
+            if p_norm.endswith(".js"):
+                out_headers["Content-Type"] = "application/javascript; charset=utf-8"
+            elif p_norm.endswith(".css"):
+                out_headers["Content-Type"] = "text/css; charset=utf-8"
 
         resp = Response(content=payload, status_code=int(status), headers=out_headers)
         for sc in set_cookie_out:
