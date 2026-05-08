@@ -55,7 +55,7 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-ADDON_VERSION = "0.1.369"
+ADDON_VERSION = "0.1.370"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125

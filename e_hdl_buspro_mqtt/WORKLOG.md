@@ -1,5 +1,12 @@
 # WORKLOG
 
+## 2026-05-08 (cover state machine stabilization + HA alignment kept)
+- Cover BusPro: fix logica `set_position` con gestione `pending`/probe/fallback nel punto corretto (dopo invio comando), evitando stati incoerenti OPEN/CLOSE/STOP.
+- Cover BusPro: `clear_pending_motion` semplificato a solo cancel/reset (rimosso blocco errato che usava variabili non definite).
+- Cover BusPro: no-op sicuro quando `requested_position == current_position` (niente comando OPEN/CLOSE spurio).
+- Allineamento HA cover: mapping stato resta coerente con `OPEN/CLOSED/OPENING/CLOSING/STOP` + `position`.
+- Version bump: 0.1.369 -> 0.1.370.
+
 ## 2026-05-08 (proxy stream timeout fix + query dedupe)
 - Fix timeout su stream proxati: le richieste `/ext/{name}/api/stream` vengono ora instradate al proxy SSE dedicato (timeout lungo), evitando `_fetch_upstream` a 12s.
 - Fix merge query su root proxy: deduplica coppie query per evitare duplicati tipo `?view=user&view=user`.

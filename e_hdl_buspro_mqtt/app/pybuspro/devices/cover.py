@@ -521,27 +521,40 @@ class Cover(Device):
 
         self._state_changetime = abs(self._requested_position - self._start_position) / 100 * full_time
 
+        # No movement needed: keep state consistent and avoid sending OPEN/CLOSE.
+        if self._state_changetime <= 0:
+            self._position = int(max(0, min(100, self._requested_position)))
+            self._status = (
+                CoverStatus.OPEN if self._position == 100 else
+                CoverStatus.CLOSE if self._position == 0 else
+                CoverStatus.STOP
+            )
+            self._command = CoverStatus.STOP
+            self._pending = None
+            self._cancel_status_poll()
+            self._cancel_motion_tick()
+            self._call_device_updated()
+            return
+
         # invio comando
         await self._send_command()
-        self._call_device_updated()
+        _LOGGER.debug(
+            "cover set_position cmd sent ch=%s from=%s to=%s dir=%s time=%.2fs",
+            self._channel,
+            self._start_position,
+            self._requested_position,
+            pending_dir,
+            self._state_changetime,
+        )
 
-    def clear_pending_motion(self) -> None:
-        """Cancel any pending/auto-stop tasks before issuing raw commands."""
-        try:
-            if self._stop_task and not self._stop_task.done():
-                self._stop_task.cancel()
-        except Exception:
-            pass
-        self._cancel_status_poll()
-        self._cancel_motion_tick()
-        self._cancel_pending_fallback()
-        self._cancel_pending_start()
-        self._cancel_pending_probe()
-        self._pending = None
-
-        # Non far partire subito il conteggio: aspetta conferma OPENING/CLOSING dal bus (o fallback timeout).
+        # Wait motion confirmation from bus; fallback starts interpolation if no confirmation arrives.
         self._status = CoverStatus.STOP
-        self._set_pending(direction=pending_dir, requested=self._requested_position, full_time=full_time, start_pos=int(self._start_position))
+        self._set_pending(
+            direction=pending_dir,
+            requested=self._requested_position,
+            full_time=full_time,
+            start_pos=int(self._start_position),
+        )
 
         async def _probe_pending_start() -> None:
             pending_ref = self._pending
@@ -564,8 +577,6 @@ class Cover(Device):
 
         async def _fallback_start() -> None:
             try:
-                # Il movimento reale puÇý partire in ritardo (1-3s). Se facciamo partire il conteggio troppo presto,
-                # la UI diventa fuori sincrono e "blocca" i comandi (crede di essere a 0/100 quando non lo Çù).
                 wait_s = 1.2 + max(0.0, float(getattr(self, "_start_delay_s", 0.0) or 0.0))
                 wait_s = max(1.0, min(6.0, wait_s))
                 await asyncio.sleep(wait_s)
@@ -573,7 +584,6 @@ class Cover(Device):
                 return
             if not self._pending:
                 return
-            # Se non e' arrivata conferma, inizia comunque per non bloccare la UI (ma marcando started_by_timeout).
             try:
                 self._pending["started_by_timeout"] = True
             except Exception:
@@ -586,6 +596,24 @@ class Cover(Device):
         except Exception:
             self._pending_probe_task = None
             self._pending_fallback_task = None
+
+        self._call_device_updated()
+
+    def clear_pending_motion(self) -> None:
+        """Cancel any pending/auto-stop tasks before issuing raw commands."""
+        try:
+            if self._stop_task and not self._stop_task.done():
+                self._stop_task.cancel()
+        except Exception:
+            pass
+        self._cancel_status_poll()
+        self._cancel_motion_tick()
+        self._cancel_pending_fallback()
+        self._cancel_pending_start()
+        self._cancel_pending_probe()
+        self._pending = None
+        self._status = CoverStatus.STOP
+        self._call_device_updated()
 
     async def _delayed_stop(self, delay_seconds: float | None = None):
         """Attende `delay_seconds` (default `state_changetime`), poi invia STOP e conferma stato finale."""
