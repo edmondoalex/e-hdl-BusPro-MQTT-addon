@@ -55,7 +55,7 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-ADDON_VERSION = "0.1.368"
+ADDON_VERSION = "0.1.369"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -1415,6 +1415,15 @@ self.addEventListener('fetch', (event) => {{
         except Exception:
             pass
 
+        # Route SSE/long-poll stream through dedicated proxy path with long timeout.
+        try:
+            p_stream = str(path or "").strip().lstrip("/")
+            if p_stream == "api/stream":
+                _LOGGER.debug("ext_proxy delegating stream endpoint: name=%s path=%s", name, request.url.path)
+                return await _api_stream_proxy_for_name(name=name, request=request)
+        except Exception:
+            pass
+
         # Keep browser URL aligned with base_url query on proxy root.
         # Example: base_url=http://host:1980/?view=user and open /ext/name/
         # -> redirect to /ext/name/?view=user (only if no current query).
@@ -1438,13 +1447,24 @@ self.addEventListener('fetch', (event) => {{
         upstream_url = urllib.parse.urljoin(base, str(path or "").lstrip("/"))
 
         # Preserve query defined in base_url (e.g. http://host:1980/?view=user)
-        # for root proxy calls (/ext/<name>/), then append request query params.
+        # for root proxy calls (/ext/<name>/), then merge request query params.
+        # Deduplicate identical pairs to avoid ...?view=user&view=user.
         merged_q = ""
         p1 = str(path or "").strip()
+        pairs: list[tuple[str, str]] = []
         if (not p1 or p1 == "/") and base_parsed.query:
-            merged_q = base_parsed.query
+            pairs.extend(urllib.parse.parse_qsl(base_parsed.query, keep_blank_values=True))
         if q:
-            merged_q = (merged_q + "&" + q) if merged_q else q
+            pairs.extend(urllib.parse.parse_qsl(q, keep_blank_values=True))
+        if pairs:
+            seen: set[tuple[str, str]] = set()
+            uniq: list[tuple[str, str]] = []
+            for kv in pairs:
+                if kv in seen:
+                    continue
+                seen.add(kv)
+                uniq.append(kv)
+            merged_q = urllib.parse.urlencode(uniq, doseq=True)
         if merged_q:
             upstream_url = upstream_url + ("&" if "?" in upstream_url else "?") + merged_q
         _LOGGER.debug(

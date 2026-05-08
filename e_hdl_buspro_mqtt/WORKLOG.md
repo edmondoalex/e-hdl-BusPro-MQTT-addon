@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-05-08 (proxy stream timeout fix + query dedupe)
+- Fix timeout su stream proxati: le richieste `/ext/{name}/api/stream` vengono ora instradate al proxy SSE dedicato (timeout lungo), evitando `_fetch_upstream` a 12s.
+- Fix merge query su root proxy: deduplica coppie query per evitare duplicati tipo `?view=user&view=user`.
+- Version bump: 0.1.368 -> 0.1.369.
+
 ## 2026-05-08 (proxy root redirect robustness)
 - Proxy route estesa anche a `/ext/{name}` (oltre a `/ext/{name}/{path:path}`) per coprire ingressi senza trailing slash.
 - Rilevazione root proxy resa robusta (`path == ""` oppure `path == "/"`) per applicare sempre redirect query base.
