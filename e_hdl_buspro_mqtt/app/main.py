@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.requests import ClientDisconnect
 
 from .buspro_gateway import BusproGateway, CoverKey, CoverState, LightKey, LightState
 from .discovery import (
@@ -77,7 +78,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.373"
+ADDON_VERSION = "0.1.374"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -1537,7 +1538,11 @@ self.addEventListener('fetch', (event) => {{
                 continue
             fwd_headers[k] = v
 
-        body = await request.body()
+        try:
+            body = await request.body()
+        except ClientDisconnect:
+            _LOGGER.debug("ext_proxy client disconnected before request body read: name=%s path=%s", name, request.url.path)
+            return Response(status_code=499)
         try:
             status, upstream_headers, payload = await asyncio.to_thread(
                 _fetch_upstream,

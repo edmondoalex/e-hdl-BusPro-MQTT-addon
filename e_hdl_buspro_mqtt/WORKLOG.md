@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-05-08 (ext proxy client-disconnect handling)
+- Gestione esplicita `ClientDisconnect` in `ext_proxy` durante la lettura body request.
+- Evita traceback rumorosi `Exception in ASGI application` quando il client interrompe la richiesta.
+- Risposta pulita con status `499` e log debug sintetico.
+- Version bump: 0.1.373 -> 0.1.374.
+
 ## 2026-05-08 (proxy client identity logging)
 - Aggiunto tracciamento client reale nei log proxy: `real_ip` da `X-Forwarded-For` (fallback `X-Real-IP`), `proxy_ip` e `user-agent`.
 - Log applicato ai punti chiave proxy (`ext_proxy` e stream proxy named) per distinguere client finali dietro HA/reverse proxy.
