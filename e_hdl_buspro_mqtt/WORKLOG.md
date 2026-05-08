@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-05-08 (proxy client identity logging)
+- Aggiunto tracciamento client reale nei log proxy: `real_ip` da `X-Forwarded-For` (fallback `X-Real-IP`), `proxy_ip` e `user-agent`.
+- Log applicato ai punti chiave proxy (`ext_proxy` e stream proxy named) per distinguere client finali dietro HA/reverse proxy.
+- Nessun cambiamento alla logica di routing/comandi; solo diagnostica.
+- Version bump: 0.1.372 -> 0.1.373.
+
 ## 2026-05-08 (log timezone fix)
 - Logging timestamp reso timezone-aware con formatter dedicato.
 - Default timezone log: `Europe/Rome` (override con env `BUSPRO_LOG_TZ` o `TZ`).

@@ -77,7 +77,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.372"
+ADDON_VERSION = "0.1.373"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -175,6 +175,28 @@ def _check_auth_headers(headers: dict[str, str], query: dict[str, str], auth: Au
             return False
 
     return False
+
+
+def _request_client_info(request: Request) -> tuple[str, str, str]:
+    """Return (real_ip, proxy_ip, user_agent) for diagnostics/logging."""
+    real_ip = ""
+    try:
+        xff = str(request.headers.get("x-forwarded-for") or "").strip()
+        if xff:
+            real_ip = xff.split(",", 1)[0].strip()
+        if not real_ip:
+            real_ip = str(request.headers.get("x-real-ip") or "").strip()
+    except Exception:
+        real_ip = ""
+    try:
+        proxy_ip = str(getattr(request.client, "host", "") or "").strip()
+    except Exception:
+        proxy_ip = ""
+    try:
+        ua = str(request.headers.get("user-agent") or "").strip()
+    except Exception:
+        ua = ""
+    return real_ip or "-", proxy_ip or "-", ua or "-"
 
 
 def _parse_light_cmd(payload: str) -> tuple[bool, int | None]:
@@ -1493,11 +1515,14 @@ self.addEventListener('fetch', (event) => {{
         if merged_q:
             upstream_url = upstream_url + ("&" if "?" in upstream_url else "?") + merged_q
         _LOGGER.debug(
-            "ext_proxy request: name=%s method=%s src_path=%s upstream=%s",
+            "ext_proxy request: name=%s method=%s src_path=%s upstream=%s real_ip=%s proxy_ip=%s ua=%s",
             name,
             request.method,
             request.url.path,
             upstream_url,
+            _request_client_info(request)[0],
+            _request_client_info(request)[1],
+            _request_client_info(request)[2],
         )
 
         # Forward headers (subset)
@@ -1660,7 +1685,15 @@ self.addEventListener('fetch', (event) => {{
 
     @api.api_route("/ext/{name}/api/stream", methods=["GET"])
     async def api_stream_proxy_named(name: str, request: Request):
-        _LOGGER.debug("api_stream_proxy_named: name=%s path=%s", name, request.url.path)
+        real_ip, proxy_ip, ua = _request_client_info(request)
+        _LOGGER.debug(
+            "api_stream_proxy_named: name=%s path=%s real_ip=%s proxy_ip=%s ua=%s",
+            name,
+            request.url.path,
+            real_ip,
+            proxy_ip,
+            ua,
+        )
         return await _api_stream_proxy_for_name(name=name, request=request)
 
     @api.api_route("/api/stream", methods=["GET"])
