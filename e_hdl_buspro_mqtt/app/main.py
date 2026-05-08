@@ -1537,6 +1537,11 @@ self.addEventListener('fetch', (event) => {{
             if lk == "origin":
                 continue
             fwd_headers[k] = v
+        # Avoid conditional cache revalidation (304) on proxied resources.
+        # Some embedded WebViews can keep stale bundles and break bootstrap.
+        for hk in ("If-None-Match", "If-Modified-Since", "If-Match", "If-Unmodified-Since", "If-Range"):
+            fwd_headers.pop(hk, None)
+            fwd_headers.pop(hk.lower(), None)
 
         try:
             body = await request.body()
@@ -1608,7 +1613,7 @@ self.addEventListener('fetch', (event) => {{
 
         # WebView (Control4/Android/iOS) can keep stale HTML while JS/CSS are newer.
         # Force fresh HTML on every load to avoid bootstrap/runtime mismatches.
-        if "text/html" in ct:
+        if "text/html" in ct or "text/css" in ct or "javascript" in ct:
             out_headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
             out_headers["Pragma"] = "no-cache"
             out_headers["Expires"] = "0"

@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-05-08 (proxy hard no-304 for webview consistency)
+- Proxy `ext_proxy`: rimossi header condizionali in forward request (`If-None-Match`, `If-Modified-Since`, `If-Match`, `If-Unmodified-Since`, `If-Range`) per evitare risposte `304` da upstream.
+- Header anti-cache estesi anche a `text/css` e `javascript` (oltre `text/html`).
+- Obiettivo: evitare mismatch runtime HTML/JS/CSS in WebView (Control4/Android/iOS) con loading infinito o bootstrap error intermittente.
+- Version bump: 0.1.376 -> 0.1.377.
+
 ## 2026-05-08 (proxy HTML no-store for webview cache mismatch)
 - Proxy `ext_proxy`: per risposte `text/html` aggiunti header anti-cache:
   - `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`
