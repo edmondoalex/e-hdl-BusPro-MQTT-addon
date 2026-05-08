@@ -78,7 +78,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.374"
+ADDON_VERSION = "0.1.375"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -4673,6 +4673,55 @@ self.addEventListener('fetch', (event) => {{
             "guard_enabled": guard_enabled,
             "back_gesture_enabled": back_gesture_enabled,
         } 
+
+    @api.get("/api/diag/net")
+    async def api_diag_net():
+        def _tcp_check(host: str, port: int, timeout_s: float = 2.5) -> dict[str, Any]:
+            t0 = time.time()
+            try:
+                with socket.create_connection((host, int(port)), timeout=timeout_s):
+                    ms = int((time.time() - t0) * 1000)
+                    return {"ok": True, "latency_ms": ms}
+            except Exception as e:
+                ms = int((time.time() - t0) * 1000)
+                return {"ok": False, "latency_ms": ms, "error": str(e)}
+
+        def _http_check(url: str, timeout_s: float = 4.0) -> dict[str, Any]:
+            t0 = time.time()
+            try:
+                req = urllib.request.Request(url=url, method="GET")
+                with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+                    ms = int((time.time() - t0) * 1000)
+                    return {"ok": True, "status": int(getattr(resp, "status", 200)), "latency_ms": ms}
+            except urllib.error.HTTPError as e:
+                ms = int((time.time() - t0) * 1000)
+                return {"ok": True, "status": int(getattr(e, "code", 0) or 0), "latency_ms": ms, "http_error": True}
+            except Exception as e:
+                ms = int((time.time() - t0) * 1000)
+                return {"ok": False, "latency_ms": ms, "error": str(e)}
+
+        out: dict[str, Any] = {"now": datetime.now().isoformat(), "addon_version": ADDON_VERSION, "targets": []}
+        for t in store.list_proxy_targets():
+            try:
+                name = str(t.get("name") or "").strip()
+                base_url = str(t.get("base_url") or "").strip()
+                if not name or not base_url:
+                    continue
+                parsed = urllib.parse.urlparse(base_url)
+                host = str(parsed.hostname or "").strip()
+                port = int(parsed.port or (443 if parsed.scheme == "https" else 80))
+                item: dict[str, Any] = {
+                    "name": name,
+                    "base_url": base_url,
+                    "host": host,
+                    "port": port,
+                    "tcp": _tcp_check(host, port) if host else {"ok": False, "error": "invalid host"},
+                    "http": _http_check(base_url),
+                }
+                out["targets"].append(item)
+            except Exception as e:
+                out["targets"].append({"name": str(t.get("name") or ""), "error": str(e)})
+        return out
 
     @api.get("/api/user/devices")
     async def api_user_devices():

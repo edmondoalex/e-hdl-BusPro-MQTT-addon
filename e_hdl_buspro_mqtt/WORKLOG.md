@@ -1,5 +1,13 @@
 # WORKLOG
 
+## 2026-05-08 (network diagnostics endpoint)
+- Aggiunto endpoint admin `GET /api/diag/net` per diagnosi raggiungibilita' target proxy dal container addon.
+- Per ogni target proxy restituisce:
+  - check TCP (`host:port`, latenza, errore)
+  - check HTTP su `base_url` (status/latenza o errore)
+- Utile per distinguere problemi rete Android/proxy da problemi UI.
+- Version bump: 0.1.374 -> 0.1.375.
+
 ## 2026-05-08 (ext proxy client-disconnect handling)
 - Gestione esplicita `ClientDisconnect` in `ext_proxy` durante la lettura body request.
 - Evita traceback rumorosi `Exception in ASGI application` quando il client interrompe la richiesta.
