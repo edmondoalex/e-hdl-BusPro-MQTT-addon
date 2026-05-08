@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-05-08 (proxy root redirect robustness)
+- Proxy route estesa anche a `/ext/{name}` (oltre a `/ext/{name}/{path:path}`) per coprire ingressi senza trailing slash.
+- Rilevazione root proxy resa robusta (`path == ""` oppure `path == "/"`) per applicare sempre redirect query base.
+- Redirect root con query base (`/ext/<name>/?...`) ora coerente anche in edge-case di routing.
+- Version bump: 0.1.367 -> 0.1.368.
+
 ## 2026-05-08 (proxy root keeps base_url query)
 - Fix proxy root URL composition: quando `base_url` contiene query (es. `http://host:1980/?view=user`), la query non viene piu' persa su apertura `/ext/<name>/`.
 - `ext_proxy` ora preserva la query del `base_url` per path root e la merge con eventuale query della richiesta.

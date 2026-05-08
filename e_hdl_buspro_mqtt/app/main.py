@@ -18,7 +18,7 @@ import shutil
 from datetime import datetime, timedelta, time as dt_time
 
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .buspro_gateway import BusproGateway, CoverKey, CoverState, LightKey, LightState
@@ -55,7 +55,7 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-ADDON_VERSION = "0.1.367"
+ADDON_VERSION = "0.1.368"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -1390,8 +1390,9 @@ self.addEventListener('fetch', (event) => {{
             "upgrade",
         }
 
+    @api.api_route("/ext/{name}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
     @api.api_route("/ext/{name}/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
-    async def ext_proxy(name: str, path: str, request: Request):
+    async def ext_proxy(name: str, request: Request, path: str = ""):
         # User-side reverse proxy for configured local targets.
         target = store.find_proxy_target(name=name)
         if not target:
@@ -1414,6 +1415,20 @@ self.addEventListener('fetch', (event) => {{
         except Exception:
             pass
 
+        # Keep browser URL aligned with base_url query on proxy root.
+        # Example: base_url=http://host:1980/?view=user and open /ext/name/
+        # -> redirect to /ext/name/?view=user (only if no current query).
+        try:
+            parsed_base = urllib.parse.urlparse(upstream_base)
+            p0 = str(path or "").strip()
+            is_root_proxy = (not p0) or (p0 == "/")
+            if is_root_proxy and not (request.url.query or "").strip() and parsed_base.query:
+                dst = f"/ext/{name}/?{parsed_base.query}"
+                _LOGGER.debug("ext_proxy root redirect with base query: name=%s dst=%s", name, dst)
+                return RedirectResponse(url=dst, status_code=307)
+        except Exception:
+            pass
+
         q = request.url.query or ""
         base_parsed = urllib.parse.urlparse(upstream_base)
         base_no_query = urllib.parse.urlunparse(
@@ -1425,7 +1440,8 @@ self.addEventListener('fetch', (event) => {{
         # Preserve query defined in base_url (e.g. http://host:1980/?view=user)
         # for root proxy calls (/ext/<name>/), then append request query params.
         merged_q = ""
-        if not str(path or "").strip() and base_parsed.query:
+        p1 = str(path or "").strip()
+        if (not p1 or p1 == "/") and base_parsed.query:
             merged_q = base_parsed.query
         if q:
             merged_q = (merged_q + "&" + q) if merged_q else q
