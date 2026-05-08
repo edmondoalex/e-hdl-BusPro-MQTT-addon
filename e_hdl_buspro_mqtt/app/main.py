@@ -55,7 +55,7 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-ADDON_VERSION = "0.1.366"
+ADDON_VERSION = "0.1.367"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -1415,10 +1415,22 @@ self.addEventListener('fetch', (event) => {{
             pass
 
         q = request.url.query or ""
-        base = upstream_base.rstrip("/") + "/"
+        base_parsed = urllib.parse.urlparse(upstream_base)
+        base_no_query = urllib.parse.urlunparse(
+            (base_parsed.scheme, base_parsed.netloc, base_parsed.path, base_parsed.params, "", base_parsed.fragment)
+        )
+        base = base_no_query.rstrip("/") + "/"
         upstream_url = urllib.parse.urljoin(base, str(path or "").lstrip("/"))
+
+        # Preserve query defined in base_url (e.g. http://host:1980/?view=user)
+        # for root proxy calls (/ext/<name>/), then append request query params.
+        merged_q = ""
+        if not str(path or "").strip() and base_parsed.query:
+            merged_q = base_parsed.query
         if q:
-            upstream_url = upstream_url + ("&" if "?" in upstream_url else "?") + q
+            merged_q = (merged_q + "&" + q) if merged_q else q
+        if merged_q:
+            upstream_url = upstream_url + ("&" if "?" in upstream_url else "?") + merged_q
         _LOGGER.debug(
             "ext_proxy request: name=%s method=%s src_path=%s upstream=%s",
             name,

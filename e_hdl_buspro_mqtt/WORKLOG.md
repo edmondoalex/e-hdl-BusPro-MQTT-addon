@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-05-08 (proxy root keeps base_url query)
+- Fix proxy root URL composition: quando `base_url` contiene query (es. `http://host:1980/?view=user`), la query non viene piu' persa su apertura `/ext/<name>/`.
+- `ext_proxy` ora preserva la query del `base_url` per path root e la merge con eventuale query della richiesta.
+- Risolve il caso in cui veniva aperto `http://host:1980/` invece di `http://host:1980/?view=user`.
+- Version bump: 0.1.366 -> 0.1.367.
+
 ## 2026-05-08 (iphone proxy hardening: named stream/assets + EventSource rewrite)
 - Proxy hardening per iPhone/Safari WebView: aggiunte route esplicite con `name` nel path per evitare dipendenza da `referer/cookie`:
   - `/ext/{name}/api/stream`
