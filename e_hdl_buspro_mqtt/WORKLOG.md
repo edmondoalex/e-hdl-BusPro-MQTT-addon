@@ -1,5 +1,14 @@
 # WORKLOG
 
+## 2026-05-08 (proxy bootstrap client debug telemetry)
+- Aggiunta telemetria debug lato browser nel bootstrap JS iniettato dal proxy:
+  - eventi `load`, `js_error`, `promise_rejection`, `bootstrap_timeout` (8s)
+  - payload con `dt_ms`, `href`, `ua`.
+- Aggiunto endpoint interno proxy `POST /ext/{name}/__debug/bootstrap` gestito in `ext_proxy` con log debug dedicato:
+  - `ext_proxy bootstrap_debug: ... payload=...`
+- Obiettivo: capire subito se i casi "spinner infinito" sono errori JS runtime o timeout bootstrap nel WebView.
+- Version bump: 0.1.377 -> 0.1.378.
+
 ## 2026-05-08 (proxy hard no-304 for webview consistency)
 - Proxy `ext_proxy`: rimossi header condizionali in forward request (`If-None-Match`, `If-Modified-Since`, `If-Match`, `If-Unmodified-Since`, `If-Range`) per evitare risposte `304` da upstream.
 - Header anti-cache estesi anche a `text/css` e `javascript` (oltre `text/html`).
