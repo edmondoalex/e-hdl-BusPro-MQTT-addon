@@ -1154,60 +1154,47 @@ self.addEventListener('fetch', (event) => {{
   const PROXY_PREFIX = '/ext/{name}';
   const WS_PREFIX = '/extws/{name}';
   const UPSTREAM_HOST = {json.dumps(upstream_host)};
+  // NOTE: keep debug transport syntax very conservative for embedded webviews.
   const DEBUG_URL = PROXY_PREFIX + '/__debug/bootstrap';
   const T0 = Date.now();
   let DEBUG_SENT = false;
-  function sendDbg(kind, extra) {{
+  function _enc(v) {{
+    try {{ return encodeURIComponent(String(v || '')); }} catch(e) {{ return ''; }}
+  }}
+  function sendDbg(kind, msg) {{
     try {{
-      const payload = {{
-        kind: String(kind || ''),
-        ts: Date.now(),
-        dt_ms: Math.max(0, Date.now() - T0),
-        href: String((window && window.location && window.location.href) || ''),
-        ua: String((navigator && navigator.userAgent) || ''),
-      }};
-      if (extra && typeof extra === 'object') {{
-        for (const k of Object.keys(extra)) payload[k] = extra[k];
-      }}
-      const body = JSON.stringify(payload);
-      if (navigator && typeof navigator.sendBeacon === 'function') {{
-        const ok = navigator.sendBeacon(DEBUG_URL, new Blob([body], {{ type: 'application/json' }}));
-        if (ok) return;
-      }}
-      fetch(DEBUG_URL, {{
-        method: 'POST',
-        headers: {{ 'Content-Type': 'application/json' }},
-        body,
-        keepalive: true,
-        cache: 'no-store',
-      }}).catch(() => {{}});
+      const u = DEBUG_URL
+        + '?k=' + _enc(kind)
+        + '&dt=' + _enc(Date.now() - T0)
+        + '&m=' + _enc(msg || '')
+        + '&rs=' + _enc(document && document.readyState ? document.readyState : '');
+      const i = new Image();
+      i.src = u;
     }} catch(e) {{}}
   }}
   try {{
-    window.addEventListener('load', () => {{
+    window.addEventListener('load', function() {{
       if (DEBUG_SENT) return;
       DEBUG_SENT = true;
-      sendDbg('load', {{ ready_state: String(document.readyState || '') }});
+      sendDbg('load', '');
     }});
-    window.addEventListener('error', (ev) => {{
-      sendDbg('js_error', {{
-        message: String((ev && ev.message) || ''),
-        source: String((ev && ev.filename) || ''),
-        line: Number((ev && ev.lineno) || 0),
-        col: Number((ev && ev.colno) || 0),
-      }});
+    window.addEventListener('error', function(ev) {{
+      const m = (ev && ev.message) ? ev.message : '';
+      const s = (ev && ev.filename) ? ev.filename : '';
+      const l = (ev && ev.lineno) ? ev.lineno : 0;
+      const c = (ev && ev.colno) ? ev.colno : 0;
+      sendDbg('js_error', m + ' @' + s + ':' + l + ':' + c);
     }});
-    window.addEventListener('unhandledrejection', (ev) => {{
+    window.addEventListener('unhandledrejection', function(ev) {{
       let reason = '';
       try {{
-        const r = ev ? ev.reason : '';
-        reason = (typeof r === 'string') ? r : JSON.stringify(r);
+        reason = (ev && ev.reason) ? String(ev.reason) : '';
       }} catch(e) {{}}
-      sendDbg('promise_rejection', {{ reason: String(reason || '') }});
+      sendDbg('promise_rejection', reason);
     }});
-    setTimeout(() => {{
+    setTimeout(function() {{
       if (DEBUG_SENT) return;
-      sendDbg('bootstrap_timeout', {{ ready_state: String(document.readyState || '') }});
+      sendDbg('bootstrap_timeout', '');
     }}, 8000);
   }} catch(e) {{}}
   // Hidden back gesture: long-press top-left corner (works even on proxied pages).
@@ -1532,9 +1519,22 @@ self.addEventListener('fetch', (event) => {{
         try:
             p_dbg = str(path or "").strip().lstrip("/")
             if p_dbg == "__debug/bootstrap":
+                msg = ""
                 try:
-                    raw = await request.body()
-                    msg = raw.decode("utf-8", errors="replace")[:2000] if raw else ""
+                    if request.method.upper() == "GET":
+                        q = request.query_params
+                        msg = json.dumps(
+                            {
+                                "kind": q.get("k", ""),
+                                "dt": q.get("dt", ""),
+                                "m": q.get("m", ""),
+                                "rs": q.get("rs", ""),
+                            },
+                            ensure_ascii=False,
+                        )[:2000]
+                    else:
+                        raw = await request.body()
+                        msg = raw.decode("utf-8", errors="replace")[:2000] if raw else ""
                 except Exception:
                     msg = ""
                 _LOGGER.debug(

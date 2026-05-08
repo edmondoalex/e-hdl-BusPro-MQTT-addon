@@ -1,5 +1,13 @@
 # WORKLOG
 
+## 2026-05-08 (bootstrap debug script hardened for WebView parser)
+- Ridotto e semplificato il blocco debug JS iniettato dal proxy per massima compatibilita' WebView:
+  - rimosso uso di `fetch`/`sendBeacon`/`Blob` per debug
+  - trasporto debug via semplice `Image()` GET query string.
+- Endpoint `__debug/bootstrap` ora gestisce sia `GET` (query params) sia `POST` (body).
+- Obiettivo: eliminare parse error `Unexpected end of input` lato pagina (`/ext/...`) emerso su Android WebView.
+- Version bump: 0.1.378 -> 0.1.379.
+
 ## 2026-05-08 (proxy bootstrap client debug telemetry)
 - Aggiunta telemetria debug lato browser nel bootstrap JS iniettato dal proxy:
   - eventi `load`, `js_error`, `promise_rejection`, `bootstrap_timeout` (8s)
