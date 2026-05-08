@@ -49,9 +49,13 @@ from .sniffer import TelegramSniffer
 from .store import StateStore
 
 _LOGGER = logging.getLogger("buspro_addon")
-logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
-ADDON_VERSION = "0.1.364"
+ADDON_VERSION = "0.1.365"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -1035,15 +1039,26 @@ self.addEventListener('fetch', (event) => {{
                 seg = (p.path or "").split("/")
                 # /ext/<name>/...
                 if len(seg) >= 3 and seg[1] == "ext" and seg[2]:
-                    return seg[2]
+                    name = seg[2]
+                    _LOGGER.debug("proxy_name resolved via referer: name=%s path=%s referer=%s", name, request.url.path, ref)
+                    return name
             except Exception:
                 pass
         try:
             c = request.cookies.get("buspro_px")
             if c:
-                return str(c).strip() or None
+                name = str(c).strip() or None
+                if name:
+                    _LOGGER.debug("proxy_name resolved via cookie: name=%s path=%s", name, request.url.path)
+                return name
         except Exception:
             pass
+        _LOGGER.debug(
+            "proxy_name missing: path=%s referer=%s cookie_buspro_px=%s",
+            request.url.path,
+            ref or "-",
+            str(request.cookies.get("buspro_px") or "") or "-",
+        )
         return None
 
     def _rewrite_set_cookie_path(*, name: str, header_value: str) -> str:
@@ -1365,9 +1380,11 @@ self.addEventListener('fetch', (event) => {{
         # User-side reverse proxy for configured local targets.
         target = store.find_proxy_target(name=name)
         if not target:
+            _LOGGER.debug("ext_proxy target not found: name=%s path=%s", name, request.url.path)
             return JSONResponse({"detail": "Not Found"}, status_code=404)
         upstream_base = str(target.get("base_url") or "").strip()
         if not upstream_base:
+            _LOGGER.debug("ext_proxy empty upstream_base: name=%s path=%s", name, request.url.path)
             return JSONResponse({"detail": "Not Found"}, status_code=404)
 
         # Guard against duplicated proxy prefix (e.g. /ext/core/ext/core/...)
@@ -1387,6 +1404,13 @@ self.addEventListener('fetch', (event) => {{
         upstream_url = urllib.parse.urljoin(base, str(path or "").lstrip("/"))
         if q:
             upstream_url = upstream_url + ("&" if "?" in upstream_url else "?") + q
+        _LOGGER.debug(
+            "ext_proxy request: name=%s method=%s src_path=%s upstream=%s",
+            name,
+            request.method,
+            request.url.path,
+            upstream_url,
+        )
 
         # Forward headers (subset)
         fwd_headers: dict[str, str] = {}
@@ -1410,7 +1434,15 @@ self.addEventListener('fetch', (event) => {{
                 body,
             )
         except Exception:
+            _LOGGER.exception("ext_proxy upstream error: name=%s upstream=%s", name, upstream_url)
             return JSONResponse({"detail": "Upstream error"}, status_code=502)
+        _LOGGER.debug(
+            "ext_proxy response: name=%s status=%s upstream=%s bytes=%s",
+            name,
+            status,
+            upstream_url,
+            len(payload or b""),
+        )
 
         # Build response headers
         out_headers: dict[str, str] = {}
@@ -1469,6 +1501,7 @@ self.addEventListener('fetch', (event) => {{
     async def assets_proxy(asset_path: str, request: Request):
         name = _proxy_name_from_request(request)
         if not name:
+            _LOGGER.debug("assets_proxy missing proxy_name: asset=%s path=%s", asset_path, request.url.path)
             return JSONResponse({"detail": "Not Found"}, status_code=404)
         return await ext_proxy(name=name, path=f"assets/{asset_path}", request=request)
 
@@ -1477,12 +1510,15 @@ self.addEventListener('fetch', (event) => {{
         # Some panels use SSE / long-poll endpoints at /api/stream
         name = _proxy_name_from_request(request)
         if not name:
+            _LOGGER.debug("api_stream_proxy missing proxy_name: path=%s", request.url.path)
             return JSONResponse({"detail": "Not Found"}, status_code=404)
         target = store.find_proxy_target(name=name)
         if not target:
+            _LOGGER.debug("api_stream_proxy target not found: name=%s", name)
             return JSONResponse({"detail": "Not Found"}, status_code=404)
         upstream_base = str(target.get("base_url") or "").strip()
         if not upstream_base:
+            _LOGGER.debug("api_stream_proxy empty upstream_base: name=%s", name)
             return JSONResponse({"detail": "Not Found"}, status_code=404)
 
         q = request.url.query or ""
@@ -1490,6 +1526,7 @@ self.addEventListener('fetch', (event) => {{
         upstream_url = urllib.parse.urljoin(base, "api/stream")
         if q:
             upstream_url = upstream_url + ("&" if "?" in upstream_url else "?") + q
+        _LOGGER.debug("api_stream_proxy start: name=%s upstream=%s", name, upstream_url)
 
         # EventSource expects text/event-stream (some upstreams omit/lie on HEAD).
         media_type = "text/event-stream"
@@ -1511,7 +1548,7 @@ self.addEventListener('fetch', (event) => {{
                         except Exception:
                             break
             except Exception:
-                pass
+                _LOGGER.exception("api_stream_proxy upstream stream error: name=%s upstream=%s", name, upstream_url)
             finally:
                 try:
                     api.state.loop.call_soon_threadsafe(queue.put_nowait, None)
@@ -1539,10 +1576,12 @@ self.addEventListener('fetch', (event) => {{
         await websocket.accept()
         target = store.find_proxy_target(name=name)
         if not target:
+            _LOGGER.debug("ext_ws target not found: name=%s path=%s", name, path)
             await websocket.close(code=1008)
             return
         upstream_base = str(target.get("base_url") or "").strip()
         if not upstream_base:
+            _LOGGER.debug("ext_ws empty upstream_base: name=%s path=%s", name, path)
             await websocket.close(code=1011)
             return
 
@@ -1564,6 +1603,7 @@ self.addEventListener('fetch', (event) => {{
         q = websocket.url.query or ""
         if q:
             upstream_ws = upstream_ws + ("&" if "?" in upstream_ws else "?") + q
+        _LOGGER.debug("ext_ws connect: name=%s upstream=%s", name, upstream_ws)
 
         try:
             import websockets  # type: ignore
@@ -1615,6 +1655,7 @@ self.addEventListener('fetch', (event) => {{
                 for p in pending:
                     p.cancel()
         except Exception:
+            _LOGGER.exception("ext_ws proxy error: name=%s upstream=%s", name, upstream_ws)
             try:
                 await websocket.close(code=1011)
             except Exception:

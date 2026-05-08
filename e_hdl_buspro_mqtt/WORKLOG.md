@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-05-08 (proxy debug + timestamped logs)
+- Logging: aggiunto formato con timestamp (`YYYY-MM-DD HH:MM:SS`) su tutte le righe log.
+- Proxy debug: aggiunti log `DEBUG` su risoluzione `proxy_name` (referer/cookie), richieste/risposte `/ext`, fallback `/assets`, stream `/api/stream`, websocket `/extws`.
+- Obiettivo: diagnosticare casi intermittenti in cui la pagina proxata resta in loading per perdita contesto (`referer`/cookie) o errore upstream.
+- Version bump: 0.1.364 -> 0.1.365.
+
 ## 2026-04-24 (cover position retained stale fix for HA)
 - Cover MQTT publish: il topic posizione (`state/cover_pos/...`) ora viene sempre aggiornato; quando posizione non disponibile viene inviato payload vuoto retained per cancellare valori vecchi.
 - Cover group MQTT publish: stessa correzione su `state/cover_group_pos/...` (prima il topic posizione gruppo poteva restare non aggiornato).
