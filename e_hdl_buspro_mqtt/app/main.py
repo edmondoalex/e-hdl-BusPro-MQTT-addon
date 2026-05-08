@@ -55,7 +55,7 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-ADDON_VERSION = "0.1.365"
+ADDON_VERSION = "0.1.366"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -1300,6 +1300,21 @@ self.addEventListener('fetch', (event) => {{
       }};
     }}
   }} catch(e) {{}}
+  // EventSource wrapper (important on iOS where referer/cookies can be inconsistent in embedded webviews)
+  try {{
+    const _ES = window.EventSource;
+    if (typeof _ES === 'function') {{
+      window.EventSource = function(url, conf) {{
+        try {{
+          const u = abs(rewritePath(url));
+          return conf ? new _ES(u, conf) : new _ES(u);
+        }} catch(e) {{
+          return conf ? new _ES(url, conf) : new _ES(url);
+        }}
+      }};
+      window.EventSource.prototype = _ES.prototype;
+    }}
+  }} catch(e) {{}}
   // WebSocket wrapper
   try {{
     const _WS = window.WebSocket;
@@ -1497,6 +1512,11 @@ self.addEventListener('fetch', (event) => {{
             pass
         return resp
 
+    @api.api_route("/ext/{name}/assets/{asset_path:path}", methods=["GET", "HEAD"])
+    async def assets_proxy_named(name: str, asset_path: str, request: Request):
+        _LOGGER.debug("assets_proxy_named: name=%s asset=%s path=%s", name, asset_path, request.url.path)
+        return await ext_proxy(name=name, path=f"assets/{asset_path}", request=request)
+
     @api.api_route("/assets/{asset_path:path}", methods=["GET", "HEAD"])
     async def assets_proxy(asset_path: str, request: Request):
         name = _proxy_name_from_request(request)
@@ -1505,13 +1525,7 @@ self.addEventListener('fetch', (event) => {{
             return JSONResponse({"detail": "Not Found"}, status_code=404)
         return await ext_proxy(name=name, path=f"assets/{asset_path}", request=request)
 
-    @api.api_route("/api/stream", methods=["GET"])
-    async def api_stream_proxy(request: Request):
-        # Some panels use SSE / long-poll endpoints at /api/stream
-        name = _proxy_name_from_request(request)
-        if not name:
-            _LOGGER.debug("api_stream_proxy missing proxy_name: path=%s", request.url.path)
-            return JSONResponse({"detail": "Not Found"}, status_code=404)
+    async def _api_stream_proxy_for_name(name: str, request: Request):
         target = store.find_proxy_target(name=name)
         if not target:
             _LOGGER.debug("api_stream_proxy target not found: name=%s", name)
@@ -1570,6 +1584,20 @@ self.addEventListener('fetch', (event) => {{
 
         headers = {"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"}
         return StreamingResponse(gen(), media_type=media_type, headers=headers)
+
+    @api.api_route("/ext/{name}/api/stream", methods=["GET"])
+    async def api_stream_proxy_named(name: str, request: Request):
+        _LOGGER.debug("api_stream_proxy_named: name=%s path=%s", name, request.url.path)
+        return await _api_stream_proxy_for_name(name=name, request=request)
+
+    @api.api_route("/api/stream", methods=["GET"])
+    async def api_stream_proxy(request: Request):
+        # Some panels use SSE / long-poll endpoints at /api/stream
+        name = _proxy_name_from_request(request)
+        if not name:
+            _LOGGER.debug("api_stream_proxy missing proxy_name: path=%s", request.url.path)
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        return await _api_stream_proxy_for_name(name=name, request=request)
 
     @api.websocket("/extws/{name}/{path:path}")
     async def ext_ws(websocket: WebSocket, name: str, path: str):

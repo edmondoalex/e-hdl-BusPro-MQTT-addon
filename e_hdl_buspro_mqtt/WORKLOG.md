@@ -1,5 +1,13 @@
 # WORKLOG
 
+## 2026-05-08 (iphone proxy hardening: named stream/assets + EventSource rewrite)
+- Proxy hardening per iPhone/Safari WebView: aggiunte route esplicite con `name` nel path per evitare dipendenza da `referer/cookie`:
+  - `/ext/{name}/api/stream`
+  - `/ext/{name}/assets/{asset_path}`
+- Bootstrap JS iniettato su pagine proxate: aggiunto wrapper `EventSource` con rewrite URL via proxy (`/ext/{name}/...`), allineato a fetch/XHR.
+- Manteniamo i fallback legacy `/api/stream` e `/assets/...` con debug, per compatibilita' retroattiva.
+- Version bump: 0.1.365 -> 0.1.366.
+
 ## 2026-05-08 (proxy debug + timestamped logs)
 - Logging: aggiunto formato con timestamp (`YYYY-MM-DD HH:MM:SS`) su tutte le righe log.
 - Proxy debug: aggiunti log `DEBUG` su risoluzione `proxy_name` (referer/cookie), richieste/risposte `/ext`, fallback `/assets`, stream `/api/stream`, websocket `/extws`.
