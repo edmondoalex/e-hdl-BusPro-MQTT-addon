@@ -1,5 +1,14 @@
 # WORKLOG
 
+## 2026-05-08 (proxy HTML no-store for webview cache mismatch)
+- Proxy `ext_proxy`: per risposte `text/html` aggiunti header anti-cache:
+  - `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`
+  - `Pragma: no-cache`
+  - `Expires: 0`
+- Su HTML rimossi anche validator header (`ETag`, `Last-Modified`) per evitare riuso stale in WebView/Control4.
+- Obiettivo: ridurre i casi in cui la UI proxata resta in loading/errore bootstrap con asset JS/CSS cached in modo incoerente.
+- Version bump: 0.1.375 -> 0.1.376.
+
 ## 2026-05-08 (network diagnostics endpoint)
 - Aggiunto endpoint admin `GET /api/diag/net` per diagnosi raggiungibilita' target proxy dal container addon.
 - Per ogni target proxy restituisce:

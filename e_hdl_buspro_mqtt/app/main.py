@@ -1606,6 +1606,17 @@ self.addEventListener('fetch', (event) => {{
             except Exception:
                 pass
 
+        # WebView (Control4/Android/iOS) can keep stale HTML while JS/CSS are newer.
+        # Force fresh HTML on every load to avoid bootstrap/runtime mismatches.
+        if "text/html" in ct:
+            out_headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            out_headers["Pragma"] = "no-cache"
+            out_headers["Expires"] = "0"
+            out_headers.pop("ETag", None)
+            out_headers.pop("etag", None)
+            out_headers.pop("Last-Modified", None)
+            out_headers.pop("last-modified", None)
+
         resp = Response(content=payload, status_code=int(status), headers=out_headers)
         for sc in set_cookie_out:
             resp.headers.append("Set-Cookie", sc)
