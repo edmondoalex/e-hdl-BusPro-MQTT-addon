@@ -55,7 +55,7 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-ADDON_VERSION = "0.1.370"
+ADDON_VERSION = "0.1.371"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -179,6 +179,9 @@ def _parse_light_cmd(payload: str) -> tuple[bool, int | None]:
 
 def create_app() -> FastAPI: 
     api = FastAPI() 
+    api.state.runtime_lock = threading.Lock()
+    api.state.runtime_refcount = 0
+    api.state.runtime_started = False
 
     static_dir = os.path.join(os.path.dirname(__file__), "static")
     api.mount("/static", StaticFiles(directory=static_dir), name="static")
@@ -3208,6 +3211,15 @@ self.addEventListener('fetch', (event) => {{
 
     @api.on_event("startup")
     async def _startup() -> None:
+        with api.state.runtime_lock:
+            api.state.runtime_refcount = int(getattr(api.state, "runtime_refcount", 0) or 0) + 1
+            first_start = not bool(getattr(api.state, "runtime_started", False))
+            if first_start:
+                api.state.runtime_started = True
+        if not first_start:
+            _LOGGER.info("Secondary server startup detected: skipping duplicate runtime init")
+            return
+
         loop = asyncio.get_running_loop()
         api.state.loop = loop
         api.state.ha_states = {}
@@ -4409,6 +4421,17 @@ self.addEventListener('fetch', (event) => {{
 
     @api.on_event("shutdown")
     async def _shutdown() -> None:
+        with api.state.runtime_lock:
+            refs = int(getattr(api.state, "runtime_refcount", 0) or 0)
+            refs = max(0, refs - 1)
+            api.state.runtime_refcount = refs
+            do_shutdown = bool(getattr(api.state, "runtime_started", False)) and refs == 0
+            if do_shutdown:
+                api.state.runtime_started = False
+        if not do_shutdown:
+            _LOGGER.info("Secondary server shutdown detected: skipping duplicate runtime shutdown")
+            return
+
         try:
             mqtt.publish(f"{settings.mqtt.base_topic}/availability", "offline", retain=True)
         finally:
