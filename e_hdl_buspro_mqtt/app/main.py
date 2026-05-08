@@ -16,6 +16,7 @@ from typing import Any
 import re
 import shutil
 from datetime import datetime, timedelta, time as dt_time
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
@@ -49,13 +50,34 @@ from .sniffer import TelegramSniffer
 from .store import StateStore
 
 _LOGGER = logging.getLogger("buspro_addon")
-logging.basicConfig(
-    level=os.environ.get("LOG_LEVEL", "INFO").upper(),
-    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
 
-ADDON_VERSION = "0.1.371"
+class _TzFormatter(logging.Formatter):
+    def __init__(self, *args, tz_name: str = "Europe/Rome", **kwargs):
+        super().__init__(*args, **kwargs)
+        try:
+            self._tz = ZoneInfo(tz_name)
+        except Exception:
+            self._tz = ZoneInfo("UTC")
+
+    def formatTime(self, record, datefmt=None):
+        dt = datetime.fromtimestamp(record.created, tz=self._tz)
+        if datefmt:
+            return dt.strftime(datefmt)
+        return dt.isoformat()
+
+
+_log_tz = str(os.environ.get("BUSPRO_LOG_TZ") or os.environ.get("TZ") or "Europe/Rome").strip() or "Europe/Rome"
+_handler = logging.StreamHandler()
+_handler.setFormatter(
+    _TzFormatter(
+        "%(asctime)s %(levelname)s [%(name)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        tz_name=_log_tz,
+    )
+)
+logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
+
+ADDON_VERSION = "0.1.372"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125

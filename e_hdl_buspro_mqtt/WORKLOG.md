@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-05-08 (log timezone fix)
+- Logging timestamp reso timezone-aware con formatter dedicato.
+- Default timezone log: `Europe/Rome` (override con env `BUSPRO_LOG_TZ` o `TZ`).
+- Risolve disallineamento orario nei log addon rispetto all'ora locale.
+- Version bump: 0.1.371 -> 0.1.372.
+
 ## 2026-05-08 (single runtime init across dual uvicorn servers)
 - Fix duplicazione runtime: la stessa app avvia due server (`8124` user + `8125` admin) e gli eventi startup/shutdown venivano eseguiti due volte.
 - Aggiunto guard con lock+refcount condiviso su `app.state`: inizializzazione pesante (`BusPro`, MQTT, poll loop) eseguita una sola volta.
