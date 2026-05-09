@@ -236,7 +236,14 @@
         try { meta = await getJson('api/meta'); } catch(_){}
         const links = (meta && Array.isArray(meta.hub_links)) ? meta.hub_links : [];
         const actions = (meta && Array.isArray(meta.home_actions)) ? meta.home_actions : [];
-        const all = [...actions, ...links].filter(x => x && x.title && x.url);
+        const hubShow = (meta && meta.hub_show && typeof meta.hub_show === 'object') ? meta.hub_show : {};
+        const hubIcons = (meta && meta.hub_icons && typeof meta.hub_icons === 'object') ? meta.hub_icons : {};
+        const builtins = [];
+        if (hubShow.lights !== false) builtins.push({ id:'builtin_lights', title:'Luci', url:'/lights', icon:String(hubIcons.lights || 'mdi:lightbulb-group') });
+        if (hubShow.covers !== false) builtins.push({ id:'builtin_covers', title:'Cover', url:'/covers', icon:String(hubIcons.covers || 'mdi:window-shutter') });
+        if (hubShow.locks !== false) builtins.push({ id:'builtin_locks', title:'Lock', url:'/locks', icon:String(hubIcons.locks || 'mdi:lock-smart') });
+        if (hubShow.extra !== false) builtins.push({ id:'builtin_extra', title:'Extra', url:'/extra', icon:String(hubIcons.extra || 'mdi:shape') });
+        const all = [...builtins, ...actions, ...links].filter(x => x && x.title && x.url);
         const byId = new Map(all.map(x => [String(x.id || x.title), x]));
 
         const enabled = {

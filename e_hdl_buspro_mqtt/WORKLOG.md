@@ -1,5 +1,15 @@
 # WORKLOG
 
+## 2026-05-09 (Home+ include built-in hub sections)
+- Home+ `Quick Links` ora include anche le voci native hub:
+  - `Luci` (`/lights`)
+  - `Cover` (`/covers`)
+  - `Lock` (`/locks`)
+  - `Extra` (`/extra`)
+- Visibilita' e icone rispettano `hub_show` e `hub_icons` da `api/meta`, allineate a Home/Home2.
+- Risolve il caso in cui in Home+ comparivano solo `home_actions` e link proxy custom.
+- Version bump: 0.1.381 -> 0.1.382.
+
 ## 2026-05-09 (new Home+ with client-side widgets customization)
 - Aggiunta nuova pagina utente `GET /home_plus` con layout full-screen in stile dashboard.
 - Nuova Home+ basata su widget modulari:
