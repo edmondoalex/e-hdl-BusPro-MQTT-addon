@@ -1,5 +1,21 @@
 # WORKLOG
 
+## 2026-05-09 (new Home+ with client-side widgets customization)
+- Aggiunta nuova pagina utente `GET /home_plus` con layout full-screen in stile dashboard.
+- Nuova Home+ basata su widget modulari:
+  - `Quick Links` (azioni home + link proxy visibili)
+  - `Tempo` (orologio/data live)
+  - `Preferiti`
+  - `Sistema` (versione, conteggi, stato back gesture)
+- Personalizzazione lato client (browser/device) con `localStorage`:
+  - mostra/nascondi widget
+  - ordine widget
+  - URL background
+  - numero colonne tile
+- Middleware user aggiornato per consentire la route `/home_plus`.
+- Service worker PWA precache aggiornato includendo `/home_plus`.
+- Version bump: 0.1.380 -> 0.1.381.
+
 ## 2026-05-08 (e-SunMind strict pass-through debug mode)
 - Proxy `ext_proxy` per target `e-SunMind` in modalita' pass-through:
   - disabilitato rewrite/injection del body HTML/CSS

@@ -905,7 +905,7 @@ def create_app() -> FastAPI:
             return await call_next(request)
 
         # User pages
-        if path in ("/", "/home", "/home2", "/lights", "/covers", "/extra", "/scenarios", "/locks"):
+        if path in ("/", "/home", "/home2", "/home_plus", "/lights", "/covers", "/extra", "/scenarios", "/locks"):
             return await call_next(request) 
         if guard_enabled and path == "/e-guard":
             return await call_next(request)
@@ -987,6 +987,7 @@ def create_app() -> FastAPI:
 const CACHE = 'buspro-pwa-{ADDON_VERSION}';
 const PRECACHE = [
   '/home2',
+  '/home_plus',
   '/manifest.webmanifest',
   '/static/logo_ekonex.png',
   '/static/e-face-nobg.png',
@@ -4693,6 +4694,12 @@ self.addEventListener('fetch', (event) => {{
     @api.get("/home2", response_class=HTMLResponse)
     async def user_home2():
         p = os.path.join(static_dir, "user", "home2.html")
+        with open(p, "r", encoding="utf-8") as f:
+            return f.read()
+
+    @api.get("/home_plus", response_class=HTMLResponse)
+    async def user_home_plus():
+        p = os.path.join(static_dir, "user", "home_plus.html")
         with open(p, "r", encoding="utf-8") as f:
             return f.read()
 

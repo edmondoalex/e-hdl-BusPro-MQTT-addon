@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ekonex Home+</title>
+    <style>
+      :root{
+        --bg:#06080c;
+        --fg:#eef3ff;
+        --muted:rgba(238,243,255,.72);
+        --line:rgba(255,255,255,.14);
+        --card:rgba(10,14,24,.58);
+        --card-2:rgba(255,255,255,.08);
+        --accent:#6ec1ff;
+      }
+      *{box-sizing:border-box}
+      html,body{height:100%}
+      body{
+        margin:0;
+        color:var(--fg);
+        font-family:"Trebuchet MS","Tahoma",sans-serif;
+        background:
+          radial-gradient(1300px 900px at 75% 15%, rgba(52,102,161,.34), transparent 50%),
+          radial-gradient(900px 640px at 12% 86%, rgba(176,108,60,.26), transparent 58%),
+          linear-gradient(140deg, #0b0f1a 0%, #06080c 54%, #040507 100%);
+      }
+      .bg-photo{
+        position:fixed; inset:0; z-index:-2;
+        background:center/cover no-repeat;
+        opacity:.34;
+        filter:saturate(.92) contrast(1.02);
+      }
+      .veil{
+        position:fixed; inset:0; z-index:-1;
+        background:linear-gradient(180deg, rgba(0,0,0,.45), rgba(0,0,0,.22) 32%, rgba(0,0,0,.58));
+      }
+      .top{
+        height:70px; padding:12px 18px;
+        display:flex; align-items:center; justify-content:space-between; gap:10px;
+      }
+      .title{
+        font-size:40px; letter-spacing:.04em; font-weight:560;
+        text-transform:uppercase; opacity:.95;
+      }
+      .sub{font-size:13px;color:var(--muted);text-align:right}
+      .btn{
+        border:1px solid var(--line);
+        background:linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,.04));
+        color:var(--fg); border-radius:12px; padding:8px 12px; font-size:13px;
+      }
+      .main{padding:10px 18px 20px; max-width:1600px; margin:0 auto;}
+      .widgets{
+        display:grid; gap:12px;
+        grid-template-columns:repeat(12,minmax(0,1fr));
+      }
+      .widget{
+        border:1px solid var(--line);
+        background:linear-gradient(180deg,var(--card-2),var(--card));
+        backdrop-filter:blur(8px);
+        border-radius:0;
+        min-height:120px;
+      }
+      .w-head{
+        display:flex; align-items:center; justify-content:space-between;
+        border-bottom:1px solid rgba(255,255,255,.10);
+        padding:8px 10px;
+        font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted);
+      }
+      .w-body{padding:10px}
+      .quick{grid-column:span 8}
+      .clock{grid-column:span 4}
+      .fav{grid-column:span 8}
+      .status{grid-column:span 4}
+      .tiles{
+        display:grid;
+        grid-template-columns:repeat(var(--cols, 5), minmax(0,1fr));
+        gap:8px;
+      }
+      .tile{
+        border:1px solid rgba(255,255,255,.16);
+        background:rgba(255,255,255,.06);
+        color:var(--fg);
+        text-decoration:none;
+        min-height:110px;
+        display:flex; flex-direction:column;
+        align-items:center; justify-content:center; gap:8px;
+        padding:8px;
+      }
+      .ico{
+        width:34px; height:34px;
+        background:var(--fg);
+        -webkit-mask-repeat:no-repeat; -webkit-mask-position:center; -webkit-mask-size:contain;
+        mask-repeat:no-repeat; mask-position:center; mask-size:contain;
+      }
+      .lbl{font-size:16px; text-align:center; line-height:1.1}
+      .small{font-size:12px; color:var(--muted)}
+      .time{
+        font-size:62px; line-height:.96; letter-spacing:.02em;
+        font-weight:600;
+      }
+      .date{
+        font-size:18px; color:var(--muted); margin-top:6px;
+      }
+      .status-list{display:grid; gap:8px}
+      .status-item{display:flex; justify-content:space-between; font-size:14px}
+      .panel{
+        position:fixed; top:0; right:0; height:100%; width:min(430px,92vw);
+        background:rgba(8,12,20,.98);
+        border-left:1px solid var(--line);
+        transform:translateX(110%); transition:transform .22s ease;
+        z-index:40; padding:14px; overflow:auto;
+      }
+      .panel.show{transform:translateX(0)}
+      .panel h3{margin:4px 0 10px; letter-spacing:.08em; text-transform:uppercase}
+      .row{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,.08)}
+      .row input[type="text"], .row input[type="number"]{
+        width:180px; background:#0e1422; color:#fff; border:1px solid var(--line); border-radius:8px; padding:6px 8px;
+      }
+      .ord{display:flex; gap:6px}
+      .ord button{padding:4px 8px}
+      @media(max-width:1100px){
+        .quick,.clock,.fav,.status{grid-column:span 12}
+      }
+      @media(max-width:760px){
+        .title{font-size:28px}
+        .time{font-size:48px}
+        .tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+      }
+    </style>
+  </head>
+  <body>
+    <div id="bgPhoto" class="bg-photo"></div>
+    <div class="veil"></div>
+
+    <header class="top">
+      <button id="openCfg" class="btn">Personalizza</button>
+      <div class="title">Home+</div>
+      <div class="sub" id="connState">loading...</div>
+    </header>
+
+    <main class="main">
+      <section id="widgets" class="widgets"></section>
+    </main>
+
+    <aside id="panel" class="panel" aria-label="Pannello personalizzazione">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h3>Home+ Config</h3>
+        <button id="closeCfg" class="btn">Chiudi</button>
+      </div>
+      <div class="row"><span>Background URL</span><input id="bgUrl" type="text" placeholder="https://..." /></div>
+      <div class="row"><span>Colonne tile</span><input id="cols" type="number" min="2" max="7" /></div>
+      <div class="row"><span>Mostra Quick Links</span><input id="wQuick" type="checkbox" /></div>
+      <div class="row"><span>Mostra Orologio</span><input id="wClock" type="checkbox" /></div>
+      <div class="row"><span>Mostra Preferiti</span><input id="wFav" type="checkbox" /></div>
+      <div class="row"><span>Mostra Stato</span><input id="wStatus" type="checkbox" /></div>
+      <h3>Ordine Widget</h3>
+      <div id="orderBox"></div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button id="saveCfg" class="btn">Salva</button>
+        <button id="resetCfg" class="btn">Reset</button>
+      </div>
+    </aside>
+
+    <script>
+      const PREF_KEY = 'ekonex_home_plus_v1';
+      const defaults = {
+        bgUrl: '',
+        cols: 5,
+        showQuick: true,
+        showClock: true,
+        showFav: true,
+        showStatus: true,
+        order: ['quick', 'clock', 'fav', 'status'],
+        favIds: []
+      };
+
+      function absUrl(path){ return new URL(path, window.location.href).toString(); }
+      async function getJson(path){
+        const r = await fetch(absUrl(path), { cache: 'no-store' });
+        if (!r.ok) throw new Error(await r.text());
+        return r.json();
+      }
+      function loadPrefs(){
+        try{
+          const raw = localStorage.getItem(PREF_KEY);
+          if(!raw) return { ...defaults };
+          return { ...defaults, ...JSON.parse(raw) };
+        }catch(_){ return { ...defaults }; }
+      }
+      function savePrefs(p){ localStorage.setItem(PREF_KEY, JSON.stringify(p)); }
+      function mdiName(iconValue, fallback){
+        const v = iconValue == null ? '' : String(iconValue).trim();
+        const m = /^mdi:([a-z0-9_-]+)$/i.exec(v);
+        return m ? m[1].toLowerCase() : (fallback || 'link-variant');
+      }
+      function iconUrl(iconValue, fallback){
+        return absUrl(`api/icons/mdi/${mdiName(iconValue, fallback)}.svg`);
+      }
+      function tileEl(it){
+        const a = document.createElement('a');
+        a.className = 'tile';
+        a.href = String(it.url || '#');
+        if (it.new_tab) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
+        const i = document.createElement('div');
+        i.className = 'ico';
+        i.style.webkitMaskImage = `url("${iconUrl(it.icon, 'link-variant')}")`;
+        i.style.maskImage = `url("${iconUrl(it.icon, 'link-variant')}")`;
+        const l = document.createElement('div');
+        l.className = 'lbl';
+        l.textContent = String(it.title || 'Link');
+        a.append(i,l);
+        return a;
+      }
+      function fmtDate(d){
+        return d.toLocaleDateString('it-IT', { weekday:'long', day:'2-digit', month:'long', year:'numeric' });
+      }
+
+      function widgetWrap(id, title, cls){
+        const w = document.createElement('section');
+        w.className = `widget ${cls}`;
+        w.dataset.wid = id;
+        w.innerHTML = `<div class="w-head"><span>${title}</span></div><div class="w-body"></div>`;
+        return w;
+      }
+
+      async function render(){
+        const prefs = loadPrefs();
+        const widgets = document.getElementById('widgets');
+        widgets.innerHTML = '';
+        document.documentElement.style.setProperty('--cols', String(Math.max(2, Math.min(7, Number(prefs.cols)||5))));
+        const bg = document.getElementById('bgPhoto');
+        bg.style.backgroundImage = prefs.bgUrl ? `url("${prefs.bgUrl}")` : 'url("static/logo_ekonex.png")';
+
+        let meta = null;
+        try { meta = await getJson('api/meta'); } catch(_){}
+        const links = (meta && Array.isArray(meta.hub_links)) ? meta.hub_links : [];
+        const actions = (meta && Array.isArray(meta.home_actions)) ? meta.home_actions : [];
+        const all = [...actions, ...links].filter(x => x && x.title && x.url);
+        const byId = new Map(all.map(x => [String(x.id || x.title), x]));
+
+        const enabled = {
+          quick: !!prefs.showQuick,
+          clock: !!prefs.showClock,
+          fav: !!prefs.showFav,
+          status: !!prefs.showStatus
+        };
+        const order = (prefs.order || defaults.order).filter(x => ['quick','clock','fav','status'].includes(x));
+        for (const id of order){
+          if (!enabled[id]) continue;
+          if (id === 'quick'){
+            const w = widgetWrap('quick', 'Quick Links', 'quick');
+            const body = w.querySelector('.w-body');
+            const grid = document.createElement('div');
+            grid.className = 'tiles';
+            all.forEach(it => grid.appendChild(tileEl(it)));
+            body.appendChild(grid);
+            widgets.appendChild(w);
+          }
+          if (id === 'clock'){
+            const w = widgetWrap('clock', 'Tempo', 'clock');
+            const body = w.querySelector('.w-body');
+            body.innerHTML = `<div class="time" id="liveTime">--:--</div><div class="date" id="liveDate">--</div>`;
+            widgets.appendChild(w);
+          }
+          if (id === 'fav'){
+            const w = widgetWrap('fav', 'Preferiti', 'fav');
+            const body = w.querySelector('.w-body');
+            const grid = document.createElement('div');
+            grid.className = 'tiles';
+            const fav = (prefs.favIds || []).map(id => byId.get(String(id))).filter(Boolean);
+            (fav.length ? fav : all.slice(0, Math.min(6, all.length))).forEach(it => grid.appendChild(tileEl(it)));
+            body.appendChild(grid);
+            widgets.appendChild(w);
+          }
+          if (id === 'status'){
+            const w = widgetWrap('status', 'Sistema', 'status');
+            const body = w.querySelector('.w-body');
+            const ver = meta && meta.version ? String(meta.version) : '-';
+            body.innerHTML = `<div class="status-list">
+              <div class="status-item"><span>Versione</span><strong>${ver}</strong></div>
+              <div class="status-item"><span>Azioni Home</span><strong>${actions.length}</strong></div>
+              <div class="status-item"><span>Link Proxy</span><strong>${links.length}</strong></div>
+              <div class="status-item"><span>Back Gesture</span><strong>${meta && meta.back_gesture_enabled === false ? 'off' : 'on'}</strong></div>
+            </div>`;
+            widgets.appendChild(w);
+          }
+        }
+
+        const conn = document.getElementById('connState');
+        conn.textContent = meta ? 'online' : 'offline meta';
+
+        function tick(){
+          const d = new Date();
+          const t = document.getElementById('liveTime');
+          const dt = document.getElementById('liveDate');
+          if (t) t.textContent = d.toLocaleTimeString('it-IT', { hour:'2-digit', minute:'2-digit' });
+          if (dt) dt.textContent = fmtDate(d);
+        }
+        tick(); clearInterval(window.__homePlusClock); window.__homePlusClock = setInterval(tick, 1000);
+      }
+
+      function renderOrderEditor(p){
+        const box = document.getElementById('orderBox');
+        box.innerHTML = '';
+        p.order.forEach((id, idx) => {
+          const row = document.createElement('div');
+          row.className = 'row';
+          const map = {quick:'Quick Links', clock:'Orologio', fav:'Preferiti', status:'Stato'};
+          row.innerHTML = `<span>${map[id] || id}</span>`;
+          const ord = document.createElement('div');
+          ord.className = 'ord';
+          const up = document.createElement('button'); up.className='btn'; up.textContent='↑';
+          const dn = document.createElement('button'); dn.className='btn'; dn.textContent='↓';
+          up.onclick = ()=>{ if(idx<1)return; [p.order[idx-1], p.order[idx]]=[p.order[idx], p.order[idx-1]]; renderOrderEditor(p); };
+          dn.onclick = ()=>{ if(idx>=p.order.length-1)return; [p.order[idx+1], p.order[idx]]=[p.order[idx], p.order[idx+1]]; renderOrderEditor(p); };
+          ord.append(up,dn); row.appendChild(ord); box.appendChild(row);
+        });
+      }
+
+      function bindConfig(){
+        const panel = document.getElementById('panel');
+        const p = loadPrefs();
+        document.getElementById('openCfg').onclick = ()=>{ panel.classList.add('show'); };
+        document.getElementById('closeCfg').onclick = ()=>{ panel.classList.remove('show'); };
+        document.getElementById('bgUrl').value = p.bgUrl || '';
+        document.getElementById('cols').value = String(p.cols || 5);
+        document.getElementById('wQuick').checked = !!p.showQuick;
+        document.getElementById('wClock').checked = !!p.showClock;
+        document.getElementById('wFav').checked = !!p.showFav;
+        document.getElementById('wStatus').checked = !!p.showStatus;
+        renderOrderEditor(p);
+
+        document.getElementById('saveCfg').onclick = async ()=>{
+          p.bgUrl = document.getElementById('bgUrl').value.trim();
+          p.cols = Number(document.getElementById('cols').value || 5);
+          p.showQuick = document.getElementById('wQuick').checked;
+          p.showClock = document.getElementById('wClock').checked;
+          p.showFav = document.getElementById('wFav').checked;
+          p.showStatus = document.getElementById('wStatus').checked;
+          savePrefs(p);
+          panel.classList.remove('show');
+          await render();
+        };
+        document.getElementById('resetCfg').onclick = async ()=>{
+          savePrefs({ ...defaults });
+          panel.classList.remove('show');
+          bindConfig();
+          await render();
+        };
+      }
+
+      bindConfig();
+      render();
+    </script>
+  </body>
+</html>
