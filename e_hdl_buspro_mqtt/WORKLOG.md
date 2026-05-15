@@ -1,5 +1,17 @@
 # WORKLOG
 
+## 2026-05-15 (iPhone user pages loading diagnostics)
+- User UI: aggiunto bootstrap diagnostico comune su tutte le pagine utente (`home`, `home2`, `home_plus`, `lights`, `covers`, `extra`, `locks`, `scenarios`, `e_guard`).
+- Le chiamate `getJson()` delle pagine utente passano ora da fetch con timeout 12s per evitare spinner infinito silenzioso su iPhone/WebView.
+- Aggiunto endpoint `GET /api/ui_log` per log sintetici lato browser:
+  - `page_boot`
+  - `fetch_error`
+  - `js_error`
+  - `js_rejection`
+  - eventi specifici pagina Luci (`load_start`, `meta_ok`, `devices_ok`, `load_error`, `ws_error`, `ws_close`)
+- Logging: aggiunta opzione `access_log` default `false` per ridurre il rumore uvicorn nei log addon; riattivabile da configurazione.
+- Version bump: 0.1.384 -> 0.1.385.
+
 ## 2026-05-09 (Home+ include built-in hub sections)
 - Home+ `Quick Links` ora include anche le voci native hub:
   - `Luci` (`/lights`)

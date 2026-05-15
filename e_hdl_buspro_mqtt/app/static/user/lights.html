@@ -575,8 +575,41 @@
         return v.replace(/[^a-zA-Z0-9_.-]/g, (ch) => `\\${ch.charCodeAt(0).toString(16)} `);
       }
 
-      async function getJson(path, opts) {
-        const r = await fetch(absUrl(path), opts);
+      function uiLog(phase, detail) {
+        try {
+          const u = new URL('api/ui_log', window.location.href);
+          u.searchParams.set('page', 'lights');
+          u.searchParams.set('phase', String(phase || ''));
+          u.searchParams.set('detail', String(detail || '').slice(0, 220));
+          const img = new Image();
+          img.src = u.toString();
+        } catch (e) {}
+      }
+
+      async function fetchWithTimeout(url, opts, timeoutMs) {
+        const ms = Math.max(1000, Number(timeoutMs || 12000));
+        const init = Object.assign({}, opts || {});
+        let timer = null;
+        if (typeof AbortController !== 'undefined') {
+          const controller = new AbortController();
+          init.signal = controller.signal;
+          timer = setTimeout(() => {
+            try { controller.abort(); } catch (e) {}
+          }, ms);
+          try {
+            return await fetch(url, init);
+          } finally {
+            try { clearTimeout(timer); } catch (e) {}
+          }
+        }
+        return await Promise.race([
+          fetch(url, init),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms))
+        ]);
+      }
+
+      async function getJson(path, opts, timeoutMs) {
+        const r = await fetchWithTimeout(absUrl(path), opts, timeoutMs);
         if (!r.ok) throw new Error(await r.text());
         const ct = (r.headers.get('content-type')||'').toLowerCase();
         if (ct.includes('application/json')) return r.json();
@@ -2005,7 +2038,19 @@
       function connectWs() {
         const ws = new WebSocket(wsUrl());
         ws.onopen = () => {};
-        ws.onclose = () => { setTimeout(connectWs, 1500); };
+        ws.onclose = (evt) => {
+          if (!connectWs._reportedClose) {
+            connectWs._reportedClose = true;
+            uiLog('ws_close', `code=${evt && evt.code ? evt.code : 0}`);
+          }
+          setTimeout(connectWs, 1500);
+        };
+        ws.onerror = () => {
+          if (!connectWs._reportedError) {
+            connectWs._reportedError = true;
+            uiLog('ws_error', 'websocket error');
+          }
+        };
         ws.onmessage = (evt) => {
           try {
             const msg = JSON.parse(evt.data);
@@ -2096,6 +2141,7 @@
 
       (async () => { 
         try { 
+          uiLog('load_start', 'init');
           const hasCollapsedPref = (localStorage.getItem(LS_COLLAPSED) !== null);
           try {
             showActiveOnly = JSON.parse(localStorage.getItem('buspro_show_active_only_lights') || 'false') === true;
@@ -2106,16 +2152,35 @@
           } catch (e) { collapsedGroups = new Set(); }
           const fb = qs('filterBtn');
           if (fb) fb.classList.toggle('on', !!showActiveOnly);
-          const meta = await getJson('api/meta'); 
+          const meta = await getJson('api/meta', { cache:'no-store' }, 12000); 
+          uiLog('meta_ok', 'ok');
           window.__backGestureEnabled = !(meta && typeof meta.back_gesture_enabled === 'boolean') ? true : !!meta.back_gesture_enabled;
           groupOrder = Array.isArray(meta.group_order) ? meta.group_order.map(normalizeGroup).filter(Boolean) : []; 
-          lastDevices = await getJson('api/user/devices'); 
+          lastDevices = await getJson('api/user/devices', { cache:'no-store' }, 12000); 
+          uiLog('devices_ok', `count=${Array.isArray(lastDevices) ? lastDevices.length : 0}`);
           refreshDeviceIndex();
           // Default: all groups expanded on first load (no collapsed preference).
           queueRender(); 
-        } catch (e) {} 
+        } catch (e) {
+          const msg = (e && e.name === 'AbortError') ? 'timeout caricamento dati' : (e && e.message ? e.message : String(e));
+          uiLog('load_error', msg);
+          try {
+            qs('list').innerHTML = '<div class="section"><span>Errore caricamento</span><span class="count">offline</span></div>';
+            qs('err').textContent = 'Pagina non caricata: ' + msg + '. Riapri la pagina o aggiorna.';
+          } catch (ignore) {}
+        } 
         connectWs(); 
       })(); 
+
+      window.addEventListener('error', (evt) => {
+        try { uiLog('js_error', (evt && evt.message) || 'error'); } catch (e) {}
+      });
+      window.addEventListener('unhandledrejection', (evt) => {
+        try {
+          const r = evt && evt.reason;
+          uiLog('js_rejection', (r && r.message) ? r.message : String(r || 'rejection'));
+        } catch (e) {}
+      });
 
       qs('filterBtn').addEventListener('click', () => {
         animatePress(qs('filterBtn'));

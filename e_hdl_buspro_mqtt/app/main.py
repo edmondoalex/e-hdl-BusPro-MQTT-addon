@@ -78,7 +78,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.375"
+ADDON_VERSION = "0.1.385"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -926,6 +926,8 @@ def create_app() -> FastAPI:
         if guard_enabled and path == "/api/e_guard/diag" and request.method.upper() == "GET":
             return await call_next(request)
         if path == "/api/user/devices" and request.method.upper() == "GET":
+            return await call_next(request)
+        if path == "/api/ui_log":
             return await call_next(request)
         if path.startswith("/api/icons/mdi/"):
             return await call_next(request)
@@ -4685,61 +4687,103 @@ self.addEventListener('fetch', (event) => {{
         with open(p, "r", encoding="utf-8") as f:
             return f.read()
 
+    def _user_html(page: str) -> HTMLResponse:
+        p = os.path.join(static_dir, "user", page)
+        page_name = os.path.splitext(os.path.basename(page))[0]
+        with open(p, "r", encoding="utf-8") as f:
+            html = f.read()
+        diag = f"""
+<script>
+(function() {{
+  var page = {json.dumps(page_name)};
+  function log(phase, detail) {{
+    try {{
+      var u = new URL('api/ui_log', window.location.href);
+      u.searchParams.set('page', page);
+      u.searchParams.set('phase', String(phase || ''));
+      u.searchParams.set('detail', String(detail || '').slice(0, 220));
+      var img = new Image();
+      img.src = u.toString();
+    }} catch (e) {{}}
+  }}
+  window.busproUiLog = log;
+  window.busproFetchWithTimeout = async function(url, opts, timeoutMs) {{
+    var ms = Math.max(1000, Number(timeoutMs || 12000));
+    var init = Object.assign({{}}, opts || {{}});
+    var timer = null;
+    try {{
+      if (typeof AbortController !== 'undefined') {{
+        var controller = new AbortController();
+        init.signal = controller.signal;
+        timer = setTimeout(function() {{ try {{ controller.abort(); }} catch (e) {{}} }}, ms);
+        try {{
+          return await fetch(url, init);
+        }} finally {{
+          try {{ clearTimeout(timer); }} catch (e) {{}}
+        }}
+      }}
+      return await Promise.race([
+        fetch(url, init),
+        new Promise(function(_, reject) {{ setTimeout(function() {{ reject(new Error('timeout')); }}, ms); }})
+      ]);
+    }} catch (e) {{
+      var msg = (e && e.name === 'AbortError') ? 'timeout' : ((e && e.message) ? e.message : String(e));
+      try {{ log('fetch_error', new URL(url, window.location.href).pathname + ' ' + msg); }} catch (_) {{ log('fetch_error', msg); }}
+      throw e;
+    }}
+  }};
+  window.addEventListener('error', function(evt) {{ log('js_error', (evt && evt.message) || 'error'); }});
+  window.addEventListener('unhandledrejection', function(evt) {{
+    var r = evt && evt.reason;
+    log('js_rejection', (r && r.message) ? r.message : String(r || 'rejection'));
+  }});
+  log('page_boot', 'loaded');
+}})();
+</script>
+""".strip()
+        if "</head>" in html:
+            html = html.replace("</head>", diag + "\n</head>", 1)
+        else:
+            html = diag + "\n" + html
+        return HTMLResponse(content=html)
+
     @api.get("/home", response_class=HTMLResponse)
     async def user_home():
-        p = os.path.join(static_dir, "user", "home.html")
-        with open(p, "r", encoding="utf-8") as f:
-            return f.read()
+        return _user_html("home.html")
 
     @api.get("/home2", response_class=HTMLResponse)
     async def user_home2():
-        p = os.path.join(static_dir, "user", "home2.html")
-        with open(p, "r", encoding="utf-8") as f:
-            return f.read()
+        return _user_html("home2.html")
 
     @api.get("/home_plus", response_class=HTMLResponse)
     async def user_home_plus():
-        p = os.path.join(static_dir, "user", "home_plus.html")
-        with open(p, "r", encoding="utf-8") as f:
-            return f.read()
+        return _user_html("home_plus.html")
 
     @api.get("/lights", response_class=HTMLResponse)
     async def user_lights():
-        p = os.path.join(static_dir, "user", "lights.html")
-        with open(p, "r", encoding="utf-8") as f:
-            return f.read()
+        return _user_html("lights.html")
 
     @api.get("/scenarios", response_class=HTMLResponse)
     async def user_scenarios():
-        p = os.path.join(static_dir, "user", "scenarios.html")
-        with open(p, "r", encoding="utf-8") as f:
-            return f.read()
+        return _user_html("scenarios.html")
 
     @api.get("/covers", response_class=HTMLResponse) 
     async def user_covers(): 
-        p = os.path.join(static_dir, "user", "covers.html") 
-        with open(p, "r", encoding="utf-8") as f: 
-            return f.read() 
+        return _user_html("covers.html")
 
     @api.get("/locks", response_class=HTMLResponse)
     async def user_locks():
-        p = os.path.join(static_dir, "user", "locks.html")
-        with open(p, "r", encoding="utf-8") as f:
-            return f.read()
+        return _user_html("locks.html")
 
     @api.get("/extra", response_class=HTMLResponse)
     async def user_extra():
-        p = os.path.join(static_dir, "user", "extra.html")
-        with open(p, "r", encoding="utf-8") as f:
-            return f.read()
+        return _user_html("extra.html")
 
     @api.get("/e-guard", response_class=HTMLResponse)
     async def user_guard():
         if not guard_enabled:
             raise HTTPException(status_code=404, detail="Not Found")
-        p = os.path.join(static_dir, "user", "e_guard.html")
-        with open(p, "r", encoding="utf-8") as f:
-            return f.read()
+        return _user_html("e_guard.html")
 
     @api.get("/api/options")
     async def api_options():
@@ -4793,6 +4837,24 @@ self.addEventListener('fetch', (event) => {{
             "guard_enabled": guard_enabled,
             "back_gesture_enabled": back_gesture_enabled,
         } 
+
+    @api.get("/api/ui_log")
+    async def api_ui_log(request: Request):
+        params = request.query_params
+        page = str(params.get("page") or "").strip()[:40]
+        phase = str(params.get("phase") or "").strip()[:80]
+        detail = str(params.get("detail") or "").strip()[:240]
+        real_ip, proxy_ip, ua = _request_client_info(request)
+        _LOGGER.warning(
+            "ui_log page=%s phase=%s detail=%s real_ip=%s proxy_ip=%s ua=%s",
+            page or "-",
+            phase or "-",
+            detail or "-",
+            real_ip,
+            proxy_ip,
+            ua[:220],
+        )
+        return {"ok": True}
 
     @api.get("/api/diag/net")
     async def api_diag_net():
@@ -8708,8 +8770,9 @@ def main() -> None:
     app = create_app()
 
     async def _serve() -> None:
-        cfg_user = uvicorn.Config(app, host="0.0.0.0", port=USER_PORT, log_level="info")
-        cfg_admin = uvicorn.Config(app, host="0.0.0.0", port=ADMIN_PORT, log_level="info")
+        settings_ = load_settings(read_options())
+        cfg_user = uvicorn.Config(app, host="0.0.0.0", port=USER_PORT, log_level="info", access_log=settings_.access_log)
+        cfg_admin = uvicorn.Config(app, host="0.0.0.0", port=ADMIN_PORT, log_level="info", access_log=settings_.access_log)
         srv_user = uvicorn.Server(cfg_user)
         srv_admin = uvicorn.Server(cfg_admin)
         await asyncio.gather(srv_user.serve(), srv_admin.serve())
