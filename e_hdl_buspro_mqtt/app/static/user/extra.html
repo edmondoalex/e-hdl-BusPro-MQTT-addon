@@ -527,6 +527,44 @@
         return u.toString();
       }
 
+      function applySnapshot(data) {
+        const snap = data || {};
+        lastDevices = snap.devices || [];
+        refreshDeviceIndex();
+        const states = snap.states || {};
+        for (const [addr, st] of Object.entries(states)) {
+          const state = String(st.state || '').toUpperCase() || '?';
+          const br = (st && st.brightness !== undefined && st.brightness !== null) ? Number(st.brightness) : undefined;
+          const next = { state };
+          if (br !== undefined && Number.isFinite(br)) next.brightness = br;
+          stateByAddr.set(addr, next);
+        }
+        const ha = snap.ha_states || {};
+        if (ha && typeof ha === 'object') {
+          for (const [eid, st] of Object.entries(ha)) {
+            const s0 = (st && typeof st === 'object') ? st : {};
+            const state = String(s0.state || '').toUpperCase() || '?';
+            const br = (s0 && s0.brightness !== undefined && s0.brightness !== null) ? Number(s0.brightness) : undefined;
+            const next = { state };
+            if (br !== undefined && Number.isFinite(br)) next.brightness = br;
+            stateByAddr.set(String(eid), next);
+          }
+        }
+        queueRender();
+      }
+
+      function startPolling() {
+        async function tick() {
+          try {
+            applySnapshot(await getJson('api/user/snapshot', { cache:'no-store' }));
+          } catch (e) {
+            if (window.busproUiLog) window.busproUiLog('poll_error', e && e.message ? e.message : String(e));
+          }
+        }
+        tick();
+        setInterval(tick, 3000);
+      }
+
       function connectWs() {
         const ws = new WebSocket(wsUrl());
         ws.onclose = () => { setTimeout(connectWs, 1500); };
@@ -534,28 +572,7 @@
           try {
             const msg = JSON.parse(evt.data);
             if (msg.type === 'snapshot') {
-              lastDevices = msg.data.devices || [];
-              refreshDeviceIndex();
-              const states = msg.data.states || {};
-              for (const [addr, st] of Object.entries(states)) {
-                const state = String(st.state || '').toUpperCase() || '?';
-                const br = (st && st.brightness !== undefined && st.brightness !== null) ? Number(st.brightness) : undefined;
-                const next = { state };
-                if (br !== undefined && Number.isFinite(br)) next.brightness = br;
-                stateByAddr.set(addr, next);
-              }
-              const ha = msg.data.ha_states || {};
-              if (ha && typeof ha === 'object') {
-                for (const [eid, st] of Object.entries(ha)) {
-                  const s0 = (st && typeof st === 'object') ? st : {};
-                  const state = String(s0.state || '').toUpperCase() || '?';
-                  const br = (s0 && s0.brightness !== undefined && s0.brightness !== null) ? Number(s0.brightness) : undefined;
-                  const next = { state };
-                  if (br !== undefined && Number.isFinite(br)) next.brightness = br;
-                  stateByAddr.set(String(eid), next);
-                }
-              }
-              queueRender();
+              applySnapshot(msg.data || {});
               return;
             }
             if (msg.type === 'devices') { 
@@ -636,7 +653,8 @@
           // Default: all groups expanded on first load (no collapsed preference).
           queueRender(); 
         } catch (e) {} 
-        connectWs(); 
+        if (window.busproPollMode) startPolling();
+        else connectWs(); 
       })(); 
 
       qs('filterBtn').addEventListener('click', () => {

@@ -466,6 +466,35 @@
         return u.toString();
       }
 
+      function applySnapshot(data) {
+        const snap = data || {};
+        lastDevices = snap.devices || [];
+        refreshDeviceIndex();
+        const ha = snap.ha_states || {};
+        if (ha && typeof ha === 'object') {
+          const lockEids = new Set((lastDevices || []).filter(isLockListDevice).map(d => String(d.entity_id || '')));
+          for (const [eid, st] of Object.entries(ha)) {
+            const s0 = (st && typeof st === 'object') ? st : {};
+            if (!lockEids.has(String(eid))) continue;
+            const metrics = (s0 && typeof s0.metrics === 'object') ? s0.metrics : {};
+            stateByAddr.set(String(eid), { state: String(s0.state || '').toUpperCase() || '?', metrics });
+          }
+        }
+        queueRender();
+      }
+
+      function startPolling() {
+        async function tick() {
+          try {
+            applySnapshot(await getJson('api/user/snapshot', { cache:'no-store' }));
+          } catch (e) {
+            if (window.busproUiLog) window.busproUiLog('poll_error', e && e.message ? e.message : String(e));
+          }
+        }
+        tick();
+        setInterval(tick, 3000);
+      }
+
       function connectWs() {
         const ws = new WebSocket(wsUrl());
         ws.onclose = () => { setTimeout(connectWs, 1500); };
@@ -473,19 +502,7 @@
           try {
             const msg = JSON.parse(evt.data);
             if (msg.type === 'snapshot') {
-              lastDevices = msg.data.devices || [];
-              refreshDeviceIndex();
-              const ha = msg.data.ha_states || {};
-              if (ha && typeof ha === 'object') {
-                const lockEids = new Set((lastDevices || []).filter(isLockListDevice).map(d => String(d.entity_id || '')));
-                for (const [eid, st] of Object.entries(ha)) {
-                  const s0 = (st && typeof st === 'object') ? st : {};
-                  if (!lockEids.has(String(eid))) continue;
-                  const metrics = (s0 && typeof s0.metrics === 'object') ? s0.metrics : {};
-                  stateByAddr.set(String(eid), { state: String(s0.state || '').toUpperCase() || '?', metrics });
-                }
-              }
-              queueRender();
+              applySnapshot(msg.data || {});
               return;
             }
             if (msg.type === 'devices') {
@@ -555,7 +572,8 @@
           refreshDeviceIndex();
           queueRender();
         } catch (e) {}
-        connectWs();
+        if (window.busproPollMode) startPolling();
+        else connectWs();
       })();
 
       qs('filterBtn').addEventListener('click', () => {

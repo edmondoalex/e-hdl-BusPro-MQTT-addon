@@ -78,7 +78,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.385"
+ADDON_VERSION = "0.1.386"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -927,6 +927,8 @@ def create_app() -> FastAPI:
             return await call_next(request)
         if path == "/api/user/devices" and request.method.upper() == "GET":
             return await call_next(request)
+        if path == "/api/user/snapshot" and request.method.upper() == "GET":
+            return await call_next(request)
         if path == "/api/ui_log":
             return await call_next(request)
         if path.startswith("/api/icons/mdi/"):
@@ -1401,8 +1403,18 @@ self.addEventListener('fetch', (event) => {{
       window.EventSource = function(url, conf) {{
         try {{
           const u = abs(rewritePath(url));
-          return conf ? new _ES(u, conf) : new _ES(u);
+          const es = conf ? new _ES(u, conf) : new _ES(u);
+          try {{
+            let sent = false;
+            es.addEventListener('error', function() {{
+              if (sent) return;
+              sent = true;
+              sendDbg('es_error', u + ' state=' + es.readyState);
+            }});
+          }} catch(e) {{}}
+          return es;
         }} catch(e) {{
+          sendDbg('es_create_error', String(e && e.message ? e.message : e));
           return conf ? new _ES(url, conf) : new _ES(url);
         }}
       }};
@@ -1426,8 +1438,26 @@ self.addEventListener('fetch', (event) => {{
             }}
           }}
           const absu = abs(u);
-          return protocols ? new _WS(absu, protocols) : new _WS(absu);
+          const ws = protocols ? new _WS(absu, protocols) : new _WS(absu);
+          try {{
+            let errSent = false;
+            let closeSent = false;
+            ws.addEventListener('error', function() {{
+              if (errSent) return;
+              errSent = true;
+              sendDbg('ws_error', absu);
+            }});
+            ws.addEventListener('close', function(ev) {{
+              if (closeSent) return;
+              closeSent = true;
+              const code = ev && ev.code ? ev.code : 0;
+              const reason = ev && ev.reason ? ev.reason : '';
+              sendDbg('ws_close', absu + ' code=' + code + ' reason=' + reason);
+            }});
+          }} catch(e) {{}}
+          return ws;
         }} catch(e) {{
+          sendDbg('ws_create_error', String(e && e.message ? e.message : e));
           return protocols ? new _WS(url, protocols) : new _WS(url);
         }}
       }};
@@ -1547,12 +1577,30 @@ self.addEventListener('fetch', (event) => {{
                         msg = raw.decode("utf-8", errors="replace")[:2000] if raw else ""
                 except Exception:
                     msg = ""
-                _LOGGER.debug(
+                kind = ""
+                try:
+                    obj = json.loads(msg) if msg else {}
+                    if isinstance(obj, dict):
+                        kind = str(obj.get("kind") or "")
+                except Exception:
+                    kind = ""
+                log_fn = _LOGGER.warning if kind in (
+                    "js_error",
+                    "promise_rejection",
+                    "bootstrap_timeout",
+                    "ws_error",
+                    "ws_close",
+                    "ws_create_error",
+                    "es_error",
+                    "es_create_error",
+                ) else _LOGGER.debug
+                real_ip, proxy_ip, ua = _request_client_info(request)
+                log_fn(
                     "ext_proxy bootstrap_debug: name=%s real_ip=%s proxy_ip=%s ua=%s payload=%s",
                     name,
-                    _request_client_info(request)[0],
-                    _request_client_info(request)[1],
-                    _request_client_info(request)[2],
+                    real_ip,
+                    proxy_ip,
+                    ua,
                     msg,
                 )
                 return Response(status_code=204)
@@ -4707,6 +4755,11 @@ self.addEventListener('fetch', (event) => {{
     }} catch (e) {{}}
   }}
   window.busproUiLog = log;
+  window.busproPollMode = false;
+  try {{
+    window.busproPollMode = new URL(window.location.href).searchParams.get('poll') === '1';
+    if (window.busproPollMode) log('poll_mode', 'enabled');
+  }} catch (e) {{}}
   window.busproFetchWithTimeout = async function(url, opts, timeoutMs) {{
     var ms = Math.max(1000, Number(timeoutMs || 12000));
     var init = Object.assign({{}}, opts || {{}});
@@ -4908,6 +4961,68 @@ self.addEventListener('fetch', (event) => {{
     @api.get("/api/user/devices")
     async def api_user_devices():
         return _list_user_devices()
+
+    def _user_snapshot_payload() -> dict[str, Any]:
+        return {
+            "devices": _list_user_devices(),
+            "cover_groups": store.list_cover_groups(),
+            "states": {
+                k.split(":", 1)[1]: v
+                for k, v in store.get_states().items()
+                if isinstance(k, str) and k.startswith("light:")
+            },
+            "cover_states": {
+                k.split(":", 1)[1]: v
+                for k, v in store.get_states().items()
+                if isinstance(k, str) and k.startswith("cover:")
+            },
+            "temp_states": {
+                k.split(":", 1)[1]: v
+                for k, v in store.get_states().items()
+                if isinstance(k, str) and k.startswith("temp:")
+            },
+            "humidity_states": {
+                k.split(":", 1)[1]: v
+                for k, v in store.get_states().items()
+                if isinstance(k, str) and k.startswith("humidity:")
+            },
+            "illuminance_states": {
+                k.split(":", 1)[1]: v
+                for k, v in store.get_states().items()
+                if isinstance(k, str) and k.startswith("illuminance:")
+            },
+            "air_quality_states": {
+                k.split(":", 1)[1]: v
+                for k, v in store.get_states().items()
+                if isinstance(k, str) and k.startswith("air_quality:")
+            },
+            "gas_percent_states": {
+                k.split(":", 1)[1]: v
+                for k, v in store.get_states().items()
+                if isinstance(k, str) and k.startswith("gas_percent:")
+            },
+            "dry_contact_states": {
+                k.split(":", 1)[1]: v
+                for k, v in store.get_states().items()
+                if isinstance(k, str) and k.startswith("dry_contact:")
+            },
+            "pir_states": {
+                k.split(":", 1)[1]: v
+                for k, v in store.get_states().items()
+                if isinstance(k, str) and k.startswith("pir:")
+            },
+            "ultrasonic_states": {
+                k.split(":", 1)[1]: v
+                for k, v in store.get_states().items()
+                if isinstance(k, str) and k.startswith("ultrasonic:")
+            },
+            "ha_states": getattr(api.state, "ha_states", {}) or {},
+            "mqtt": api.state.mqtt.status().__dict__,
+        }
+
+    @api.get("/api/user/snapshot")
+    async def api_user_snapshot():
+        return _user_snapshot_payload()
 
     @api.get("/api/ui") 
     async def api_ui(): 
@@ -8669,62 +8784,7 @@ self.addEventListener('fetch', (event) => {{
                 json.dumps(
                     {
                         "type": "snapshot",
-                        "data": {
-                            "devices": _list_user_devices(),
-                            "cover_groups": store.list_cover_groups(),
-                            "states": {
-                                k.split(":", 1)[1]: v
-                                for k, v in store.get_states().items()
-                                if isinstance(k, str) and k.startswith("light:")
-                            },
-	                            "cover_states": {
-	                                k.split(":", 1)[1]: v
-	                                for k, v in store.get_states().items()
-	                                if isinstance(k, str) and k.startswith("cover:")
-	                            },
-	                            "temp_states": {
-	                                k.split(":", 1)[1]: v
-	                                for k, v in store.get_states().items()
-	                                if isinstance(k, str) and k.startswith("temp:")
-	                            },
-	                            "humidity_states": {
-	                                k.split(":", 1)[1]: v
-	                                for k, v in store.get_states().items()
-	                                if isinstance(k, str) and k.startswith("humidity:")
-	                            },
-                                    "illuminance_states": {
-	                                k.split(":", 1)[1]: v
-	                                for k, v in store.get_states().items()
-	                                if isinstance(k, str) and k.startswith("illuminance:")
-	                            },
-	                            "air_quality_states": {
-	                                k.split(":", 1)[1]: v
-	                                for k, v in store.get_states().items()
-	                                if isinstance(k, str) and k.startswith("air_quality:")
-	                            },
-	                            "gas_percent_states": {
-	                                k.split(":", 1)[1]: v
-	                                for k, v in store.get_states().items()
-	                                if isinstance(k, str) and k.startswith("gas_percent:")
-	                            },
-	                            "dry_contact_states": {
-	                                k.split(":", 1)[1]: v
-	                                for k, v in store.get_states().items()
-	                                if isinstance(k, str) and k.startswith("dry_contact:")
-	                            },
-	                            "pir_states": {
-	                                k.split(":", 1)[1]: v
-	                                for k, v in store.get_states().items()
-	                                if isinstance(k, str) and k.startswith("pir:")
-	                            },
-	                            "ultrasonic_states": {
-	                                k.split(":", 1)[1]: v
-	                                for k, v in store.get_states().items()
-	                                if isinstance(k, str) and k.startswith("ultrasonic:")
-	                            },
-                                "ha_states": getattr(api.state, "ha_states", {}) or {},
-	                            "mqtt": api.state.mqtt.status().__dict__,
-	                        },
+                        "data": _user_snapshot_payload(),
 	                    },
 	                    ensure_ascii=False,
                 )

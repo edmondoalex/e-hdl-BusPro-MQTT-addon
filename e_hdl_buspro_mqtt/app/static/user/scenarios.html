@@ -469,9 +469,20 @@
         };
       }
 
+      function startPolling() {
+        async function tick() {
+          try { await load(); }
+          catch (e) {
+            if (window.busproUiLog) window.busproUiLog('poll_error', e && e.message ? e.message : String(e));
+          }
+        }
+        setInterval(tick, 5000);
+      }
+
       (async () => {
         await load();
-        connectWs();
+        if (window.busproPollMode) startPolling();
+        else connectWs();
       })();
     </script>
     <script>

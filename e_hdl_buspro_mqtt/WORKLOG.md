@@ -1,5 +1,14 @@
 # WORKLOG
 
+## 2026-05-18 (Control4 iPhone polling mode)
+- Aggiunta modalita' opzionale `?poll=1` per pagine utente usate in Control4 WebViewer/iPhone.
+- Nuovo endpoint `GET /api/user/snapshot` con lo stesso payload snapshot iniziale del WebSocket.
+- Con `poll=1`, `lights`, `covers`, `extra`, `locks` e `scenarios` non aprono `/ws` e aggiornano lo stato via HTTP polling.
+- Proxy `/ext/...`: bootstrap diagnostico esteso per loggare errori/chiusure `WebSocket` e `EventSource` delle pagine proxate (allarme/altri add-on) dentro Control4 WebViewer.
+- Modalita' normale invariata: senza `poll=1` resta WebSocket realtime.
+- Obiettivo: aggirare chiusure WebSocket anomale iOS WebView (`code=1006`) senza cambiare interfaccia o comandi.
+- Version bump: 0.1.385 -> 0.1.386.
+
 ## 2026-05-15 (iPhone user pages loading diagnostics)
 - User UI: aggiunto bootstrap diagnostico comune su tutte le pagine utente (`home`, `home2`, `home_plus`, `lights`, `covers`, `extra`, `locks`, `scenarios`, `e_guard`).
 - Le chiamate `getJson()` delle pagine utente passano ora da fetch con timeout 12s per evitare spinner infinito silenzioso su iPhone/WebView.

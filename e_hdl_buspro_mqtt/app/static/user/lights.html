@@ -2035,6 +2035,40 @@
         return u.toString();
       }
 
+      function applySnapshot(data) {
+        const snap = data || {};
+        lastDevices = snap.devices || [];
+        refreshDeviceIndex();
+        const states = snap.states || {};
+        for (const [addr, st] of Object.entries(states)) {
+          const state = String(st.state || '').toUpperCase() || '?';
+          const brightness = (st.brightness === null || st.brightness === undefined) ? 0 : Number(st.brightness);
+          stateByAddr.set(addr, { state, brightness });
+        }
+        const ha = snap.ha_states || {};
+        if (ha && typeof ha === 'object') {
+          for (const [eid, st] of Object.entries(ha)) {
+            const s0 = (st && typeof st === 'object') ? st : {};
+            const state = String(s0.state || '').toUpperCase() || '?';
+            const brightness = (s0.brightness === null || s0.brightness === undefined) ? 0 : Number(s0.brightness);
+            stateByAddr.set(String(eid), { state, brightness });
+          }
+        }
+        queueRender();
+      }
+
+      function startPolling() {
+        async function tick() {
+          try {
+            applySnapshot(await getJson('api/user/snapshot', { cache:'no-store' }, 12000));
+          } catch (e) {
+            uiLog('poll_error', e && e.message ? e.message : String(e));
+          }
+        }
+        tick();
+        setInterval(tick, 3000);
+      }
+
       function connectWs() {
         const ws = new WebSocket(wsUrl());
         ws.onopen = () => {};
@@ -2055,24 +2089,7 @@
           try {
             const msg = JSON.parse(evt.data);
             if (msg.type === 'snapshot') {
-              lastDevices = msg.data.devices || [];
-              refreshDeviceIndex();
-              const states = msg.data.states || {};
-              for (const [addr, st] of Object.entries(states)) {
-                const state = String(st.state || '').toUpperCase() || '?';
-                const brightness = (st.brightness === null || st.brightness === undefined) ? 0 : Number(st.brightness);
-                stateByAddr.set(addr, { state, brightness });
-              }
-              const ha = msg.data.ha_states || {};
-              if (ha && typeof ha === 'object') {
-                for (const [eid, st] of Object.entries(ha)) {
-                  const s0 = (st && typeof st === 'object') ? st : {};
-                  const state = String(s0.state || '').toUpperCase() || '?';
-                  const brightness = (s0.brightness === null || s0.brightness === undefined) ? 0 : Number(s0.brightness);
-                  stateByAddr.set(String(eid), { state, brightness });
-                }
-              }
-              queueRender();
+              applySnapshot(msg.data || {});
               return;
             }
             if (msg.type === 'devices') { 
@@ -2169,7 +2186,8 @@
             qs('err').textContent = 'Pagina non caricata: ' + msg + '. Riapri la pagina o aggiorna.';
           } catch (ignore) {}
         } 
-        connectWs(); 
+        if (window.busproPollMode) startPolling();
+        else connectWs(); 
       })(); 
 
       window.addEventListener('error', (evt) => {

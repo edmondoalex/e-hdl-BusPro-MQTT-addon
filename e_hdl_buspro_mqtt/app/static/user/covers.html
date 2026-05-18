@@ -955,6 +955,45 @@
         return u.toString();
       }
 
+      function applySnapshot(data) {
+        const snap = data || {};
+        lastDevices = snap.devices || [];
+        rebuildCoverMeta();
+        coverGroups = Array.isArray(snap.cover_groups) ? snap.cover_groups : [];
+        buildCoverGroupMembership();
+        refreshDeviceIndex();
+        const cstates = snap.cover_states || {};
+        for (const [addr, st] of Object.entries(cstates)) {
+          const state = String(st.state || '').toUpperCase() || '?';
+          const positionRaw = (st.position === null || st.position === undefined) ? 0 : Number(st.position);
+          const position = coverUsesPosition(addr) ? positionRaw : null;
+          coverByAddr.set(addr, { state, position });
+        }
+        const ha = snap.ha_states || {};
+        if (ha && typeof ha === 'object') {
+          for (const [eid, st] of Object.entries(ha)) {
+            if (!String(eid || '').startsWith('cover.')) continue;
+            const s0 = (st && typeof st === 'object') ? st : {};
+            const state = String(s0.state || '').toUpperCase() || '?';
+            const position = (s0.position === null || s0.position === undefined) ? 0 : Number(s0.position);
+            coverByAddr.set(String(eid), { state, position });
+          }
+        }
+        queueRender();
+      }
+
+      function startPolling() {
+        async function tick() {
+          try {
+            applySnapshot(await getJson('api/user/snapshot', { cache:'no-store' }));
+          } catch (e) {
+            if (window.busproUiLog) window.busproUiLog('poll_error', e && e.message ? e.message : String(e));
+          }
+        }
+        tick();
+        setInterval(tick, 3000);
+      }
+
       function connectWs() {
         const ws = new WebSocket(wsUrl());
         ws.onopen = () => {};
@@ -963,29 +1002,7 @@
           try {
             const msg = JSON.parse(evt.data);
             if (msg.type === 'snapshot') {
-              lastDevices = msg.data.devices || [];
-              rebuildCoverMeta();
-              coverGroups = Array.isArray(msg.data.cover_groups) ? msg.data.cover_groups : [];
-              buildCoverGroupMembership();
-              refreshDeviceIndex();
-              const cstates = msg.data.cover_states || {};
-              for (const [addr, st] of Object.entries(cstates)) {
-                const state = String(st.state || '').toUpperCase() || '?';
-                const positionRaw = (st.position === null || st.position === undefined) ? 0 : Number(st.position);
-                const position = coverUsesPosition(addr) ? positionRaw : null;
-                coverByAddr.set(addr, { state, position });
-              }
-              const ha = msg.data.ha_states || {};
-              if (ha && typeof ha === 'object') {
-                for (const [eid, st] of Object.entries(ha)) {
-                  if (!String(eid || '').startsWith('cover.')) continue;
-                  const s0 = (st && typeof st === 'object') ? st : {};
-                  const state = String(s0.state || '').toUpperCase() || '?';
-                  const position = (s0.position === null || s0.position === undefined) ? 0 : Number(s0.position);
-                  coverByAddr.set(String(eid), { state, position });
-                }
-              }
-              queueRender();
+              applySnapshot(msg.data || {});
               return;
             }
             if (msg.type === 'cover_groups') {
@@ -1111,7 +1128,8 @@
           // Default: all groups expanded on first load (no collapsed preference).
           queueRender();
         } catch (e) {} 
-        connectWs(); 
+        if (window.busproPollMode) startPolling();
+        else connectWs(); 
       })(); 
 
       qs('filterBtn').addEventListener('click', () => {
