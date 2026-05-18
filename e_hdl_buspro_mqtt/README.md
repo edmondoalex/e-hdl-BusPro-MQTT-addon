@@ -15,5 +15,82 @@ Configura `auth.mode` in `config.json` / opzioni add-on:
 ## MQTT
 Per ora viene pubblicata solo la discovery; lo stato/comandi via UDP verranno aggiunti nello step successivo.
 
+## Control4 WebViewer su iPhone
+
+Quando le pagine dell'add-on vengono aperte dentro Control4 WebViewer su iPhone, la WebView iOS puo' chiudere in modo anomalo il WebSocket (`code=1006`). Il sintomo tipico e' una pagina che ogni tanto resta in caricamento o non aggiorna piu' gli stati, anche se il server risponde correttamente.
+
+Per le pagine native BusPro e' disponibile la modalita' polling HTTP:
+
+- non apre il WebSocket `/ws`;
+- aggiorna gli stati con richieste HTTP periodiche;
+- mantiene la stessa interfaccia e gli stessi comandi;
+- e' consigliata solo per i link usati dentro Control4 WebViewer/iPhone.
+
+### Link consigliati per Control4
+
+Imposta nel driver/WebViewer Control4 questi URL, sostituendo `IP_HOME_ASSISTANT` con l'indirizzo corretto:
+
+```text
+http://IP_HOME_ASSISTANT:8124/lights?poll=1
+http://IP_HOME_ASSISTANT:8124/covers?poll=1
+http://IP_HOME_ASSISTANT:8124/scenarios?poll=1
+http://IP_HOME_ASSISTANT:8124/extra?poll=1
+http://IP_HOME_ASSISTANT:8124/locks?poll=1
+```
+
+Per aprire direttamente l'editor scenari dentro la pagina Luci:
+
+```text
+http://IP_HOME_ASSISTANT:8124/lights?sc=1&poll=1
+```
+
+Per browser normali, app Home Assistant o uso desktop puoi continuare a usare i link senza `poll=1`, cosi' resta attivo il realtime via WebSocket.
+
+### Tutorial rapido
+
+1. Aggiorna l'add-on alla versione `0.1.386` o successiva.
+2. Riavvia l'add-on.
+3. Verifica la versione:
+
+```bash
+curl -s http://127.0.0.1:8124/api/meta | grep version
+```
+
+4. Nel progetto Control4, sostituisci i link delle pagine native BusPro con quelli che includono `?poll=1`.
+5. Su iPhone chiudi completamente l'app Control4 e riaprila.
+6. Apri le pagine dal WebViewer e verifica che gli stati si aggiornino. Con `poll=1` l'aggiornamento puo' richiedere qualche secondo.
+
+### Pagine proxate di altri add-on
+
+I link verso altri add-on proxati, ad esempio:
+
+```text
+http://IP_HOME_ASSISTANT:8124/ext/core/security
+```
+
+non possono essere convertiti automaticamente in polling, perche' il JavaScript appartiene all'altro add-on. Per queste pagine l'add-on aggiunge diagnostica: se la WebView Control4/iPhone rompe WebSocket o EventSource, nei log compariranno eventi come:
+
+```text
+ext_proxy bootstrap_debug ... "kind": "ws_error"
+ext_proxy bootstrap_debug ... "kind": "ws_close"
+ext_proxy bootstrap_debug ... "kind": "es_error"
+```
+
+### Diagnostica log
+
+Per filtrare gli eventi utili:
+
+```bash
+ha apps logs a59e0dbb_e_hdl_buspro_mqtt -n 3000 | grep -Ei "ui_log|bootstrap_debug|iPhone|ws_error|ws_close|es_error|fetch_error|js_error|js_rejection"
+```
+
+Se una pagina nativa BusPro con `poll=1` funziona, nei log vedrai:
+
+```text
+ui_log page=lights phase=poll_mode detail=enabled
+```
+
+Se invece vedi `ws_close code=1006`, significa che quella pagina sta ancora usando WebSocket: controlla che nel link Control4 sia presente `poll=1`.
+
 ### Note
 - Robustezza MQTT: in caso di restart/disconnect del broker, l’add-on si riconnette e ripristina automaticamente le subscribe ai topic comandi.
