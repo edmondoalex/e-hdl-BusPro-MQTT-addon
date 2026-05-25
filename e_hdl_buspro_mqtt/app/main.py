@@ -78,7 +78,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.386"
+ADDON_VERSION = "0.1.387"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -743,7 +743,21 @@ def create_app() -> FastAPI:
                 cap_name = str((cap or {}).get("name") or "").strip() if isinstance(cap, dict) else ""
                 name = name_override or cap_name or eid
 
-                if domain == "cover":
+                if domain == "cover" and page == "locks":
+                    devices.append(
+                        {
+                            "type": "lock",
+                            "origin": "ha",
+                            "entity_id": eid,
+                            "domain": domain,
+                            "page": page,
+                            "name": name,
+                            "group": group,
+                            "icon": icon,
+                            "open_supported": True,
+                        }
+                    )
+                elif domain == "cover":
                     devices.append(
                         {
                             "type": "cover",

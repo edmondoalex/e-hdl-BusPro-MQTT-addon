@@ -280,6 +280,15 @@
       }
 
       async function sendLockCmd(addr, command) {
+        if (String(addr || '').startsWith('cover.')) {
+          const coverCommand = (String(command || '').toUpperCase() === 'LOCK') ? 'CLOSE' : 'OPEN';
+          await getJson(`api/control/ha/cover/${encodeURIComponent(String(addr||''))}`, {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ command: coverCommand })
+          });
+          return;
+        }
         await getJson(`api/control/ha/lock/${encodeURIComponent(String(addr||''))}`, {
           method:'POST',
           headers:{'Content-Type':'application/json'},
@@ -293,7 +302,7 @@
       function isActiveState(st) {
         if (!st) return false;
         const s = String(st.state || '').toUpperCase();
-        return s === 'UNLOCKED' || s === 'UNLOCKING' || s === 'OPENING';
+        return s === 'UNLOCKED' || s === 'UNLOCKING' || s === 'OPEN' || s === 'OPENING';
       }
       function isActive(d) {
         const addr = addrOf(d);

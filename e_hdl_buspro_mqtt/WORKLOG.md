@@ -1,5 +1,13 @@
 # WORKLOG
 
+## 2026-05-25 (HA cover entities on Locks page)
+- HA entities `cover.*` configured with `page=locks` are now rendered in the Locks page as lock-style secure outputs.
+- Locks UI command mapping for cover entities:
+  - `LOCK` -> `cover.close_cover`
+  - `UNLOCK` / `OPEN` -> `cover.open_cover`
+- Open cover states are treated as active on the Locks page.
+- Version bump: 0.1.386 -> 0.1.387.
+
 ## 2026-05-18 (Control4 iPhone polling mode)
 - Aggiunta modalita' opzionale `?poll=1` per pagine utente usate in Control4 WebViewer/iPhone.
 - Nuovo endpoint `GET /api/user/snapshot` con lo stesso payload snapshot iniziale del WebSocket.
