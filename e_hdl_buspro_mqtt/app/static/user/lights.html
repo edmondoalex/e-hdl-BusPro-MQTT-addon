@@ -176,8 +176,10 @@
       }
       .rgbWheelWrap{
         display:flex;
+        flex-direction:column;
         gap:14px;
         align-items:center;
+        justify-content:center;
         margin:0 0 12px;
       }
       .rgbWheel{
@@ -206,17 +208,6 @@
         box-shadow:0 0 0 2px rgba(0,0,0,.45), 0 0 16px rgba(0,0,0,.35);
         transform:translate(-50%, -50%);
         pointer-events:none;
-      }
-      .rgbWheelMeta{
-        min-width:0;
-        flex:1;
-        display:flex;
-        flex-direction:column;
-        gap:8px;
-      }
-      .rgbWheelMeta .bubble{
-        width:max-content;
-        min-width:92px;
       }
       .rgbSwatches{
         display:grid;
@@ -839,7 +830,7 @@
         const radius = Math.min(rect.width, rect.height) / 2;
         const dist = Math.min(radius, Math.sqrt(dx * dx + dy * dy));
         const sat = radius > 0 ? dist / radius : 0;
-        const hue = (((Math.atan2(dy, dx) * 180 / Math.PI) + 450) % 360);
+        const hue = (((Math.atan2(dy, dx) * 180 / Math.PI) + 360) % 360);
         const rgb = hsvToRgb(hue, sat, 1);
         return {
           hex: rgbToHex(rgb.red, rgb.green, rgb.blue),
@@ -2326,10 +2317,6 @@
                 <div class="rgbPalettePreview"></div>
                 <div class="rgbWheelWrap">
                   <button class="rgbWheel" type="button" data-act="rgb-wheel" data-rgb-group="${escapeHtml(g.key)}" data-color="${escapeHtml(currentHex)}" aria-label="Ruota colore"></button>
-                  <div class="rgbWheelMeta">
-                    <span class="bubble">${escapeHtml(currentHex.toUpperCase())}</span>
-                    <div class="scItemSub">Scegli tonalita' e saturazione dalla ruota colore.</div>
-                  </div>
                 </div>
                 <div class="rgbSwatches">
                   ${RGB_PRESETS.map((hex) => `<button class="rgbSwatch" type="button" data-act="rgb-swatch" data-rgb-group="${escapeHtml(g.key)}" data-color="${escapeHtml(hex)}" style="--swatch:${escapeHtml(hex)}" aria-label="${escapeHtml(hex)}"></button>`).join('')}
@@ -2475,8 +2462,6 @@
             el.style.setProperty('--wheel-y', `${picked.yPct}%`);
             const panel = el.closest ? el.closest('.rgbPalette') : null;
             if (panel) panel.style.setProperty('--rgb-preview', pendingColor);
-            const bubble = el.parentElement && el.parentElement.querySelector ? el.parentElement.querySelector('.bubble') : null;
-            if (bubble) bubble.textContent = pendingColor.toUpperCase();
           }
           async function commit() {
             const key = el.getAttribute('data-rgb-group') || '';

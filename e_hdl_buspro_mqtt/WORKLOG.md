@@ -1,5 +1,14 @@
 # WORKLOG
 
+## 2026-06-03 (RGB color wheel cleanup)
+- User UI Luci: rimosso il blocchetto testuale sotto la ruota colore, mantenendo barra anteprima, ruota centrata, preset e selettore colore.
+- Version bump: 0.1.392 -> 0.1.393.
+
+## 2026-06-03 (RGB color wheel alignment)
+- User UI Luci: corretta la conversione punto ruota -> colore, eliminando l'offset che poteva applicare un colore diverso da quello cliccato.
+- La ruota colore ora e' centrata nel pannello RGB; la barra luminosa di anteprima resta sopra.
+- Version bump: 0.1.391 -> 0.1.392.
+
 ## 2026-06-03 (RGB color wheel)
 - User UI Luci: aggiunta ruota colore nel pannello RGB, mantenendo la barra luminosa di anteprima.
 - La ruota permette di scegliere tonalita' e saturazione; la preview si aggiorna durante il trascinamento e il colore viene applicato al rilascio.
