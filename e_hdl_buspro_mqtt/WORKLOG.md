@@ -1,5 +1,12 @@
 # WORKLOG
 
+## 2026-06-03 (RGB color palette)
+- User UI Luci: aggiunta tavola colori apribile dalla freccia sul master dei gruppi RGB.
+- La tavola include preset colore, anteprima luminosa e selettore colore personalizzato.
+- La scelta colore aggiorna i canali slave `red`, `green`, `blue` e mantiene la regolazione globale del master.
+- Gli slave RGB ora supportano valore `0`, necessario per colori puri come rosso/verde/blu senza residui degli altri canali.
+- Version bump: 0.1.389 -> 0.1.390.
+
 ## 2026-06-03 (RGB light master/slave controls)
 - Admin: aggiunti campi opzionali `Gruppo RGB` e `Canale RGB` (`red`, `green`, `blue`) sui dispositivi luce.
 - User UI Luci: i canali dimmer con stesso gruppo RGB vengono mostrati come blocco unico con slider `Master` e slider slave per i singoli canali.

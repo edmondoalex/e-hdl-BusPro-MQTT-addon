@@ -129,6 +129,79 @@
       }
       .rgbSlave .name{font-size:15px}
       .rgbSlave .ctrl{margin-top:6px}
+      .rgbMasterHead{
+        display:flex;
+        align-items:center;
+        gap:10px;
+      }
+      .rgbMasterHead .name{flex:1}
+      .rgbPaletteBtn{
+        width:36px;
+        height:32px;
+        border-radius:999px;
+        border:1px solid rgba(255,255,255,.14);
+        background:rgba(0,0,0,.24);
+        color:rgba(242,245,255,.86);
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        cursor:pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .rgbPaletteBtn::before{
+        content:'';
+        width:9px;
+        height:9px;
+        border-right:2px solid currentColor;
+        border-bottom:2px solid currentColor;
+        transform:rotate(45deg) translateY(-2px);
+      }
+      .rgbPaletteBtn.open::before{
+        transform:rotate(225deg) translateY(-2px);
+      }
+      .rgbPalette{
+        display:none;
+        padding:14px 16px 16px 64px;
+        border-top:1px solid rgba(255,255,255,.06);
+        background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(0,0,0,.13));
+      }
+      .rgbPalette.open{display:block}
+      .rgbPalettePreview{
+        height:34px;
+        border-radius:999px;
+        border:1px solid rgba(255,255,255,.14);
+        background:linear-gradient(90deg, var(--rgb-preview,#ffffff), rgba(255,255,255,.08));
+        box-shadow:0 0 22px var(--rgb-preview,#ffffff);
+        margin-bottom:12px;
+      }
+      .rgbSwatches{
+        display:grid;
+        grid-template-columns:repeat(8, minmax(28px, 1fr));
+        gap:8px;
+      }
+      .rgbSwatch{
+        height:34px;
+        border-radius:10px;
+        border:1px solid rgba(255,255,255,.18);
+        background:var(--swatch,#fff);
+        cursor:pointer;
+        box-shadow:0 0 14px rgba(0,0,0,.22) inset;
+      }
+      .rgbCustom{
+        display:flex;
+        gap:10px;
+        align-items:center;
+        margin-top:12px;
+      }
+      .rgbCustom input[type="color"]{
+        width:52px;
+        height:36px;
+        padding:0;
+        border-radius:10px;
+        border:1px solid rgba(255,255,255,.18);
+        background:rgba(0,0,0,.24);
+      }
+      .rgbCustom .bubble{height:34px;min-width:82px}
       .ico{
         width:34px;height:34px;flex:0 0 34px;
         background:rgba(242,245,255,.70);
@@ -546,6 +619,7 @@
       const sectionByGroup = new Map();
       const activeByAddr = new Map();
       const rgbGroupByAddr = new Map();
+      const openRgbPalettes = new Set();
       let lastDevices = []; 
       let groupOrder = [];
       let showActiveOnly = false;
@@ -566,6 +640,12 @@
       const GROUP_NONE = '__none__';
       const LS_COLLAPSED = 'buspro_collapsed_groups_lights';
       const LS_RGB = 'buspro_rgb_groups_lights';
+      const RGB_PRESETS = [
+        '#ff0000', '#ff7a00', '#ffd400', '#63ff00',
+        '#00ff5a', '#00f5ff', '#0066ff', '#6d3bff',
+        '#b000ff', '#ff00d4', '#ff4d8d', '#ffffff',
+        '#ffb36b', '#8cffd2', '#91b7ff', '#2a2a2a'
+      ];
 
       function groupKeyFromGroup(groupValue) {
         const g = normalizeGroup(groupValue);
@@ -659,6 +739,32 @@
         return '#ffffff';
       }
 
+      function hexToRgb(hex) {
+        const s = String(hex || '').trim().replace(/^#/, '');
+        if (!/^[0-9a-fA-F]{6}$/.test(s)) return null;
+        return {
+          red: parseInt(s.slice(0, 2), 16),
+          green: parseInt(s.slice(2, 4), 16),
+          blue: parseInt(s.slice(4, 6), 16)
+        };
+      }
+
+      function rgbToHex(red, green, blue) {
+        const part = (v) => Math.max(0, Math.min(255, Number(v || 0))).toString(16).padStart(2, '0');
+        return `#${part(red)}${part(green)}${part(blue)}`;
+      }
+
+      function currentRgbHex(group, rgbState) {
+        const vals = { red: 0, green: 0, blue: 0 };
+        for (const d of (group && group.channels) || []) {
+          const ch = rgbChannelOf(d);
+          if (!ch) continue;
+          const addr = addrOf(d);
+          vals[ch] = Math.max(0, Math.min(255, Number((rgbState && rgbState.slaves && rgbState.slaves[addr]) || 0)));
+        }
+        return rgbToHex(vals.red, vals.green, vals.blue);
+      }
+
       function getRgbState(key, channels) {
         const k = String(key || '').trim().toLowerCase();
         const savedAll = rgbStorageRead();
@@ -671,10 +777,10 @@
           const addr = addrOf(d);
           const st = stateByAddr.get(addr) || {};
           const b = Math.max(0, Math.min(255, Number(st.brightness || 0)));
-          if (!Number.isFinite(Number(out.slaves[addr])) || Number(out.slaves[addr]) <= 0) {
+          if (!Object.prototype.hasOwnProperty.call(out.slaves, addr) || !Number.isFinite(Number(out.slaves[addr]))) {
             out.slaves[addr] = b > 0 ? b : 255;
           } else {
-            out.slaves[addr] = Math.max(1, Math.min(255, Number(out.slaves[addr])));
+            out.slaves[addr] = Math.max(0, Math.min(255, Number(out.slaves[addr])));
           }
         }
         return out;
@@ -689,9 +795,9 @@
       }
 
       function rgbEffectiveBrightness(slaveValue, masterValue) {
-        const s = Math.max(1, Math.min(255, Number(slaveValue || 1)));
+        const s = Math.max(0, Math.min(255, Number(slaveValue || 0)));
         const m = Math.max(1, Math.min(255, Number(masterValue || 1)));
-        return Math.max(1, Math.min(255, Math.round((s * m) / 255)));
+        return Math.max(0, Math.min(255, Math.round((s * m) / 255)));
       }
 
       function buildRgbDisplayItems(lights) {
@@ -742,6 +848,24 @@
           if (gcmp !== 0) return gcmp;
           return String(da.name || '').localeCompare(String(db.name || ''), undefined, { sensitivity: 'base' });
         });
+      }
+
+      async function applyRgbColor(group, color) {
+        const rgb = hexToRgb(color);
+        if (!group || !rgb) return;
+        const rgbState = getRgbState(group.key, group.channels);
+        for (const chDev of group.channels || []) {
+          const ch = rgbChannelOf(chDev);
+          const addr = addrOf(chDev);
+          if (!ch || !addr) continue;
+          rgbState.slaves[addr] = Math.max(0, Math.min(255, Number(rgb[ch] || 0)));
+        }
+        saveRgbState(group.key, rgbState);
+        for (const chDev of group.channels || []) {
+          const addr = addrOf(chDev);
+          await sendLight(chDev, addr, 'ON', rgbEffectiveBrightness(rgbState.slaves[addr], rgbState.master));
+        }
+        queueRender();
       }
  
       function absUrl(path) { return new URL(path, window.location.href).toString(); } 
@@ -2095,6 +2219,7 @@
             const active = g.channels.some((ch) => isActiveLight(ch));
             const master = Math.max(1, Math.min(255, Number(rgbState.master || 255)));
             const masterPct = active ? Math.round((master * 100) / 255) : 0;
+            const currentHex = currentRgbHex(g, rgbState);
             const groupEl = document.createElement('div');
             groupEl.className = 'rgbGroup';
             groupEl.setAttribute('data-rgb-group', g.key);
@@ -2104,11 +2229,24 @@
                 <span class="ico" aria-hidden="true"
                   style="-webkit-mask-image:url('${escapeHtml(iconUrl(first.icon || 'mdi:led-strip-variant'))}');mask-image:url('${escapeHtml(iconUrl(first.icon || 'mdi:led-strip-variant'))}')"></span>
                 <div class="content">
-                  <div class="name">${escapeHtml(g.name || 'RGB')}</div>
+                  <div class="rgbMasterHead">
+                    <div class="name">${escapeHtml(g.name || 'RGB')}</div>
+                    <button class="rgbPaletteBtn ${openRgbPalettes.has(g.key) ? 'open' : ''}" type="button" data-act="rgb-palette-toggle" data-rgb-group="${escapeHtml(g.key)}" aria-label="Apri tavola colori"></button>
+                  </div>
                   <div class="ctrl">
                     <span class="bubble">${escapeHtml(String(masterPct))}</span>
                     <input type="range" min="1" max="255" value="${String(master)}" data-act="rgb-master" data-rgb-group="${escapeHtml(g.key)}" />
                   </div>
+                </div>
+              </div>
+              <div class="rgbPalette ${openRgbPalettes.has(g.key) ? 'open' : ''}" data-rgb-palette="${escapeHtml(g.key)}" style="--rgb-preview:${escapeHtml(currentHex)}">
+                <div class="rgbPalettePreview"></div>
+                <div class="rgbSwatches">
+                  ${RGB_PRESETS.map((hex) => `<button class="rgbSwatch" type="button" data-act="rgb-swatch" data-rgb-group="${escapeHtml(g.key)}" data-color="${escapeHtml(hex)}" style="--swatch:${escapeHtml(hex)}" aria-label="${escapeHtml(hex)}"></button>`).join('')}
+                </div>
+                <div class="rgbCustom">
+                  <input type="color" value="${escapeHtml(currentHex)}" data-act="rgb-color" data-rgb-group="${escapeHtml(g.key)}" aria-label="Colore personalizzato" />
+                  <span class="bubble">${escapeHtml(currentHex.toUpperCase())}</span>
                 </div>
               </div>
               <div class="rgbSlaves"></div>
@@ -2117,7 +2255,7 @@
             for (const chDev of g.channels) {
               const addr = addrOf(chDev);
               const ch = rgbChannelOf(chDev);
-              const slave = Math.max(1, Math.min(255, Number(rgbState.slaves[addr] || 255)));
+              const slave = Math.max(0, Math.min(255, Number(rgbState.slaves[addr] || 0)));
               const slavePct = Math.round((slave * 100) / 255);
               const slaveEl = document.createElement('div');
               slaveEl.className = 'rgbSlave';
@@ -2128,7 +2266,7 @@
                   <div class="name">${escapeHtml(chDev.name || channelLabel(ch))}</div>
                   <div class="ctrl">
                     <span class="bubble">${escapeHtml(String(slavePct))}</span>
-                    <input type="range" min="1" max="255" value="${String(slave)}" data-act="rgb-slave" data-rgb-group="${escapeHtml(g.key)}" data-addr="${escapeHtml(addr)}" />
+                    <input type="range" min="0" max="255" value="${String(slave)}" data-act="rgb-slave" data-rgb-group="${escapeHtml(g.key)}" data-addr="${escapeHtml(addr)}" />
                   </div>
                 </div>
               `;
@@ -2194,6 +2332,7 @@
           el.addEventListener('click', async (evt) => {
             const t = evt && evt.target;
             if (t && t.tagName && String(t.tagName).toLowerCase() === 'input') return;
+            if (t && t.closest && t.closest('[data-act="rgb-palette-toggle"]')) return;
             const key = el.getAttribute('data-rgb-group') || '';
             const group = lights.find((it) => it.kind === 'rgb' && it.key === key);
             if (!group) return;
@@ -2211,6 +2350,45 @@
                 }
               }
             } catch (e) { qs('err').textContent = e.message || String(e); }
+          });
+        });
+
+        root.querySelectorAll('[data-act="rgb-palette-toggle"]').forEach((el) => {
+          el.addEventListener('click', (evt) => {
+            try { evt.preventDefault(); evt.stopPropagation(); } catch(e){}
+            const key = el.getAttribute('data-rgb-group') || '';
+            if (!key) return;
+            if (openRgbPalettes.has(key)) openRgbPalettes.delete(key);
+            else openRgbPalettes.add(key);
+            queueRender();
+          });
+        });
+
+        root.querySelectorAll('[data-act="rgb-swatch"]').forEach((el) => {
+          el.addEventListener('click', async (evt) => {
+            try { evt.preventDefault(); evt.stopPropagation(); } catch(e){}
+            const key = el.getAttribute('data-rgb-group') || '';
+            const group = lights.find((it) => it.kind === 'rgb' && it.key === key);
+            if (!group) return;
+            qs('err').textContent = '';
+            try { await applyRgbColor(group, el.getAttribute('data-color') || '#ffffff'); } catch (e) { qs('err').textContent = e.message || String(e); }
+          });
+        });
+
+        root.querySelectorAll('[data-act="rgb-color"]').forEach((el) => {
+          el.addEventListener('click', (evt) => { try { evt.stopPropagation(); } catch(e){} });
+          el.addEventListener('input', () => {
+            const panel = el.closest ? el.closest('.rgbPalette') : null;
+            if (panel) panel.style.setProperty('--rgb-preview', String(el.value || '#ffffff'));
+            const bubble = el.parentElement && el.parentElement.querySelector ? el.parentElement.querySelector('.bubble') : null;
+            if (bubble) bubble.textContent = String(el.value || '#ffffff').toUpperCase();
+          });
+          el.addEventListener('change', async () => {
+            const key = el.getAttribute('data-rgb-group') || '';
+            const group = lights.find((it) => it.kind === 'rgb' && it.key === key);
+            if (!group) return;
+            qs('err').textContent = '';
+            try { await applyRgbColor(group, el.value || '#ffffff'); } catch (e) { qs('err').textContent = e.message || String(e); }
           });
         });
 
