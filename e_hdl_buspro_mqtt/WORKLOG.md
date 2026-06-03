@@ -1,5 +1,15 @@
 # WORKLOG
 
+## 2026-06-03 (RGB realtime feedback)
+- User UI Luci: gli slider slave RGB ora si sincronizzano con gli stati reali dei canali quando cambiano da altra interfaccia o da polling/realtime.
+- User UI Luci: le righe slave RGB ora usano una colorazione interna proporzionale alla percentuale del canale.
+- User UI Luci: il master RGB ora usa il colore composto RGB come feedback visivo, con intensita' proporzionale alla percentuale master, invece del giallo standard delle luci normali.
+- Version bump: 0.1.394 -> 0.1.395.
+
+## 2026-06-03 (Home Assistant panel title)
+- Add-on: rinominato il titolo del pannello Home Assistant da `BusPro` a `e-Control`.
+- Version bump: 0.1.393 -> 0.1.394.
+
 ## 2026-06-03 (RGB color wheel cleanup)
 - User UI Luci: rimosso il blocchetto testuale sotto la ruota colore, mantenendo barra anteprima, ruota centrata, preset e selettore colore.
 - Version bump: 0.1.392 -> 0.1.393.

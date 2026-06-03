@@ -104,8 +104,13 @@
         background:linear-gradient(90deg, rgba(255,255,255,.03), rgba(0,0,0,.10));
       }
       .rgbMaster.on{
-        background:linear-gradient(180deg, rgba(255,215,0, calc(.04 + var(--int,1)*.10)) 0%, rgba(0,0,0,.20) 100%);
-        box-shadow:0 0 22px rgba(255,215,0, calc(.02 + var(--int,1)*.18)) inset;
+        background:linear-gradient(180deg, var(--rgb-master-bg, rgba(255,255,255,.12)) 0%, rgba(0,0,0,.20) 100%);
+        box-shadow:0 0 28px var(--rgb-master-glow, rgba(255,255,255,.20)) inset;
+      }
+      .rgbMaster.on .ico{
+        background:var(--rgb-master-color,#ffffff);
+        box-shadow:0 0 16px var(--rgb-master-glow, rgba(255,255,255,.22));
+        opacity:1;
       }
       .rgbSlaves{
         border-top:1px solid rgba(255,255,255,.06);
@@ -118,6 +123,10 @@
         border-top:1px solid rgba(255,255,255,.05);
         background:rgba(0,0,0,.08);
       }
+      .rgbSlave.on{
+        background:linear-gradient(90deg, var(--rgb-bg, rgba(255,255,255,.10)), rgba(0,0,0,.14));
+        box-shadow:0 0 26px var(--rgb-glow, rgba(255,255,255,.18)) inset;
+      }
       .rgbSlave:first-child{border-top:none}
       .rgbDot{
         width:14px;
@@ -129,6 +138,10 @@
       }
       .rgbSlave .name{font-size:15px}
       .rgbSlave .ctrl{margin-top:6px}
+      .rgbSlave.on .bubble{
+        border-color:var(--rgb-border, rgba(255,255,255,.22));
+        color:rgba(255,255,255,.86);
+      }
       .rgbMasterHead{
         display:flex;
         align-items:center;
@@ -655,6 +668,7 @@
       const activeByAddr = new Map();
       const rgbGroupByAddr = new Map();
       const openRgbPalettes = new Set();
+      const pendingRgbLocalUntil = new Map();
       let lastDevices = []; 
       let groupOrder = [];
       let showActiveOnly = false;
@@ -774,6 +788,18 @@
         return '#ffffff';
       }
 
+      function channelRgbParts(ch) {
+        if (ch === 'red') return [255, 77, 77];
+        if (ch === 'green') return [50, 210, 122];
+        if (ch === 'blue') return [91, 140, 255];
+        return [255, 255, 255];
+      }
+
+      function channelRgba(ch, alpha) {
+        const p = channelRgbParts(ch);
+        return `rgba(${p[0]},${p[1]},${p[2]},${Math.max(0, Math.min(1, Number(alpha) || 0))})`;
+      }
+
       function hexToRgb(hex) {
         const s = String(hex || '').trim().replace(/^#/, '');
         if (!/^[0-9a-fA-F]{6}$/.test(s)) return null;
@@ -782,6 +808,11 @@
           green: parseInt(s.slice(2, 4), 16),
           blue: parseInt(s.slice(4, 6), 16)
         };
+      }
+
+      function hexToRgba(hex, alpha) {
+        const rgb = hexToRgb(hex) || { red: 255, green: 255, blue: 255 };
+        return `rgba(${rgb.red},${rgb.green},${rgb.blue},${Math.max(0, Math.min(1, Number(alpha) || 0))})`;
       }
 
       function rgbToHex(red, green, blue) {
@@ -868,6 +899,44 @@
         rgbStorageWrite(saved);
       }
 
+      function syncRgbSlaveFromBusState(addr, st) {
+        const a = String(addr || '').trim();
+        if (!a) return false;
+        const until = Number(pendingRgbLocalUntil.get(a) || 0);
+        if (until && until > Date.now()) return false;
+        pendingRgbLocalUntil.delete(a);
+        const d = deviceByAddr.get(a);
+        if (!d || !rgbGroupNameOf(d)) return false;
+        const key = rgbGroupKey(d);
+        if (!key) return false;
+        const savedAll = rgbStorageRead();
+        const cur = (savedAll[key] && typeof savedAll[key] === 'object') ? savedAll[key] : {};
+        const slaves = (cur.slaves && typeof cur.slaves === 'object') ? Object.assign({}, cur.slaves) : {};
+        const on = st && String(st.state || '').toUpperCase() === 'ON';
+        const b = on ? Math.max(0, Math.min(255, Number(st.brightness || 0))) : 0;
+        slaves[a] = Number.isFinite(b) ? b : 0;
+        savedAll[key] = { master: Number(cur.master || 255), slaves };
+        rgbStorageWrite(savedAll);
+        return true;
+      }
+
+      function syncRgbSlavesFromKnownStates() {
+        let changed = false;
+        for (const d of (lastDevices || [])) {
+          if (!d || !rgbGroupNameOf(d)) continue;
+          const addr = addrOf(d);
+          if (!addr || !stateByAddr.has(addr)) continue;
+          if (syncRgbSlaveFromBusState(addr, stateByAddr.get(addr))) changed = true;
+        }
+        return changed;
+      }
+
+      async function sendRgbLight(d, addr, state, brightness) {
+        const a = String(addr || '').trim();
+        if (a) pendingRgbLocalUntil.set(a, Date.now() + 4500);
+        await sendLight(d, addr, state, brightness);
+      }
+
       function rgbEffectiveBrightness(slaveValue, masterValue) {
         const s = Math.max(0, Math.min(255, Number(slaveValue || 0)));
         const m = Math.max(1, Math.min(255, Number(masterValue || 1)));
@@ -937,7 +1006,7 @@
         saveRgbState(group.key, rgbState);
         for (const chDev of group.channels || []) {
           const addr = addrOf(chDev);
-          await sendLight(chDev, addr, 'ON', rgbEffectiveBrightness(rgbState.slaves[addr], rgbState.master));
+          await sendRgbLight(chDev, addr, 'ON', rgbEffectiveBrightness(rgbState.slaves[addr], rgbState.master));
         }
         queueRender();
       }
@@ -2294,12 +2363,16 @@
             const master = Math.max(1, Math.min(255, Number(rgbState.master || 255)));
             const masterPct = active ? Math.round((master * 100) / 255) : 0;
             const currentHex = currentRgbHex(g, rgbState);
+            const masterIntensity = Math.max(0, Math.min(1, masterPct / 100));
+            const masterStyle = active
+              ? `--int:${masterIntensity};--rgb-master-color:${escapeHtml(currentHex)};--rgb-master-bg:${escapeHtml(hexToRgba(currentHex, .08 + masterIntensity * .18))};--rgb-master-glow:${escapeHtml(hexToRgba(currentHex, .16 + masterIntensity * .34))}`
+              : '';
             const groupEl = document.createElement('div');
             groupEl.className = 'rgbGroup';
             groupEl.setAttribute('data-rgb-group', g.key);
             const first = g.channels[0] || {};
             groupEl.innerHTML = `
-              <div class="rgbMaster ${active ? 'on' : ''}" data-act="rgb-toggle" data-rgb-group="${escapeHtml(g.key)}" style="${active ? `--int:${Math.max(0, Math.min(100, masterPct)) / 100}` : ''}">
+              <div class="rgbMaster ${active ? 'on' : ''}" data-act="rgb-toggle" data-rgb-group="${escapeHtml(g.key)}" style="${masterStyle}">
                 <span class="ico" aria-hidden="true"
                   style="-webkit-mask-image:url('${escapeHtml(iconUrl(first.icon || 'mdi:led-strip-variant'))}');mask-image:url('${escapeHtml(iconUrl(first.icon || 'mdi:led-strip-variant'))}')"></span>
                 <div class="content">
@@ -2334,9 +2407,14 @@
               const ch = rgbChannelOf(chDev);
               const slave = Math.max(0, Math.min(255, Number(rgbState.slaves[addr] || 0)));
               const slavePct = Math.round((slave * 100) / 255);
+              const slaveIntensity = Math.max(0, Math.min(1, slavePct / 100));
+              const slaveOn = slave > 0;
               const slaveEl = document.createElement('div');
-              slaveEl.className = 'rgbSlave';
+              slaveEl.className = `rgbSlave ${slaveOn ? 'on' : ''}`;
               slaveEl.setAttribute('data-addr', addr);
+              slaveEl.style.setProperty('--rgb-bg', channelRgba(ch, .06 + slaveIntensity * .20));
+              slaveEl.style.setProperty('--rgb-glow', channelRgba(ch, .10 + slaveIntensity * .34));
+              slaveEl.style.setProperty('--rgb-border', channelRgba(ch, .22 + slaveIntensity * .38));
               slaveEl.innerHTML = `
                 <span class="rgbDot" style="--rgb:${escapeHtml(channelColor(ch))}" aria-hidden="true"></span>
                 <div class="content">
@@ -2418,12 +2496,12 @@
             try {
               const active = group.channels.some((ch) => isActiveLight(ch));
               if (active) {
-                for (const chDev of group.channels) await sendLight(chDev, addrOf(chDev), 'OFF');
+                for (const chDev of group.channels) await sendRgbLight(chDev, addrOf(chDev), 'OFF');
               } else {
                 const rgbState = getRgbState(key, group.channels);
                 for (const chDev of group.channels) {
                   const addr = addrOf(chDev);
-                  await sendLight(chDev, addr, 'ON', rgbEffectiveBrightness(rgbState.slaves[addr], rgbState.master));
+                  await sendRgbLight(chDev, addr, 'ON', rgbEffectiveBrightness(rgbState.slaves[addr], rgbState.master));
                 }
               }
             } catch (e) { qs('err').textContent = e.message || String(e); }
@@ -2525,7 +2603,7 @@
               saveRgbState(key, rgbState);
               for (const chDev of group.channels) {
                 const addr = addrOf(chDev);
-                await sendLight(chDev, addr, 'ON', rgbEffectiveBrightness(rgbState.slaves[addr], rgbState.master));
+                await sendRgbLight(chDev, addr, 'ON', rgbEffectiveBrightness(rgbState.slaves[addr], rgbState.master));
               }
             } catch (e) { qs('err').textContent = e.message || String(e); }
           });
@@ -2548,9 +2626,9 @@
             qs('err').textContent = '';
             try {
               const rgbState = getRgbState(key, group.channels);
-              rgbState.slaves[addr] = Math.max(1, Math.min(255, Number(el.value || 1)));
+              rgbState.slaves[addr] = Math.max(0, Math.min(255, Number(el.value || 0)));
               saveRgbState(key, rgbState);
-              await sendLight(dev, addr, 'ON', rgbEffectiveBrightness(rgbState.slaves[addr], rgbState.master));
+              await sendRgbLight(dev, addr, 'ON', rgbEffectiveBrightness(rgbState.slaves[addr], rgbState.master));
             } catch (e) { qs('err').textContent = e.message || String(e); }
           });
         });
@@ -2640,6 +2718,7 @@
             stateByAddr.set(String(eid), { state, brightness });
           }
         }
+        syncRgbSlavesFromKnownStates();
         queueRender();
       }
 
@@ -2698,6 +2777,7 @@
               const prevActive = activeByAddr.get(addr);
               activeByAddr.set(addr, nowActive);
               if (rgbGroupByAddr.has(addr)) {
+                syncRgbSlaveFromBusState(addr, next);
                 queueRender();
                 return;
               }
