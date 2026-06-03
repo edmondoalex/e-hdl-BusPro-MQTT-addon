@@ -1,5 +1,9 @@
 # WORKLOG
 
+## 2026-06-03 (Ignore retained MQTT commands)
+- MQTT: i comandi retained ricevuti sui topic `cmd/...` vengono ignorati, evitando che vecchi comandi `ON` vengano rieseguiti al riavvio dell'add-on o di Home Assistant.
+- Version bump: 0.1.396 -> 0.1.397.
+
 ## 2026-06-03 (RGB off-state persistence)
 - User UI Luci: quando un gruppo RGB e' spento, gli slider slave `red/green/blue` vengono nascosti.
 - User UI Luci: lo snapshot/realtime non sovrascrive piu' il colore base RGB con `0/0/0` quando tutti i canali risultano spenti dopo riavvio.

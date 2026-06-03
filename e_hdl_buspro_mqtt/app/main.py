@@ -78,7 +78,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.396"
+ADDON_VERSION = "0.1.397"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -4559,8 +4559,11 @@ self.addEventListener('fetch', (event) => {{
         except Exception:
             pass
 
-        def _on_mqtt_message(topic: str, payload: str) -> None:
+        def _on_mqtt_message(topic: str, payload: str, retained: bool = False) -> None:
             try:
+                if retained:
+                    _LOGGER.warning("Ignoring retained MQTT command on %s", topic)
+                    return
                 parts = topic.split("/")
                 if len(parts) < 4:
                     return

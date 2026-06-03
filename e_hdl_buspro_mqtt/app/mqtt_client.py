@@ -27,7 +27,7 @@ class MqttClient:
         self._last_error: str | None = None
         self._subscriptions: dict[str, int] = {}
 
-        self._on_message_user: Callable[[str, str], None] | None = None
+        self._on_message_user: Callable[[str, str, bool], None] | None = None
         self._on_connect_user: Callable[[], None] | None = None
 
         self._client.on_connect = self._on_connect
@@ -70,12 +70,12 @@ class MqttClient:
         except Exception:
             payload = ""
         try:
-            handler(str(msg.topic), payload)
+            handler(str(msg.topic), payload, bool(getattr(msg, "retain", False)))
         except Exception:
             # Keep MQTT thread alive
             pass
 
-    def set_message_handler(self, handler: Callable[[str, str], None] | None) -> None:
+    def set_message_handler(self, handler: Callable[[str, str, bool], None] | None) -> None:
         self._on_message_user = handler
 
     def set_connect_handler(self, handler: Callable[[], None] | None) -> None:
