@@ -1,5 +1,12 @@
 # WORKLOG
 
+## 2026-06-03 (RGB light master/slave controls)
+- Admin: aggiunti campi opzionali `Gruppo RGB` e `Canale RGB` (`red`, `green`, `blue`) sui dispositivi luce.
+- User UI Luci: i canali dimmer con stesso gruppo RGB vengono mostrati come blocco unico con slider `Master` e slider slave per i singoli canali.
+- Logica RGB: il master scala i valori slave mantenendo il rapporto colore, inviando ai canali HDL il valore effettivo calcolato.
+- I device luce senza configurazione RGB restano invariati.
+- Version bump: 0.1.387 -> 0.1.389.
+
 ## 2026-05-25 (HA cover entities on Locks page)
 - HA entities `cover.*` configured with `page=locks` are now rendered in the Locks page as lock-style secure outputs.
 - Locks UI command mapping for cover entities:

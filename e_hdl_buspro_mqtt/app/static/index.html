@@ -257,6 +257,21 @@
                 <span id="formMsg" class="muted"></span>
               </div>
             </div>
+            <div class="row">
+              <div>
+                <label>Gruppo RGB opzionale</label>
+                <input id="rgbGroup" placeholder="Es: STRIP RGB" />
+              </div>
+              <div>
+                <label>Canale RGB</label>
+                <select id="rgbChannel">
+                  <option value="">Nessuno</option>
+                  <option value="red">Red</option>
+                  <option value="green">Green</option>
+                  <option value="blue">Blue</option>
+                </select>
+              </div>
+            </div>
           </form>
 
           <table id="devicesTable" aria-label="devices">
@@ -2074,7 +2089,7 @@
 
           tr.innerHTML = `
             <td>${escapeHtml(d.name)}</td>
-            <td><code>${addr}</code></td>
+            <td><code>${addr}</code>${d.rgb_group ? `<div class="muted">RGB ${escapeHtml(d.rgb_group)} · ${escapeHtml(d.rgb_channel || '')}</div>` : ''}</td>
             <td><span class="state" id="st_${addr.replaceAll('.', '_')}">${escapeHtml(st.state)}</span>${d.dimmable ? ` <span class="muted" id="br_${addr.replaceAll('.', '_')}">${st.brightness||0}</span>` : ''}${levelBadge}</td>
             <td>
               <div class="flex">
@@ -2146,6 +2161,8 @@
               qs('channel').value = String(d.channel); 
               qs('dimmable').value = String(!!d.dimmable);
               qs('icon').value = d.icon || '';
+              qs('rgbGroup').value = d.rgb_group || '';
+              qs('rgbChannel').value = d.rgb_channel || '';
               const cat = (d.category || 'Luci').trim();
               const opts = Array.from(qs('category').options).map(o => o.value);
               if (opts.includes(cat)) {
@@ -3356,6 +3373,8 @@
             channel: Number(qs('channel').value), 
             dimmable: qs('dimmable').value === 'true', 
             icon: qs('icon').value.trim(), 
+            rgb_group: qs('rgbGroup').value.trim(),
+            rgb_channel: qs('rgbChannel').value,
             category 
           }; 
           if (editingAddr) { 
@@ -3368,6 +3387,8 @@
                 group: payload.group, 
                 dimmable: payload.dimmable,  
                 icon: payload.icon,  
+                rgb_group: payload.rgb_group,
+                rgb_channel: payload.rgb_channel,
                 category: payload.category,
                 subnet_id: qs('editAddr').checked ? payload.subnet_id : undefined,
                 device_id: qs('editAddr').checked ? payload.device_id : undefined,
@@ -3384,6 +3405,8 @@
           qs('name').value = '';  
           setGroupValue('groupSel', 'groupCustom', '');
           qs('icon').value = '';  
+          qs('rgbGroup').value = '';
+          qs('rgbChannel').value = '';
           qs('category').value = 'Luci';
           qs('categoryCustom').value = '';
           qs('categoryCustom').style.display = 'none';
@@ -3416,6 +3439,8 @@
         qs('name').value = '';  
         setGroupValue('groupSel', 'groupCustom', '');
         qs('icon').value = '';  
+        qs('rgbGroup').value = '';
+        qs('rgbChannel').value = '';
         qs('category').value = 'Luci'; 
         qs('categoryCustom').value = ''; 
         qs('categoryCustom').style.display = 'none'; 

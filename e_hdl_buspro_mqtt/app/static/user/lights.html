@@ -89,6 +89,46 @@
         background:linear-gradient(180deg, rgba(255,215,0, calc(.04 + var(--int,1)*.10)) 0%, rgba(0,0,0,.20) 100%);
         box-shadow:0 0 22px rgba(255,215,0, calc(.02 + var(--int,1)*.18)) inset;
       }
+      .rgbGroup{
+        display:flex;
+        flex-direction:column;
+        gap:0;
+        border-top:1px solid rgba(255,255,255,.06);
+        background:rgba(0,0,0,.05);
+      }
+      .rgbMaster{
+        display:flex;
+        gap:14px;
+        align-items:center;
+        padding:14px 16px;
+        background:linear-gradient(90deg, rgba(255,255,255,.03), rgba(0,0,0,.10));
+      }
+      .rgbMaster.on{
+        background:linear-gradient(180deg, rgba(255,215,0, calc(.04 + var(--int,1)*.10)) 0%, rgba(0,0,0,.20) 100%);
+        box-shadow:0 0 22px rgba(255,215,0, calc(.02 + var(--int,1)*.18)) inset;
+      }
+      .rgbSlaves{
+        border-top:1px solid rgba(255,255,255,.06);
+      }
+      .rgbSlave{
+        display:flex;
+        gap:14px;
+        align-items:center;
+        padding:12px 16px 12px 64px;
+        border-top:1px solid rgba(255,255,255,.05);
+        background:rgba(0,0,0,.08);
+      }
+      .rgbSlave:first-child{border-top:none}
+      .rgbDot{
+        width:14px;
+        height:14px;
+        flex:0 0 14px;
+        border-radius:999px;
+        background:var(--rgb,#fff);
+        box-shadow:0 0 12px var(--rgb,#fff);
+      }
+      .rgbSlave .name{font-size:15px}
+      .rgbSlave .ctrl{margin-top:6px}
       .ico{
         width:34px;height:34px;flex:0 0 34px;
         background:rgba(242,245,255,.70);
@@ -505,6 +545,7 @@
       const rowByAddr = new Map();
       const sectionByGroup = new Map();
       const activeByAddr = new Map();
+      const rgbGroupByAddr = new Map();
       let lastDevices = []; 
       let groupOrder = [];
       let showActiveOnly = false;
@@ -524,6 +565,7 @@
 
       const GROUP_NONE = '__none__';
       const LS_COLLAPSED = 'buspro_collapsed_groups_lights';
+      const LS_RGB = 'buspro_rgb_groups_lights';
 
       function groupKeyFromGroup(groupValue) {
         const g = normalizeGroup(groupValue);
@@ -567,6 +609,140 @@
         if (d && String(d.origin || '') === 'ha') return String(d.entity_id || '').trim();
         return `${Number(d.subnet_id)}.${Number(d.device_id)}.${Number(d.channel)}`;
       } 
+
+      function rgbChannelOf(d) {
+        const ch = String(d && d.rgb_channel || '').trim().toLowerCase();
+        return (ch === 'red' || ch === 'green' || ch === 'blue') ? ch : '';
+      }
+
+      function rgbGroupNameOf(d) {
+        if (!d || String(d.origin || '') === 'ha') return '';
+        const name = String(d.rgb_group || '').trim();
+        return name && rgbChannelOf(d) ? name : '';
+      }
+
+      function rgbStorageRead() {
+        try {
+          const raw = JSON.parse(localStorage.getItem(LS_RGB) || '{}');
+          return raw && typeof raw === 'object' ? raw : {};
+        } catch (e) {
+          return {};
+        }
+      }
+
+      function rgbStorageWrite(data) {
+        try { localStorage.setItem(LS_RGB, JSON.stringify(data || {})); } catch (e) {}
+      }
+
+      function rgbGroupKey(d) {
+        return String(rgbGroupNameOf(d)).trim().toLowerCase();
+      }
+
+      function channelSort(ch) {
+        if (ch === 'red') return 0;
+        if (ch === 'green') return 1;
+        if (ch === 'blue') return 2;
+        return 9;
+      }
+
+      function channelLabel(ch) {
+        if (ch === 'red') return 'RED';
+        if (ch === 'green') return 'GREEN';
+        if (ch === 'blue') return 'BLUE';
+        return String(ch || '').toUpperCase();
+      }
+
+      function channelColor(ch) {
+        if (ch === 'red') return '#ff4d4d';
+        if (ch === 'green') return '#32d27a';
+        if (ch === 'blue') return '#5b8cff';
+        return '#ffffff';
+      }
+
+      function getRgbState(key, channels) {
+        const k = String(key || '').trim().toLowerCase();
+        const savedAll = rgbStorageRead();
+        const saved = (savedAll[k] && typeof savedAll[k] === 'object') ? savedAll[k] : {};
+        const out = {
+          master: Math.max(1, Math.min(255, Number(saved.master || 255))),
+          slaves: (saved.slaves && typeof saved.slaves === 'object') ? Object.assign({}, saved.slaves) : {}
+        };
+        for (const d of channels || []) {
+          const addr = addrOf(d);
+          const st = stateByAddr.get(addr) || {};
+          const b = Math.max(0, Math.min(255, Number(st.brightness || 0)));
+          if (!Number.isFinite(Number(out.slaves[addr])) || Number(out.slaves[addr]) <= 0) {
+            out.slaves[addr] = b > 0 ? b : 255;
+          } else {
+            out.slaves[addr] = Math.max(1, Math.min(255, Number(out.slaves[addr])));
+          }
+        }
+        return out;
+      }
+
+      function saveRgbState(key, state) {
+        const k = String(key || '').trim().toLowerCase();
+        if (!k) return;
+        const saved = rgbStorageRead();
+        saved[k] = state;
+        rgbStorageWrite(saved);
+      }
+
+      function rgbEffectiveBrightness(slaveValue, masterValue) {
+        const s = Math.max(1, Math.min(255, Number(slaveValue || 1)));
+        const m = Math.max(1, Math.min(255, Number(masterValue || 1)));
+        return Math.max(1, Math.min(255, Math.round((s * m) / 255)));
+      }
+
+      function buildRgbDisplayItems(lights) {
+        const groups = new Map();
+        const singles = [];
+        rgbGroupByAddr.clear();
+        for (const d of lights || []) {
+          const key = rgbGroupKey(d);
+          if (!key || !d.dimmable) {
+            singles.push({ kind: 'light', d });
+            continue;
+          }
+          const g = groups.get(key) || { kind: 'rgb', key, name: rgbGroupNameOf(d), group: d.group, channels: [] };
+          g.channels.push(d);
+          groups.set(key, g);
+        }
+        const groupedAddrs = new Set();
+        const rgbItems = [];
+        for (const g of groups.values()) {
+          const byChannel = new Map();
+          for (const d of g.channels) {
+            const ch = rgbChannelOf(d);
+            if (!byChannel.has(ch)) byChannel.set(ch, d);
+          }
+          const channels = Array.from(byChannel.values()).sort((a,b) => channelSort(rgbChannelOf(a)) - channelSort(rgbChannelOf(b)));
+          if (channels.length < 2) {
+            for (const d of g.channels) singles.push({ kind: 'light', d });
+            continue;
+          }
+          g.channels = channels;
+          for (const d of channels) {
+            const addr = addrOf(d);
+            groupedAddrs.add(addr);
+            rgbGroupByAddr.set(addr, g.key);
+          }
+          rgbItems.push(g);
+        }
+        const items = singles.filter((it) => !groupedAddrs.has(addrOf(it.d))).concat(rgbItems);
+        return items.sort((a,b) => {
+          const da = a.kind === 'rgb' ? { name: a.name, group: a.group } : a.d;
+          const db = b.kind === 'rgb' ? { name: b.name, group: b.group } : b.d;
+          const ga = normalizeGroup(da.group);
+          const gb = normalizeGroup(db.group);
+          const ia = groupIndex(ga);
+          const ib = groupIndex(gb);
+          if (ia !== ib) return ia - ib;
+          const gcmp = String(ga || '').localeCompare(String(gb || ''), undefined, { sensitivity: 'base' });
+          if (gcmp !== 0) return gcmp;
+          return String(da.name || '').localeCompare(String(db.name || ''), undefined, { sensitivity: 'base' });
+        });
+      }
  
       function absUrl(path) { return new URL(path, window.location.href).toString(); } 
       function cssEscape(s) {
@@ -1874,19 +2050,12 @@
         const allLights = lastDevices
           .filter(isLightListDevice)
           .slice();
-        const lights = allLights
-          .filter(d => !showActiveOnly || isActiveLight(d))
-          .slice()
-          .sort((a,b) => { 
-            const ga = normalizeGroup(a.group); 
-            const gb = normalizeGroup(b.group); 
-            const ia = groupIndex(ga); 
-            const ib = groupIndex(gb); 
-            if (ia !== ib) return ia - ib; 
-            const gcmp = String(ga || '').localeCompare(String(gb || ''), undefined, {sensitivity:'base'}); 
-            if (gcmp !== 0) return gcmp; 
-            return String(a.name || '').localeCompare(String(b.name || ''), undefined, {sensitivity:'base'}); 
-          }); 
+        const lights = buildRgbDisplayItems(allLights)
+          .filter((item) => {
+            if (!showActiveOnly) return true;
+            if (item.kind === 'rgb') return item.channels.some((ch) => isActiveLight(ch));
+            return isActiveLight(item.d);
+          });
 
         // Stats per group (active/total) computed on ALL lights (not filtered by showActiveOnly).
         const groupStats = new Map();
@@ -1903,8 +2072,9 @@
         setCollapseIcon(allCollapsed);
  
         let lastGroupKey = null; 
-        for (const d of lights) { 
-          const groupKey = groupKeyFromGroup(d.group);
+        for (const item of lights) { 
+          const dForGroup = item.kind === 'rgb' ? { group: item.group } : item.d;
+          const groupKey = groupKeyFromGroup(dForGroup.group);
           const label = groupLabelFromKey(groupKey);
           if (groupKey !== lastGroupKey) { 
             const sec = document.createElement('div'); 
@@ -1919,6 +2089,57 @@
           } 
           if (collapsedGroups.has(groupKey)) continue;
 
+          if (item.kind === 'rgb') {
+            const g = item;
+            const rgbState = getRgbState(g.key, g.channels);
+            const active = g.channels.some((ch) => isActiveLight(ch));
+            const master = Math.max(1, Math.min(255, Number(rgbState.master || 255)));
+            const masterPct = active ? Math.round((master * 100) / 255) : 0;
+            const groupEl = document.createElement('div');
+            groupEl.className = 'rgbGroup';
+            groupEl.setAttribute('data-rgb-group', g.key);
+            const first = g.channels[0] || {};
+            groupEl.innerHTML = `
+              <div class="rgbMaster ${active ? 'on' : ''}" data-act="rgb-toggle" data-rgb-group="${escapeHtml(g.key)}" style="${active ? `--int:${Math.max(0, Math.min(100, masterPct)) / 100}` : ''}">
+                <span class="ico" aria-hidden="true"
+                  style="-webkit-mask-image:url('${escapeHtml(iconUrl(first.icon || 'mdi:led-strip-variant'))}');mask-image:url('${escapeHtml(iconUrl(first.icon || 'mdi:led-strip-variant'))}')"></span>
+                <div class="content">
+                  <div class="name">${escapeHtml(g.name || 'RGB')}</div>
+                  <div class="ctrl">
+                    <span class="bubble">${escapeHtml(String(masterPct))}</span>
+                    <input type="range" min="1" max="255" value="${String(master)}" data-act="rgb-master" data-rgb-group="${escapeHtml(g.key)}" />
+                  </div>
+                </div>
+              </div>
+              <div class="rgbSlaves"></div>
+            `;
+            const slavesEl = groupEl.querySelector('.rgbSlaves');
+            for (const chDev of g.channels) {
+              const addr = addrOf(chDev);
+              const ch = rgbChannelOf(chDev);
+              const slave = Math.max(1, Math.min(255, Number(rgbState.slaves[addr] || 255)));
+              const slavePct = Math.round((slave * 100) / 255);
+              const slaveEl = document.createElement('div');
+              slaveEl.className = 'rgbSlave';
+              slaveEl.setAttribute('data-addr', addr);
+              slaveEl.innerHTML = `
+                <span class="rgbDot" style="--rgb:${escapeHtml(channelColor(ch))}" aria-hidden="true"></span>
+                <div class="content">
+                  <div class="name">${escapeHtml(chDev.name || channelLabel(ch))}</div>
+                  <div class="ctrl">
+                    <span class="bubble">${escapeHtml(String(slavePct))}</span>
+                    <input type="range" min="1" max="255" value="${String(slave)}" data-act="rgb-slave" data-rgb-group="${escapeHtml(g.key)}" data-addr="${escapeHtml(addr)}" />
+                  </div>
+                </div>
+              `;
+              slavesEl.appendChild(slaveEl);
+              activeByAddr.set(addr, isActiveLight(chDev));
+            }
+            root.appendChild(groupEl);
+            continue;
+          }
+
+          const d = item.d;
           const addr = addrOf(d);
           const st = stateByAddr.get(addr) || { state:'?', brightness:0 };
           const on = String(st.state || '').toUpperCase() === 'ON';
@@ -1966,6 +2187,78 @@
             else collapsedGroups.add(g);
             try { localStorage.setItem(LS_COLLAPSED, JSON.stringify(Array.from(collapsedGroups))); } catch (e) {}
             queueRender();
+          });
+        });
+
+        root.querySelectorAll('[data-act="rgb-toggle"]').forEach((el) => {
+          el.addEventListener('click', async (evt) => {
+            const t = evt && evt.target;
+            if (t && t.tagName && String(t.tagName).toLowerCase() === 'input') return;
+            const key = el.getAttribute('data-rgb-group') || '';
+            const group = lights.find((it) => it.kind === 'rgb' && it.key === key);
+            if (!group) return;
+            animatePress(el);
+            qs('err').textContent = '';
+            try {
+              const active = group.channels.some((ch) => isActiveLight(ch));
+              if (active) {
+                for (const chDev of group.channels) await sendLight(chDev, addrOf(chDev), 'OFF');
+              } else {
+                const rgbState = getRgbState(key, group.channels);
+                for (const chDev of group.channels) {
+                  const addr = addrOf(chDev);
+                  await sendLight(chDev, addr, 'ON', rgbEffectiveBrightness(rgbState.slaves[addr], rgbState.master));
+                }
+              }
+            } catch (e) { qs('err').textContent = e.message || String(e); }
+          });
+        });
+
+        root.querySelectorAll('[data-act="rgb-master"]').forEach((el) => {
+          el.addEventListener('click', (evt) => { try { evt.stopPropagation(); } catch(e){} });
+          el.addEventListener('input', () => {
+            const v = Number(el.value || 1);
+            const bubble = (el.parentElement && el.parentElement.querySelector) ? el.parentElement.querySelector('.bubble') : null;
+            if (bubble) bubble.textContent = String(Math.round((Math.max(0, Math.min(255, v)) * 100) / 255));
+          });
+          el.addEventListener('change', async () => {
+            const key = el.getAttribute('data-rgb-group') || '';
+            const group = lights.find((it) => it.kind === 'rgb' && it.key === key);
+            if (!group) return;
+            qs('err').textContent = '';
+            try {
+              const rgbState = getRgbState(key, group.channels);
+              rgbState.master = Math.max(1, Math.min(255, Number(el.value || 1)));
+              saveRgbState(key, rgbState);
+              for (const chDev of group.channels) {
+                const addr = addrOf(chDev);
+                await sendLight(chDev, addr, 'ON', rgbEffectiveBrightness(rgbState.slaves[addr], rgbState.master));
+              }
+            } catch (e) { qs('err').textContent = e.message || String(e); }
+          });
+        });
+
+        root.querySelectorAll('[data-act="rgb-slave"]').forEach((el) => {
+          el.addEventListener('click', (evt) => { try { evt.stopPropagation(); } catch(e){} });
+          el.addEventListener('input', () => {
+            const v = Number(el.value || 1);
+            const bubble = (el.parentElement && el.parentElement.querySelector) ? el.parentElement.querySelector('.bubble') : null;
+            if (bubble) bubble.textContent = String(Math.round((Math.max(0, Math.min(255, v)) * 100) / 255));
+          });
+          el.addEventListener('change', async () => {
+            const key = el.getAttribute('data-rgb-group') || '';
+            const addr = el.getAttribute('data-addr') || '';
+            const group = lights.find((it) => it.kind === 'rgb' && it.key === key);
+            if (!group || !addr) return;
+            const dev = deviceByAddr.get(addr);
+            if (!dev) return;
+            qs('err').textContent = '';
+            try {
+              const rgbState = getRgbState(key, group.channels);
+              rgbState.slaves[addr] = Math.max(1, Math.min(255, Number(el.value || 1)));
+              saveRgbState(key, rgbState);
+              await sendLight(dev, addr, 'ON', rgbEffectiveBrightness(rgbState.slaves[addr], rgbState.master));
+            } catch (e) { qs('err').textContent = e.message || String(e); }
           });
         });
 
@@ -2111,6 +2404,10 @@
               const nowActive = isActiveState(next);
               const prevActive = activeByAddr.get(addr);
               activeByAddr.set(addr, nowActive);
+              if (rgbGroupByAddr.has(addr)) {
+                queueRender();
+                return;
+              }
               applyLightStateToRow(addr);
               queueCountsUpdate();
               if (showActiveOnly && prevActive !== nowActive) queueRender();

@@ -78,7 +78,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.387"
+ADDON_VERSION = "0.1.389"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -5979,6 +5979,11 @@ self.addEventListener('fetch', (event) => {{
                 g = g[1:].strip()
             if g:
                 device["group"] = g
+        rgb_group = str(payload.get("rgb_group") or "").strip()
+        rgb_channel = str(payload.get("rgb_channel") or "").strip().lower()
+        if rgb_group and rgb_channel in ("red", "green", "blue"):
+            device["rgb_group"] = rgb_group
+            device["rgb_channel"] = rgb_channel
         store.add_device(device) 
         asyncio.create_task(_sync_icons_for_devices([device])) 
 
@@ -6618,6 +6623,12 @@ self.addEventListener('fetch', (event) => {{
             if group.startswith("#"):
                 group = group[1:].strip()
             updates["group"] = group or None 
+        if "rgb_group" in payload:
+            rgb_group = str(payload.get("rgb_group") or "").strip()
+            updates["rgb_group"] = rgb_group or None
+        if "rgb_channel" in payload:
+            rgb_channel = str(payload.get("rgb_channel") or "").strip().lower()
+            updates["rgb_channel"] = rgb_channel if rgb_channel in ("red", "green", "blue") else None
  
         try:
             if move_to and (move_to[0], move_to[1], move_to[2]) != (subnet_id, device_id, channel):
