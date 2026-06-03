@@ -888,6 +888,10 @@
             out.slaves[addr] = Math.max(0, Math.min(255, Number(out.slaves[addr])));
           }
         }
+        const allZero = (channels || []).length > 0 && (channels || []).every((d) => Number(out.slaves[addrOf(d)] || 0) <= 0);
+        if (allZero && !isRgbGroupActive(k)) {
+          for (const d of channels || []) out.slaves[addrOf(d)] = 255;
+        }
         return out;
       }
 
@@ -897,6 +901,16 @@
         const saved = rgbStorageRead();
         saved[k] = state;
         rgbStorageWrite(saved);
+      }
+
+      function rgbDevicesForKey(key) {
+        const k = String(key || '').trim().toLowerCase();
+        if (!k) return [];
+        return (lastDevices || []).filter((d) => rgbGroupKey(d) === k);
+      }
+
+      function isRgbGroupActive(key) {
+        return rgbDevicesForKey(key).some((d) => isActiveState(stateByAddr.get(addrOf(d))));
       }
 
       function syncRgbSlaveFromBusState(addr, st) {
@@ -913,6 +927,7 @@
         const cur = (savedAll[key] && typeof savedAll[key] === 'object') ? savedAll[key] : {};
         const slaves = (cur.slaves && typeof cur.slaves === 'object') ? Object.assign({}, cur.slaves) : {};
         const on = st && String(st.state || '').toUpperCase() === 'ON';
+        if (!on && !isRgbGroupActive(key)) return false;
         const b = on ? Math.max(0, Math.min(255, Number(st.brightness || 0))) : 0;
         slaves[a] = Number.isFinite(b) ? b : 0;
         savedAll[key] = { master: Number(cur.master || 255), slaves };
@@ -2399,7 +2414,7 @@
                   <span class="bubble">${escapeHtml(currentHex.toUpperCase())}</span>
                 </div>
               </div>
-              <div class="rgbSlaves"></div>
+              <div class="rgbSlaves" style="${active ? '' : 'display:none'}"></div>
             `;
             const slavesEl = groupEl.querySelector('.rgbSlaves');
             for (const chDev of g.channels) {

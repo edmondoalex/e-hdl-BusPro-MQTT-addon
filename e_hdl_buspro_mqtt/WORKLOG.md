@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-06-03 (RGB off-state persistence)
+- User UI Luci: quando un gruppo RGB e' spento, gli slider slave `red/green/blue` vengono nascosti.
+- User UI Luci: lo snapshot/realtime non sovrascrive piu' il colore base RGB con `0/0/0` quando tutti i canali risultano spenti dopo riavvio.
+- User UI Luci: aggiunta protezione per colori RGB gia' salvati tutti a zero, ripristinando valori utilizzabili se il gruppo e' spento.
+- Version bump: 0.1.395 -> 0.1.396.
+
 ## 2026-06-03 (RGB realtime feedback)
 - User UI Luci: gli slider slave RGB ora si sincronizzano con gli stati reali dei canali quando cambiano da altra interfaccia o da polling/realtime.
 - User UI Luci: le righe slave RGB ora usano una colorazione interna proporzionale alla percentuale del canale.
