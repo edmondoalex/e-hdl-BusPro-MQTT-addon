@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-06-03 (RGB color wheel)
+- User UI Luci: aggiunta ruota colore nel pannello RGB, mantenendo la barra luminosa di anteprima.
+- La ruota permette di scegliere tonalita' e saturazione; la preview si aggiorna durante il trascinamento e il colore viene applicato al rilascio.
+- Restano disponibili preset colore e selettore colore personalizzato.
+- Version bump: 0.1.390 -> 0.1.391.
+
 ## 2026-06-03 (RGB color palette)
 - User UI Luci: aggiunta tavola colori apribile dalla freccia sul master dei gruppi RGB.
 - La tavola include preset colore, anteprima luminosa e selettore colore personalizzato.

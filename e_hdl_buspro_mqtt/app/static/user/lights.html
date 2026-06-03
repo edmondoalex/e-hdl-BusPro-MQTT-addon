@@ -174,6 +174,50 @@
         box-shadow:0 0 22px var(--rgb-preview,#ffffff);
         margin-bottom:12px;
       }
+      .rgbWheelWrap{
+        display:flex;
+        gap:14px;
+        align-items:center;
+        margin:0 0 12px;
+      }
+      .rgbWheel{
+        position:relative;
+        width:148px;
+        height:148px;
+        flex:0 0 148px;
+        border-radius:50%;
+        border:1px solid rgba(255,255,255,.18);
+        background:
+          radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,255,255,0) 66%),
+          conic-gradient(from 90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+        box-shadow:0 12px 28px rgba(0,0,0,.35), 0 0 28px var(--rgb-preview,#ffffff);
+        cursor:crosshair;
+        touch-action:none;
+      }
+      .rgbWheel::after{
+        content:'';
+        position:absolute;
+        left:var(--wheel-x, 50%);
+        top:var(--wheel-y, 50%);
+        width:14px;
+        height:14px;
+        border-radius:999px;
+        border:2px solid rgba(255,255,255,.95);
+        box-shadow:0 0 0 2px rgba(0,0,0,.45), 0 0 16px rgba(0,0,0,.35);
+        transform:translate(-50%, -50%);
+        pointer-events:none;
+      }
+      .rgbWheelMeta{
+        min-width:0;
+        flex:1;
+        display:flex;
+        flex-direction:column;
+        gap:8px;
+      }
+      .rgbWheelMeta .bubble{
+        width:max-content;
+        min-width:92px;
+      }
       .rgbSwatches{
         display:grid;
         grid-template-columns:repeat(8, minmax(28px, 1fr));
@@ -763,6 +807,45 @@
           vals[ch] = Math.max(0, Math.min(255, Number((rgbState && rgbState.slaves && rgbState.slaves[addr]) || 0)));
         }
         return rgbToHex(vals.red, vals.green, vals.blue);
+      }
+
+      function hsvToRgb(h, s, v) {
+        const hh = (((Number(h) || 0) % 360) + 360) % 360;
+        const ss = Math.max(0, Math.min(1, Number(s) || 0));
+        const vv = Math.max(0, Math.min(1, Number(v) || 0));
+        const c = vv * ss;
+        const x = c * (1 - Math.abs(((hh / 60) % 2) - 1));
+        const m = vv - c;
+        let r = 0, g = 0, b = 0;
+        if (hh < 60) { r = c; g = x; b = 0; }
+        else if (hh < 120) { r = x; g = c; b = 0; }
+        else if (hh < 180) { r = 0; g = c; b = x; }
+        else if (hh < 240) { r = 0; g = x; b = c; }
+        else if (hh < 300) { r = x; g = 0; b = c; }
+        else { r = c; g = 0; b = x; }
+        return {
+          red: Math.round((r + m) * 255),
+          green: Math.round((g + m) * 255),
+          blue: Math.round((b + m) * 255)
+        };
+      }
+
+      function wheelEventToColor(el, evt) {
+        const rect = el.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const dx = Math.max(-rect.width / 2, Math.min(rect.width / 2, Number(evt.clientX) - cx));
+        const dy = Math.max(-rect.height / 2, Math.min(rect.height / 2, Number(evt.clientY) - cy));
+        const radius = Math.min(rect.width, rect.height) / 2;
+        const dist = Math.min(radius, Math.sqrt(dx * dx + dy * dy));
+        const sat = radius > 0 ? dist / radius : 0;
+        const hue = (((Math.atan2(dy, dx) * 180 / Math.PI) + 450) % 360);
+        const rgb = hsvToRgb(hue, sat, 1);
+        return {
+          hex: rgbToHex(rgb.red, rgb.green, rgb.blue),
+          xPct: 50 + (dx / rect.width) * 100,
+          yPct: 50 + (dy / rect.height) * 100
+        };
       }
 
       function getRgbState(key, channels) {
@@ -2241,6 +2324,13 @@
               </div>
               <div class="rgbPalette ${openRgbPalettes.has(g.key) ? 'open' : ''}" data-rgb-palette="${escapeHtml(g.key)}" style="--rgb-preview:${escapeHtml(currentHex)}">
                 <div class="rgbPalettePreview"></div>
+                <div class="rgbWheelWrap">
+                  <button class="rgbWheel" type="button" data-act="rgb-wheel" data-rgb-group="${escapeHtml(g.key)}" data-color="${escapeHtml(currentHex)}" aria-label="Ruota colore"></button>
+                  <div class="rgbWheelMeta">
+                    <span class="bubble">${escapeHtml(currentHex.toUpperCase())}</span>
+                    <div class="scItemSub">Scegli tonalita' e saturazione dalla ruota colore.</div>
+                  </div>
+                </div>
                 <div class="rgbSwatches">
                   ${RGB_PRESETS.map((hex) => `<button class="rgbSwatch" type="button" data-act="rgb-swatch" data-rgb-group="${escapeHtml(g.key)}" data-color="${escapeHtml(hex)}" style="--swatch:${escapeHtml(hex)}" aria-label="${escapeHtml(hex)}"></button>`).join('')}
                 </div>
@@ -2373,6 +2463,46 @@
             qs('err').textContent = '';
             try { await applyRgbColor(group, el.getAttribute('data-color') || '#ffffff'); } catch (e) { qs('err').textContent = e.message || String(e); }
           });
+        });
+
+        root.querySelectorAll('[data-act="rgb-wheel"]').forEach((el) => {
+          let dragging = false;
+          let pendingColor = String(el.getAttribute('data-color') || '#ffffff');
+          function preview(evt) {
+            const picked = wheelEventToColor(el, evt);
+            pendingColor = picked.hex;
+            el.style.setProperty('--wheel-x', `${picked.xPct}%`);
+            el.style.setProperty('--wheel-y', `${picked.yPct}%`);
+            const panel = el.closest ? el.closest('.rgbPalette') : null;
+            if (panel) panel.style.setProperty('--rgb-preview', pendingColor);
+            const bubble = el.parentElement && el.parentElement.querySelector ? el.parentElement.querySelector('.bubble') : null;
+            if (bubble) bubble.textContent = pendingColor.toUpperCase();
+          }
+          async function commit() {
+            const key = el.getAttribute('data-rgb-group') || '';
+            const group = lights.find((it) => it.kind === 'rgb' && it.key === key);
+            if (!group) return;
+            qs('err').textContent = '';
+            try { await applyRgbColor(group, pendingColor); } catch (e) { qs('err').textContent = e.message || String(e); }
+          }
+          el.addEventListener('pointerdown', (evt) => {
+            try { evt.preventDefault(); evt.stopPropagation(); el.setPointerCapture(evt.pointerId); } catch(e){}
+            dragging = true;
+            preview(evt);
+          });
+          el.addEventListener('pointermove', (evt) => {
+            if (!dragging) return;
+            try { evt.preventDefault(); evt.stopPropagation(); } catch(e){}
+            preview(evt);
+          });
+          el.addEventListener('pointerup', async (evt) => {
+            if (!dragging) return;
+            try { evt.preventDefault(); evt.stopPropagation(); el.releasePointerCapture(evt.pointerId); } catch(e){}
+            dragging = false;
+            preview(evt);
+            await commit();
+          });
+          el.addEventListener('pointercancel', () => { dragging = false; });
         });
 
         root.querySelectorAll('[data-act="rgb-color"]').forEach((el) => {
