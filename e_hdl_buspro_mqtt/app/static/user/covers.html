@@ -276,6 +276,7 @@
       let coverGroups = [];
       let groupOrder = [];
       let activeAddr = null; 
+      let activeTarget = null;
       let activeReverse = false; 
       let activeIsGroup = false;
       let showActiveOnly = false;
@@ -302,7 +303,7 @@
         for (const d of (lastDevices || [])) {
           if (String(d.type || '').toLowerCase() !== 'cover') continue;
           const addr = addrOf(d);
-          const usePos = (String(d.origin || '') === 'ha') ? true : !!d.use_position;
+          const usePos = !!d.use_position;
           coverMetaByAddr.set(addr, { use_position: usePos });
         }
       }
@@ -324,6 +325,17 @@
       function addrOf(d){
         if (d && String(d.origin || '') === 'ha') return String(d.entity_id || '').trim();
         return `${Number(d.subnet_id)}.${Number(d.device_id)}.${Number(d.channel)}`;
+      }
+      function targetOf(d) {
+        if (d && String(d.origin || '') === 'ha') {
+          return `ha:${String(d.entity_id || '').trim()}`;
+        }
+        return `hdl:${Number(d.subnet_id)}.${Number(d.device_id)}.${Number(d.channel)}`;
+      }
+      function parseHdlTarget(route) {
+        const addr = String(route || '').slice('hdl:'.length);
+        if (!/^\d+\.\d+\.\d+$/.test(addr)) throw new Error('Indirizzo cover HDL non valido');
+        return addr.split('.').map(Number);
       }
       function absUrl(path) { return new URL(path, window.location.href).toString(); }
       function cssEscape(s) {
@@ -351,29 +363,36 @@
         }, 220);
       }
 
-      async function sendCoverCmd(addr, command) {
-        if (String(addr || '').startsWith('group:')) {
-          const gid = String(addr || '').slice('group:'.length);
+      async function sendCoverCmd(target, command) {
+        const route = String(target || '').trim();
+        if (route.startsWith('group:')) {
+          const gid = route.slice('group:'.length);
           await getJson(`api/control/cover_group/${encodeURIComponent(gid)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command}) });
           return;
         }
-        if (String(addr || '').startsWith('cover.')) {
-          await getJson(`api/control/ha/cover/${encodeURIComponent(String(addr||''))}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command}) });
+        if (route.startsWith('ha:')) {
+          const entityId = route.slice('ha:'.length);
+          if (!entityId.startsWith('cover.')) throw new Error('Entita cover Home Assistant non valida');
+          await getJson(`api/control/ha/cover/${encodeURIComponent(entityId)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command}) });
           return;
         }
-        const [s, d, c] = String(addr||'').split('.').map(Number);
+        if (!route.startsWith('hdl:')) throw new Error('Destinazione cover non valida');
+        const [s, d, c] = parseHdlTarget(route);
         await getJson(`api/control/cover/${s}/${d}/${c}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command}) });
       }
-      async function sendCoverPos(addr, position) {
-        if (String(addr || '').startsWith('group:')) {
+      async function sendCoverPos(target, position) {
+        const route = String(target || '').trim();
+        if (route.startsWith('group:')) {
           return;
         }
-        if (String(addr || '').startsWith('cover.')) {
-          await getJson(`api/control/ha/cover/${encodeURIComponent(String(addr||''))}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command:'SET_POSITION', position}) });
+        if (route.startsWith('ha:')) {
+          const entityId = route.slice('ha:'.length);
+          if (!entityId.startsWith('cover.')) throw new Error('Entita cover Home Assistant non valida');
+          await getJson(`api/control/ha/cover/${encodeURIComponent(entityId)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command:'SET_POSITION', position}) });
           return;
         }
-        if (!coverUsesPosition(addr)) return;
-        const [s, d, c] = String(addr||'').split('.').map(Number);
+        if (!route.startsWith('hdl:')) throw new Error('Destinazione cover non valida');
+        const [s, d, c] = parseHdlTarget(route);
         await getJson(`api/control/cover/${s}/${d}/${c}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command:'SET_POSITION', position}) });
       }
 
@@ -643,10 +662,11 @@
         } catch (e) {}
       }
 
-      function openModal(addr, name) {
+      function openModal(addr, name, target) {
         activeAddr = addr;
+        activeTarget = target || null;
         activeReverse = false;
-        activeIsGroup = String(addr || '').startsWith('group:');
+        activeIsGroup = String(activeTarget || '').startsWith('group:');
         const allowPos = !activeIsGroup && coverUsesPosition(addr);
         try {
           const pillWrap = document.querySelector('.pillWrap');
@@ -675,6 +695,7 @@
       function closeModal() {
         qs('modalBack').style.display = 'none';
         activeAddr = null;
+        activeTarget = null;
         activeReverse = false;
         activeIsGroup = false;
       }
@@ -710,13 +731,13 @@
         }
         _placeHandle();
         try { requestAnimationFrame(_placeHandle); } catch (e) {}
-        if (send && activeAddr) { 
+        if (send && activeAddr && activeTarget) {
           try {
             clearTimeout(window.__coverPosTimer);
           } catch(e) {}
           window.__coverPosTimer = setTimeout(() => {
-            if (!activeAddr) return;
-            sendCoverPos(activeAddr, p).catch((e) => { qs('err').textContent = e.message || String(e); });
+            if (!activeAddr || !activeTarget) return;
+            sendCoverPos(activeTarget, p).catch((e) => { qs('err').textContent = e.message || String(e); });
           }, 200);
         }
       }
@@ -809,7 +830,7 @@
               `;
 
               row.addEventListener('click', () => {
-                openModal(`group:${gid}`, name);
+                openModal(`group:${gid}`, name, `group:${gid}`);
               });
 
               row.querySelectorAll('[data-act]').forEach((btn) => {
@@ -851,6 +872,7 @@
           if (collapsedGroups.has(groupKey)) continue;
 
           const addr = addrOf(d);
+          const target = targetOf(d);
           const st = coverByAddr.get(addr) || { state:'?', position:0 };
           const usePos = coverUsesPosition(addr);
           const pos = Math.max(0, Math.min(100, Number((st.position === null || st.position === undefined) ? 0 : st.position)));
@@ -901,7 +923,7 @@
           } catch(e) {}
 
           row.addEventListener('click', () => {
-            openModal(addr, d.name || '');
+            openModal(addr, d.name || '', target);
           });
 
           row.querySelectorAll('[data-act]').forEach((btn) => {
@@ -911,9 +933,9 @@
               qs('err').textContent = '';
               const act = btn.getAttribute('data-act');
               try {
-                if (act === 'open') await sendCoverCmd(addr, 'OPEN');
-                if (act === 'stop') await sendCoverCmd(addr, 'STOP');
-                if (act === 'close') await sendCoverCmd(addr, 'CLOSE');
+                if (act === 'open') await sendCoverCmd(target, 'OPEN');
+                if (act === 'stop') await sendCoverCmd(target, 'STOP');
+                if (act === 'close') await sendCoverCmd(target, 'CLOSE');
               } catch (e) { qs('err').textContent = e.message || String(e); }
             });
           });
@@ -1071,9 +1093,9 @@
 
       qs('mClose').addEventListener('click', closeModal);
       qs('modalBack').addEventListener('click', (evt) => { if (evt.target === qs('modalBack')) closeModal(); });
-      qs('mOpen').addEventListener('click', async () => { animatePress(qs('mOpen')); if (!activeAddr) return; try { await sendCoverCmd(activeAddr,'OPEN'); } catch(e){ qs('err').textContent = e.message || String(e); } });
-      qs('mStop').addEventListener('click', async () => { animatePress(qs('mStop')); if (!activeAddr) return; try { await sendCoverCmd(activeAddr,'STOP'); } catch(e){ qs('err').textContent = e.message || String(e); } });
-      qs('mCloseBtn').addEventListener('click', async () => { animatePress(qs('mCloseBtn')); if (!activeAddr) return; try { await sendCoverCmd(activeAddr,'CLOSE'); } catch(e){ qs('err').textContent = e.message || String(e); } });
+      qs('mOpen').addEventListener('click', async () => { animatePress(qs('mOpen')); if (!activeTarget) return; try { await sendCoverCmd(activeTarget,'OPEN'); } catch(e){ qs('err').textContent = e.message || String(e); } });
+      qs('mStop').addEventListener('click', async () => { animatePress(qs('mStop')); if (!activeTarget) return; try { await sendCoverCmd(activeTarget,'STOP'); } catch(e){ qs('err').textContent = e.message || String(e); } });
+      qs('mCloseBtn').addEventListener('click', async () => { animatePress(qs('mCloseBtn')); if (!activeTarget) return; try { await sendCoverCmd(activeTarget,'CLOSE'); } catch(e){ qs('err').textContent = e.message || String(e); } });
 
       // Drag inside the pill to set position
       (function() {

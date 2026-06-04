@@ -78,7 +78,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.397"
+ADDON_VERSION = "0.1.398"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -558,6 +558,16 @@ def create_app() -> FastAPI:
                 pos = None
         return {"entity_id": eid, "state": state, "position": pos}
 
+    def _ha_cover_supports_position(st: dict[str, Any]) -> bool:
+        attrs = st.get("attributes") or {}
+        if not isinstance(attrs, dict):
+            return False
+        try:
+            # Home Assistant CoverEntityFeature.SET_POSITION
+            return bool(int(attrs.get("supported_features") or 0) & 4)
+        except Exception:
+            return False
+
     def _map_ha_state_to_lock(st: dict[str, Any]) -> dict[str, Any]:
         eid = str(st.get("entity_id") or "").strip().lower()
         s = _ha_state_str(st.get("state"))
@@ -758,6 +768,9 @@ def create_app() -> FastAPI:
                         }
                     )
                 elif domain == "cover":
+                    use_position = False
+                    if isinstance(cap, dict) and cap.get("use_position") is not None:
+                        use_position = bool(cap.get("use_position"))
                     devices.append(
                         {
                             "type": "cover",
@@ -767,6 +780,7 @@ def create_app() -> FastAPI:
                             "name": name,
                             "group": group,
                             "icon": icon,
+                            "use_position": use_position,
                         }
                     )
                 elif domain == "lock" or (domain == "switch" and page == "locks"):
@@ -4262,6 +4276,15 @@ self.addEventListener('fetch', (event) => {{
                             if prevd is None or bool(prevd) != bool(dim):
                                 next_caps[eid] = dict(next_caps.get(eid) or {})
                                 next_caps[eid]["dimmable"] = bool(dim)
+                                caps_changed = True
+                        if dom == "cover":
+                            use_position = _ha_cover_supports_position(st)
+                            prevp = None
+                            if isinstance(last_caps.get(eid), dict):
+                                prevp = (last_caps.get(eid) or {}).get("use_position")
+                            if prevp is None or bool(prevp) != bool(use_position):
+                                next_caps[eid] = dict(next_caps.get(eid) or {})
+                                next_caps[eid]["use_position"] = bool(use_position)
                                 caps_changed = True
                         if dom == "lock":
                             attrs = st.get("attributes") or {}

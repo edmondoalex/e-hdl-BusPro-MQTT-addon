@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-06-04 (Cover UI routing and HA position capability)
+- User UI Cover: i comandi distinguono esplicitamente target HDL, Home Assistant e gruppi, evitando che un comando destinato a una cover HDL venga inviato a una cover HA.
+- Cover Home Assistant: lo slider posizione viene mostrato solo quando l'entita' supporta `CoverEntityFeature.SET_POSITION`.
+- Aggiunta validazione degli indirizzi HDL prima dell'invio dei comandi cover.
+- Version bump: 0.1.397 -> 0.1.398.
+
 ## 2026-06-03 (Ignore retained MQTT commands)
 - MQTT: i comandi retained ricevuti sui topic `cmd/...` vengono ignorati, evitando che vecchi comandi `ON` vengano rieseguiti al riavvio dell'add-on o di Home Assistant.
 - Version bump: 0.1.396 -> 0.1.397.
