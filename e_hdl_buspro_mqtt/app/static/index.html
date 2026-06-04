@@ -1404,10 +1404,14 @@
                     <input id="ha_icon" list="usedIcons" placeholder="Es: mdi:lightbulb" />
                   </div>
                   <div id="haInvertCoverWrap" style="display:none">
-                    <label>Modalita' tenda verticale</label>
-                    <label style="margin:0;color:var(--muted);display:flex;gap:10px;align-items:center;height:42px">
+                    <label>Opzioni cover/tenda</label>
+                    <label style="margin:0;color:var(--muted);display:flex;gap:10px;align-items:center;min-height:30px">
                       <input id="ha_invert_cover" type="checkbox" style="width:auto" />
-                      <span>Freccia su = CLOSE, freccia giu' = OPEN</span>
+                      <span>Inverti stato, posizione e comandi</span>
+                    </label>
+                    <label style="margin:0;color:var(--muted);display:flex;gap:10px;align-items:center;min-height:30px">
+                      <input id="ha_curtain_mode" type="checkbox" style="width:auto" />
+                      <span>Modalita' tenda: su = CLOSE, giu' = OPEN</span>
                     </label>
                   </div>
                 </div>
@@ -5346,6 +5350,7 @@
         qs('ha_name').value = isEdit ? String(item.name || '') : '';
         qs('ha_icon').value = isEdit ? String(item.icon || '') : '';
         qs('ha_invert_cover').checked = isEdit ? !!item.invert_cover : false;
+        qs('ha_curtain_mode').checked = isEdit ? !!item.curtain_mode : false;
         qs('ha_lock_battery_entity').value = isEdit ? String(item.lock_battery_entity_id || '') : '';
         qs('ha_lock_battery_low_entity').value = isEdit ? String(item.lock_battery_low_entity_id || '') : '';
         qs('ha_lock_rssi_entity').value = isEdit ? String(item.lock_rssi_entity_id || '') : '';
@@ -5373,6 +5378,7 @@
         const wrap = qs('haInvertCoverWrap');
         if (wrap) wrap.style.display = show ? '' : 'none';
         if (!show && qs('ha_invert_cover')) qs('ha_invert_cover').checked = false;
+        if (!show && qs('ha_curtain_mode')) qs('ha_curtain_mode').checked = false;
       }
 
       function renderHaDevices() {
@@ -5390,6 +5396,7 @@
           const name = String(it.name || '').trim();
           const icon = String(it.icon || '').trim();
           const invertCover = !!it.invert_cover;
+          const curtainMode = !!it.curtain_mode;
           const lockMetrics = [
             String(it.lock_battery_entity_id || '').trim() ? 'battery' : '',
             String(it.lock_battery_low_entity_id || '').trim() ? 'battery_low' : '',
@@ -5397,7 +5404,7 @@
             String(it.lock_linkquality_entity_id || '').trim() ? 'linkquality' : '',
             String(it.lock_tamper_entity_id || '').trim() ? 'tamper' : '',
           ].filter(Boolean).join(', ');
-          const options = [invertCover ? 'frecce tenda invertite' : '', lockMetrics].filter(Boolean).join(', ');
+          const options = [invertCover ? 'cover invertita' : '', curtainMode ? 'modalita tenda' : '', lockMetrics].filter(Boolean).join(', ');
 
           const tr = document.createElement('tr');
           tr.innerHTML = `
@@ -5700,12 +5707,13 @@
           const name = String(qs('ha_name').value || '').trim();
           const icon = String(qs('ha_icon').value || '').trim();
           const invert_cover = !!qs('ha_invert_cover').checked;
+          const curtain_mode = !!qs('ha_curtain_mode').checked;
           const lock_battery_entity_id = String(qs('ha_lock_battery_entity').value || '').trim();
           const lock_battery_low_entity_id = String(qs('ha_lock_battery_low_entity').value || '').trim();
           const lock_rssi_entity_id = String(qs('ha_lock_rssi_entity').value || '').trim();
           const lock_linkquality_entity_id = String(qs('ha_lock_lqi_entity').value || '').trim();
           const lock_tamper_entity_id = String(qs('ha_lock_tamper_entity').value || '').trim();
-          const payload = { entity_id, page, group, name, icon, invert_cover, lock_battery_entity_id, lock_battery_low_entity_id, lock_rssi_entity_id, lock_linkquality_entity_id, lock_tamper_entity_id };
+          const payload = { entity_id, page, group, name, icon, invert_cover, curtain_mode, lock_battery_entity_id, lock_battery_low_entity_id, lock_rssi_entity_id, lock_linkquality_entity_id, lock_tamper_entity_id };
           if (id) {
             await getJson(`api/ha_devices/${encodeURIComponent(id)}`, {
               method: 'PUT',

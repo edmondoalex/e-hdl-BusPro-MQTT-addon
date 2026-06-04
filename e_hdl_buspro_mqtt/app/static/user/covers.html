@@ -307,6 +307,7 @@
           coverMetaByAddr.set(addr, {
             use_position: usePos,
             invert_cover: String(d.origin || '') === 'ha' && !!d.invert_cover,
+            curtain_mode: String(d.origin || '') === 'ha' && !!d.curtain_mode,
           });
         }
       }
@@ -321,15 +322,27 @@
         return !!(meta && meta.invert_cover);
       }
 
+      function coverUsesCurtainMode(addr) {
+        const meta = coverMetaByAddr.get(String(addr || ''));
+        return !!(meta && meta.curtain_mode);
+      }
+
       function displayCoverState(addr, state) {
-        return String(state || '?').toUpperCase();
+        const value = String(state || '?').toUpperCase();
+        if (!coverIsInverted(addr)) return value;
+        if (value === 'OPEN') return 'CLOSED';
+        if (value === 'CLOSED') return 'OPEN';
+        if (value === 'OPENING') return 'CLOSING';
+        if (value === 'CLOSING') return 'OPENING';
+        return value;
       }
 
       function displayCoverPosition(addr, position) {
         if (position === null || position === undefined) return null;
         const valueRaw = Number(position);
         if (!Number.isFinite(valueRaw)) return null;
-        return Math.max(0, Math.min(100, valueRaw));
+        const value = Math.max(0, Math.min(100, valueRaw));
+        return coverIsInverted(addr) ? (100 - value) : value;
       }
 
       function addrFromTarget(target) {
@@ -340,18 +353,21 @@
       }
 
       function commandForTarget(target, command) {
-        const value = String(command || '').toUpperCase();
-        // The buttons represent physical direction: a vertical curtain uses CLOSE for up and OPEN for down.
-        if (!coverIsInverted(addrFromTarget(target))) return value;
-        if (value === 'OPEN') return 'CLOSE';
-        if (value === 'CLOSE') return 'OPEN';
+        const addr = addrFromTarget(target);
+        let value = String(command || '').toUpperCase();
+        // Both options require the same command swap; never double-invert when both are enabled.
+        if (coverUsesCurtainMode(addr) || coverIsInverted(addr)) {
+          if (value === 'OPEN') value = 'CLOSE';
+          else if (value === 'CLOSE') value = 'OPEN';
+        }
         return value;
       }
 
       function positionForTarget(target, position) {
         const valueRaw = Number(position);
         if (!Number.isFinite(valueRaw)) throw new Error('Posizione cover non valida');
-        return Math.max(0, Math.min(100, valueRaw));
+        const value = Math.max(0, Math.min(100, valueRaw));
+        return coverIsInverted(addrFromTarget(target)) ? (100 - value) : value;
       }
 
       function escapeHtml(s){

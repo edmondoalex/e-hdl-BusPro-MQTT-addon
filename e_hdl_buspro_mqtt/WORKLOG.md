@@ -1,5 +1,12 @@
 # WORKLOG
 
+## 2026-06-04 (Separate cover inversion and curtain mode)
+- Ripristinata l'opzione `Inverti stato, posizione e comandi` per le cover Home Assistant, inclusa la gestione negli scenari.
+- Aggiunta una seconda opzione indipendente `Modalita' tenda`: cambia solo la direzione fisica delle frecce (`su = CLOSE`, `giu' = OPEN`).
+- Se entrambe le opzioni sono attive, le frecce vengono scambiate una sola volta e non si annullano tra loro.
+- Le configurazioni `invert_cover` esistenti continuano a funzionare senza migrazione; la nuova modalita' usa il campo separato `curtain_mode`.
+- Version bump: 0.1.400 -> 0.1.401.
+
 ## 2026-06-04 (Vertical curtain arrow direction)
 - L'opzione cover Home Assistant invertita ora rappresenta la modalita' tenda verticale: `CLOSED` e' completamente arrotolata in alto, `OPEN` e' completamente srotolata in basso.
 - User UI Cover: per le tende verticali la freccia su invia `CLOSE` e la freccia giu' invia `OPEN`.

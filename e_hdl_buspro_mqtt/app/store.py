@@ -430,6 +430,7 @@ class StateStore:
             "group": group,
             "icon": icon,
             "invert_cover": bool(payload.get("invert_cover")) if domain == "cover" else False,
+            "curtain_mode": bool(payload.get("curtain_mode")) if domain == "cover" else False,
         }
         # Optional external HA entities for lock metrics (used when page=locks).
         out["lock_battery_entity_id"] = _opt_entity("lock_battery_entity_id")
