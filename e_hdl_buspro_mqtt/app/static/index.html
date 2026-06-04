@@ -1403,7 +1403,13 @@
                     <label>Icona (mdi override)</label>
                     <input id="ha_icon" list="usedIcons" placeholder="Es: mdi:lightbulb" />
                   </div>
-                  <div></div>
+                  <div id="haInvertCoverWrap" style="display:none">
+                    <label>Cover/tenda invertita</label>
+                    <label style="margin:0;color:var(--muted);display:flex;gap:10px;align-items:center;height:42px">
+                      <input id="ha_invert_cover" type="checkbox" style="width:auto" />
+                      <span>Inverti stato, posizione e comandi</span>
+                    </label>
+                  </div>
                 </div>
                 <div class="row3" id="haLockMetricsRow" style="display:none">
                   <div>
@@ -1445,7 +1451,7 @@
                     <th>Gruppo</th>
                     <th>Nome</th>
                     <th>Icona</th>
-                    <th>Metriche Lock</th>
+                    <th>Opzioni</th>
                     <th>Azioni</th>
                   </tr>
                 </thead>
@@ -5339,6 +5345,7 @@
         qs('ha_group').value = isEdit ? String(item.group || '') : '';
         qs('ha_name').value = isEdit ? String(item.name || '') : '';
         qs('ha_icon').value = isEdit ? String(item.icon || '') : '';
+        qs('ha_invert_cover').checked = isEdit ? !!item.invert_cover : false;
         qs('ha_lock_battery_entity').value = isEdit ? String(item.lock_battery_entity_id || '') : '';
         qs('ha_lock_battery_low_entity').value = isEdit ? String(item.lock_battery_low_entity_id || '') : '';
         qs('ha_lock_rssi_entity').value = isEdit ? String(item.lock_rssi_entity_id || '') : '';
@@ -5348,6 +5355,7 @@
         qs('ha_btnCancel').style.display = isEdit ? '' : 'none';
         qs('ha_formMsg').textContent = '';
         updateHaLockMetricInputs();
+        updateHaCoverInputs();
       }
 
       function updateHaLockMetricInputs() {
@@ -5356,6 +5364,15 @@
         const row2 = qs('haLockMetricsRow2');
         if (row1) row1.style.display = isLocksPage ? '' : 'none';
         if (row2) row2.style.display = isLocksPage ? '' : 'none';
+      }
+
+      function updateHaCoverInputs() {
+        const entityId = String((qs('ha_entity') && qs('ha_entity').value) || '').trim().toLowerCase();
+        const page = String((qs('ha_page') && qs('ha_page').value) || '').trim().toLowerCase();
+        const show = entityId.startsWith('cover.') && page === 'covers';
+        const wrap = qs('haInvertCoverWrap');
+        if (wrap) wrap.style.display = show ? '' : 'none';
+        if (!show && qs('ha_invert_cover')) qs('ha_invert_cover').checked = false;
       }
 
       function renderHaDevices() {
@@ -5372,6 +5389,7 @@
           const group = String(it.group || '').trim();
           const name = String(it.name || '').trim();
           const icon = String(it.icon || '').trim();
+          const invertCover = !!it.invert_cover;
           const lockMetrics = [
             String(it.lock_battery_entity_id || '').trim() ? 'battery' : '',
             String(it.lock_battery_low_entity_id || '').trim() ? 'battery_low' : '',
@@ -5379,6 +5397,7 @@
             String(it.lock_linkquality_entity_id || '').trim() ? 'linkquality' : '',
             String(it.lock_tamper_entity_id || '').trim() ? 'tamper' : '',
           ].filter(Boolean).join(', ');
+          const options = [invertCover ? 'cover invertita' : '', lockMetrics].filter(Boolean).join(', ');
 
           const tr = document.createElement('tr');
           tr.innerHTML = `
@@ -5387,7 +5406,7 @@
             <td>${escapeHtml(group)}</td>
             <td>${escapeHtml(name)}</td>
             <td>${icon ? `<span class="pill">${escapeHtml(icon)}</span>` : ''}</td>
-            <td>${escapeHtml(lockMetrics)}</td>
+            <td>${escapeHtml(options)}</td>
             <td>
               <button class="btn secondary small" data-act="edit">Modifica</button>
               <button class="btn danger small" data-act="del">Elimina</button>
@@ -5623,6 +5642,7 @@
       setScenarioHaTriggerEditing(null);
       refreshHaDevices();
       updateHaLockMetricInputs();
+      updateHaCoverInputs();
       refreshUiOpts();
       refreshPwaConfig();
       refreshProxyTargets();
@@ -5679,12 +5699,13 @@
           const group = String(qs('ha_group').value || '').trim();
           const name = String(qs('ha_name').value || '').trim();
           const icon = String(qs('ha_icon').value || '').trim();
+          const invert_cover = !!qs('ha_invert_cover').checked;
           const lock_battery_entity_id = String(qs('ha_lock_battery_entity').value || '').trim();
           const lock_battery_low_entity_id = String(qs('ha_lock_battery_low_entity').value || '').trim();
           const lock_rssi_entity_id = String(qs('ha_lock_rssi_entity').value || '').trim();
           const lock_linkquality_entity_id = String(qs('ha_lock_lqi_entity').value || '').trim();
           const lock_tamper_entity_id = String(qs('ha_lock_tamper_entity').value || '').trim();
-          const payload = { entity_id, page, group, name, icon, lock_battery_entity_id, lock_battery_low_entity_id, lock_rssi_entity_id, lock_linkquality_entity_id, lock_tamper_entity_id };
+          const payload = { entity_id, page, group, name, icon, invert_cover, lock_battery_entity_id, lock_battery_low_entity_id, lock_rssi_entity_id, lock_linkquality_entity_id, lock_tamper_entity_id };
           if (id) {
             await getJson(`api/ha_devices/${encodeURIComponent(id)}`, {
               method: 'PUT',
@@ -5712,7 +5733,11 @@
         ev.preventDefault();
         setHaEditing(null);
       });
-      qs('ha_page').addEventListener('change', () => updateHaLockMetricInputs());
+      qs('ha_page').addEventListener('change', () => {
+        updateHaLockMetricInputs();
+        updateHaCoverInputs();
+      });
+      qs('ha_entity').addEventListener('input', () => updateHaCoverInputs());
 
       qs('guardForm').addEventListener('submit', async (ev) => {
         ev.preventDefault();

@@ -1,5 +1,12 @@
 # WORKLOG
 
+## 2026-06-04 (Invert HA curtain state and position)
+- Admin Home Assistant devices: aggiunta opzione `Cover/tenda invertita` per le entita' `cover.*` mostrate nella pagina Cover.
+- User UI Cover: con inversione attiva scambia Aperta/Chiusa e Apertura/Chiusura, mostra `100 - posizione` e traduce Apri/Chiudi e slider nei comandi reali opposti.
+- Runtime scenari: i comandi e lo stato degli scenari rispettano l'inversione configurata sulla cover HA.
+- L'inversione e' configurabile per singola entita', evitando di modificare le tende Home Assistant che seguono gia' la semantica standard.
+- Version bump: 0.1.398 -> 0.1.399.
+
 ## 2026-06-04 (Cover UI routing and HA position capability)
 - User UI Cover: i comandi distinguono esplicitamente target HDL, Home Assistant e gruppi, evitando che un comando destinato a una cover HDL venga inviato a una cover HA.
 - Cover Home Assistant: lo slider posizione viene mostrato solo quando l'entita' supporta `CoverEntityFeature.SET_POSITION`.

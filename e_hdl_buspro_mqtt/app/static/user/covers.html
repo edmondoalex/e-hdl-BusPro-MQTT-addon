@@ -304,13 +304,61 @@
           if (String(d.type || '').toLowerCase() !== 'cover') continue;
           const addr = addrOf(d);
           const usePos = !!d.use_position;
-          coverMetaByAddr.set(addr, { use_position: usePos });
+          coverMetaByAddr.set(addr, {
+            use_position: usePos,
+            invert_cover: String(d.origin || '') === 'ha' && !!d.invert_cover,
+          });
         }
       }
 
       function coverUsesPosition(addr) {
         const meta = coverMetaByAddr.get(String(addr || ''));
         return !!(meta && meta.use_position);
+      }
+
+      function coverIsInverted(addr) {
+        const meta = coverMetaByAddr.get(String(addr || ''));
+        return !!(meta && meta.invert_cover);
+      }
+
+      function displayCoverState(addr, state) {
+        const value = String(state || '?').toUpperCase();
+        if (!coverIsInverted(addr)) return value;
+        if (value === 'OPEN') return 'CLOSED';
+        if (value === 'CLOSED') return 'OPEN';
+        if (value === 'OPENING') return 'CLOSING';
+        if (value === 'CLOSING') return 'OPENING';
+        return value;
+      }
+
+      function displayCoverPosition(addr, position) {
+        if (position === null || position === undefined) return null;
+        const valueRaw = Number(position);
+        if (!Number.isFinite(valueRaw)) return null;
+        const value = Math.max(0, Math.min(100, valueRaw));
+        return coverIsInverted(addr) ? (100 - value) : value;
+      }
+
+      function addrFromTarget(target) {
+        const route = String(target || '').trim();
+        if (route.startsWith('ha:')) return route.slice('ha:'.length);
+        if (route.startsWith('hdl:')) return route.slice('hdl:'.length);
+        return '';
+      }
+
+      function commandForTarget(target, command) {
+        const value = String(command || '').toUpperCase();
+        if (!coverIsInverted(addrFromTarget(target))) return value;
+        if (value === 'OPEN') return 'CLOSE';
+        if (value === 'CLOSE') return 'OPEN';
+        return value;
+      }
+
+      function positionForTarget(target, position) {
+        const valueRaw = Number(position);
+        if (!Number.isFinite(valueRaw)) throw new Error('Posizione cover non valida');
+        const value = Math.max(0, Math.min(100, valueRaw));
+        return coverIsInverted(addrFromTarget(target)) ? (100 - value) : value;
       }
 
       function escapeHtml(s){
@@ -365,35 +413,37 @@
 
       async function sendCoverCmd(target, command) {
         const route = String(target || '').trim();
+        const targetCommand = commandForTarget(route, command);
         if (route.startsWith('group:')) {
           const gid = route.slice('group:'.length);
-          await getJson(`api/control/cover_group/${encodeURIComponent(gid)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command}) });
+          await getJson(`api/control/cover_group/${encodeURIComponent(gid)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command: targetCommand}) });
           return;
         }
         if (route.startsWith('ha:')) {
           const entityId = route.slice('ha:'.length);
           if (!entityId.startsWith('cover.')) throw new Error('Entita cover Home Assistant non valida');
-          await getJson(`api/control/ha/cover/${encodeURIComponent(entityId)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command}) });
+          await getJson(`api/control/ha/cover/${encodeURIComponent(entityId)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command: targetCommand}) });
           return;
         }
         if (!route.startsWith('hdl:')) throw new Error('Destinazione cover non valida');
         const [s, d, c] = parseHdlTarget(route);
-        await getJson(`api/control/cover/${s}/${d}/${c}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command}) });
+        await getJson(`api/control/cover/${s}/${d}/${c}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command: targetCommand}) });
       }
       async function sendCoverPos(target, position) {
         const route = String(target || '').trim();
+        const targetPosition = positionForTarget(route, position);
         if (route.startsWith('group:')) {
           return;
         }
         if (route.startsWith('ha:')) {
           const entityId = route.slice('ha:'.length);
           if (!entityId.startsWith('cover.')) throw new Error('Entita cover Home Assistant non valida');
-          await getJson(`api/control/ha/cover/${encodeURIComponent(entityId)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command:'SET_POSITION', position}) });
+          await getJson(`api/control/ha/cover/${encodeURIComponent(entityId)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command:'SET_POSITION', position: targetPosition}) });
           return;
         }
         if (!route.startsWith('hdl:')) throw new Error('Destinazione cover non valida');
         const [s, d, c] = parseHdlTarget(route);
-        await getJson(`api/control/cover/${s}/${d}/${c}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command:'SET_POSITION', position}) });
+        await getJson(`api/control/cover/${s}/${d}/${c}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command:'SET_POSITION', position: targetPosition}) });
       }
 
       function mdiName(iconValue) {
@@ -453,10 +503,14 @@
       function isActiveCover(d) {
         const addr = addrOf(d);
         const st = coverByAddr.get(addr);
+        return isActiveCoverState(addr, st);
+      }
+
+      function isActiveCoverState(addr, st) {
         if (!st) return false;
-        const state = String(st.state || '').toUpperCase();
-        const pos = Number(st.position ?? 0);
-        return state === 'OPENING' || state === 'CLOSING' || pos > 0;
+        const state = displayCoverState(addr, st.state);
+        const pos = Number(displayCoverPosition(addr, st.position) ?? 0);
+        return state === 'OPEN' || state === 'OPENING' || state === 'CLOSING' || pos > 0;
       }
 
       function isActiveState(st) {
@@ -598,8 +652,8 @@
         const d = deviceByAddr.get(addr);
         const st = coverByAddr.get(addr) || { state: '?', position: 0 };
         const usePos = coverUsesPosition(addr);
-        const pos = Math.max(0, Math.min(100, Number((st.position === null || st.position === undefined) ? 0 : st.position)));
-        const state = String(st.state || '?').toUpperCase();
+        const pos = Math.max(0, Math.min(100, Number(displayCoverPosition(addr, st.position) ?? 0)));
+        const state = displayCoverState(addr, st.state);
         const moving = (state === 'OPENING' || state === 'CLOSING');
         const openRatio = usePos ? Math.max(0, Math.min(1, pos / 100)) : (state === 'OPEN' ? 1 : (state === 'CLOSED' ? 0 : 0.5));
         const visualRatio = d && d.reverse_icon ? (1 - openRatio) : openRatio;
@@ -642,7 +696,7 @@
           const cur = groupStats.get(k) || { total: 0, active: 0 };
           cur.total += 1;
           const addr = addrOf(d);
-          if (isActiveState(coverByAddr.get(addr))) cur.active += 1;
+          if (isActiveCoverState(addr, coverByAddr.get(addr))) cur.active += 1;
           groupStats.set(k, cur);
         }
         for (const [k, el] of sectionByGroup.entries()) {
@@ -683,7 +737,7 @@
         let pos = 0;
         if (allowPos) {
           const st = coverByAddr.get(addr) || { state:'?', position:0 };
-          pos = Math.max(0, Math.min(100, Number((st.position === null || st.position === undefined) ? 0 : st.position)));
+          pos = Math.max(0, Math.min(100, Number(displayCoverPosition(addr, st.position) ?? 0)));
           setModalPos(pos, false);
         }
         qs('modalBack').style.display = 'flex';
@@ -875,8 +929,8 @@
           const target = targetOf(d);
           const st = coverByAddr.get(addr) || { state:'?', position:0 };
           const usePos = coverUsesPosition(addr);
-          const pos = Math.max(0, Math.min(100, Number((st.position === null || st.position === undefined) ? 0 : st.position)));
-          const state = String(st.state || '?').toUpperCase();
+          const pos = Math.max(0, Math.min(100, Number(displayCoverPosition(addr, st.position) ?? 0)));
+          const state = displayCoverState(addr, st.state);
           const moving = (state === 'OPENING' || state === 'CLOSING');
           const openRatio = usePos ? Math.max(0, Math.min(1, pos / 100)) : (state === 'OPEN' ? 1 : (state === 'CLOSED' ? 0 : 0.5));
           const visualRatio = d.reverse_icon ? (1 - openRatio) : openRatio;
@@ -1052,7 +1106,7 @@
               const positionRaw = (ev.position === null || ev.position === undefined) ? 0 : Number(ev.position);
               const position = coverUsesPosition(addr) ? positionRaw : null;
               coverByAddr.set(addr, { state, position });
-              const nowActive = isActiveState({ state, position });
+              const nowActive = isActiveCoverState(addr, { state, position });
               const prevActive = activeByAddr.get(addr);
               activeByAddr.set(addr, nowActive);
               applyCoverStateToRow(addr);
@@ -1061,7 +1115,7 @@
               if (showActiveOnly && prevActive !== nowActive) queueRender();
               if (activeAddr && activeAddr === addr) {
                 if (coverUsesPosition(addr)) {
-                  const pos = Math.max(0, Math.min(100, Number(position)));
+                  const pos = Math.max(0, Math.min(100, Number(displayCoverPosition(addr, position) ?? 0)));
                   setModalPos(pos, false);
                 }
               }
@@ -1074,7 +1128,7 @@
               const state = String(ev.state || '').toUpperCase() || '?';
               const position = (ev.position === null || ev.position === undefined) ? 0 : Number(ev.position);
               coverByAddr.set(addr, { state, position });
-              const nowActive = isActiveState({ state, position });
+              const nowActive = isActiveCoverState(addr, { state, position });
               const prevActive = activeByAddr.get(addr);
               activeByAddr.set(addr, nowActive);
               applyCoverStateToRow(addr);
@@ -1082,7 +1136,7 @@
               queueCountsUpdate();
               if (showActiveOnly && prevActive !== nowActive) queueRender();
               if (activeAddr && activeAddr === addr) {
-                const pos = Math.max(0, Math.min(100, Number(position)));
+                const pos = Math.max(0, Math.min(100, Number(displayCoverPosition(addr, position) ?? 0)));
                 setModalPos(pos, false);
               }
               return;
@@ -1187,7 +1241,7 @@
           }
           if (!coverUsesPosition(activeAddr)) return;
           const st = coverByAddr.get(activeAddr) || { position: 0 }; 
-          setModalPos(Number(st.position || 0), false); 
+          setModalPos(Number(displayCoverPosition(activeAddr, st.position) ?? 0), false);
         } catch(e){} 
       });
     </script>
