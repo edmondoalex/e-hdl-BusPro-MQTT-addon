@@ -1404,10 +1404,10 @@
                     <input id="ha_icon" list="usedIcons" placeholder="Es: mdi:lightbulb" />
                   </div>
                   <div id="haInvertCoverWrap" style="display:none">
-                    <label>Cover/tenda invertita</label>
+                    <label>Modalita' tenda verticale</label>
                     <label style="margin:0;color:var(--muted);display:flex;gap:10px;align-items:center;height:42px">
                       <input id="ha_invert_cover" type="checkbox" style="width:auto" />
-                      <span>Inverti stato, posizione e comandi</span>
+                      <span>Freccia su = CLOSE, freccia giu' = OPEN</span>
                     </label>
                   </div>
                 </div>
@@ -5397,7 +5397,7 @@
             String(it.lock_linkquality_entity_id || '').trim() ? 'linkquality' : '',
             String(it.lock_tamper_entity_id || '').trim() ? 'tamper' : '',
           ].filter(Boolean).join(', ');
-          const options = [invertCover ? 'cover invertita' : '', lockMetrics].filter(Boolean).join(', ');
+          const options = [invertCover ? 'frecce tenda invertite' : '', lockMetrics].filter(Boolean).join(', ');
 
           const tr = document.createElement('tr');
           tr.innerHTML = `

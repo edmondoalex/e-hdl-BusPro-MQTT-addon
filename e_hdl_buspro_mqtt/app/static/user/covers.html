@@ -248,13 +248,13 @@
             </div>
           </div>
           <div class="mControls">
-            <button class="iconBtn" id="mOpen" aria-label="Apri">
+            <button class="iconBtn" id="mOpen" aria-label="Su">
               <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M6 11l6-6 6 6"/></svg>
             </button>
             <button class="iconBtn stop" id="mStop" aria-label="Stop">
               <svg viewBox="0 0 24 24"><path d="M8 7v10"/><path d="M16 7v10"/></svg>
             </button>
-            <button class="iconBtn" id="mCloseBtn" aria-label="Chiudi">
+            <button class="iconBtn" id="mCloseBtn" aria-label="Giu">
               <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M6 13l6 6 6-6"/></svg>
             </button>
           </div>
@@ -322,21 +322,14 @@
       }
 
       function displayCoverState(addr, state) {
-        const value = String(state || '?').toUpperCase();
-        if (!coverIsInverted(addr)) return value;
-        if (value === 'OPEN') return 'CLOSED';
-        if (value === 'CLOSED') return 'OPEN';
-        if (value === 'OPENING') return 'CLOSING';
-        if (value === 'CLOSING') return 'OPENING';
-        return value;
+        return String(state || '?').toUpperCase();
       }
 
       function displayCoverPosition(addr, position) {
         if (position === null || position === undefined) return null;
         const valueRaw = Number(position);
         if (!Number.isFinite(valueRaw)) return null;
-        const value = Math.max(0, Math.min(100, valueRaw));
-        return coverIsInverted(addr) ? (100 - value) : value;
+        return Math.max(0, Math.min(100, valueRaw));
       }
 
       function addrFromTarget(target) {
@@ -348,6 +341,7 @@
 
       function commandForTarget(target, command) {
         const value = String(command || '').toUpperCase();
+        // The buttons represent physical direction: a vertical curtain uses CLOSE for up and OPEN for down.
         if (!coverIsInverted(addrFromTarget(target))) return value;
         if (value === 'OPEN') return 'CLOSE';
         if (value === 'CLOSE') return 'OPEN';
@@ -357,8 +351,7 @@
       function positionForTarget(target, position) {
         const valueRaw = Number(position);
         if (!Number.isFinite(valueRaw)) throw new Error('Posizione cover non valida');
-        const value = Math.max(0, Math.min(100, valueRaw));
-        return coverIsInverted(addrFromTarget(target)) ? (100 - value) : value;
+        return Math.max(0, Math.min(100, valueRaw));
       }
 
       function escapeHtml(s){
@@ -869,13 +862,13 @@
                   <div class="sub">${escapeHtml(String(state))}</div>
                 </div>
                 <div class="actions">
-                  <button class="iconBtn" data-act="open" aria-label="Apri">
+                  <button class="iconBtn" data-act="open" aria-label="Su">
                     <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M6 11l6-6 6 6"/></svg>
                   </button>
                   <button class="iconBtn stop" data-act="stop" aria-label="Stop">
                     <svg viewBox="0 0 24 24"><path d="M8 7v10"/><path d="M16 7v10"/></svg>
                   </button>
-                  <button class="iconBtn" data-act="close" aria-label="Chiudi">
+                  <button class="iconBtn" data-act="close" aria-label="Giu">
                     <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M6 13l6 6 6-6"/></svg>
                   </button>
                   <span class="coverIco" aria-hidden="true"
@@ -948,13 +941,13 @@
               <div class="sub">${escapeHtml(String(state))}${usePos ? ` &#183; ${Math.round(pos)}%` : ''}</div>
             </div>
             <div class="actions">
-              <button class="iconBtn" data-act="open" aria-label="Apri">
+              <button class="iconBtn" data-act="open" aria-label="Su">
                 <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M6 11l6-6 6 6"/></svg>
               </button>
               <button class="iconBtn stop" data-act="stop" aria-label="Stop">
                 <svg viewBox="0 0 24 24"><path d="M8 7v10"/><path d="M16 7v10"/></svg>
               </button>
-              <button class="iconBtn" data-act="close" aria-label="Chiudi">
+              <button class="iconBtn" data-act="close" aria-label="Giu">
                 <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M6 13l6 6 6-6"/></svg>
               </button>
               <span class="coverIco" aria-hidden="true"

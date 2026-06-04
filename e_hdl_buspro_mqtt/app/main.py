@@ -78,7 +78,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.399"
+ADDON_VERSION = "0.1.400"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -575,15 +575,6 @@ def create_app() -> FastAPI:
         if value == "CLOSE":
             return "OPEN"
         return value
-
-    def _ha_cover_is_inverted(entity_id: str) -> bool:
-        eid = str(entity_id or "").strip().lower()
-        if not eid:
-            return False
-        for item in store.list_ha_devices():
-            if str(item.get("entity_id") or "").strip().lower() == eid:
-                return bool(item.get("invert_cover"))
-        return False
 
     def _map_ha_state_to_lock(st: dict[str, Any]) -> dict[str, Any]:
         eid = str(st.get("entity_id") or "").strip().lower()
@@ -2415,8 +2406,7 @@ self.addEventListener('fetch', (event) => {{
                     if not isinstance(st, dict):
                         return "OFF"
                     st_state = str(st.get("state") or "")
-                    cmd_match = _invert_cover_command(cmd) if _ha_cover_is_inverted(eid) else cmd
-                    if not _cover_matches(cmd_match, st_state, None):
+                    if not _cover_matches(cmd, st_state, None):
                         return "OFF"
                     continue
                 if kind == "group":
@@ -8379,8 +8369,6 @@ self.addEventListener('fetch', (event) => {{
                     eid = str(it.get("entity_id") or "").strip().lower()
                     if not eid.startswith("cover."):
                         continue
-                    if _ha_cover_is_inverted(eid):
-                        cmd_eff = _invert_cover_command(cmd_eff)
                     try:
                         svc = "open_cover" if cmd_eff == "OPEN" else ("close_cover" if cmd_eff == "CLOSE" else "stop_cover")
                         await asyncio.to_thread(
