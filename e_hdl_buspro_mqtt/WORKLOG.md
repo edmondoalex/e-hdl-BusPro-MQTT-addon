@@ -1,5 +1,12 @@
 # WORKLOG
 
+## 2026-06-05 (Home+ wall panel refresh)
+- User UI Home+: rinominato `Quick Links` in `Menu` per chiarire che mostra tutti i collegamenti disponibili.
+- User UI Home+: i `Preferiti` ora sono una selezione configurabile dal pannello `Personalizza` e non duplicano piu' automaticamente il menu.
+- User UI Home+: layout aggiornato con testata brand, tile piu' leggibili, orologio grande, indicatori luci/cover/comandi e stato sistema compatto.
+- Compatibilita': le preferenze locali `ekonex_home_plus_v1` vengono lette come fallback dalla nuova configurazione `v2`.
+- Version bump: 0.1.401 -> 0.1.402.
+
 ## 2026-06-04 (Separate cover inversion and curtain mode)
 - Ripristinata l'opzione `Inverti stato, posizione e comandi` per le cover Home Assistant, inclusa la gestione negli scenari.
 - Aggiunta una seconda opzione indipendente `Modalita' tenda`: cambia solo la direzione fisica delle frecce (`su = CLOSE`, `giu' = OPEN`).
