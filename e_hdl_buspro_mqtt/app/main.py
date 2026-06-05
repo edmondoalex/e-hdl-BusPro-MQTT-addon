@@ -952,7 +952,7 @@ def create_app() -> FastAPI:
             return await call_next(request)
 
         # User pages
-        if path in ("/", "/home", "/home2", "/home_plus", "/lights", "/covers", "/extra", "/scenarios", "/locks"):
+        if path in ("/", "/home", "/home2", "/home_plus", "/e-face", "/lights", "/covers", "/extra", "/scenarios", "/locks"):
             return await call_next(request) 
         if guard_enabled and path == "/e-guard":
             return await call_next(request)
@@ -4871,6 +4871,14 @@ self.addEventListener('fetch', (event) => {{
     @api.get("/home_plus", response_class=HTMLResponse)
     async def user_home_plus():
         return _user_html("home_plus.html")
+
+    @api.get("/e-face", response_class=HTMLResponse)
+    async def user_e_face():
+        path = os.path.join(os.path.dirname(__file__), "static", "eface", "index.html")
+        if not os.path.exists(path):
+            raise HTTPException(status_code=404, detail="e-Face frontend not built")
+        with open(path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
 
     @api.get("/lights", response_class=HTMLResponse)
     async def user_lights():

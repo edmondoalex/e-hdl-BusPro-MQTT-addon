@@ -1,5 +1,12 @@
 # WORKLOG
 
+## 2026-06-05 (Vue/Vite e-Face shell)
+- Aggiunta nuova interfaccia `/e-face` basata su Vue 3 + Vite, separata da `Home+`.
+- e-Face usa le API esistenti dell'addon (`/api/user/snapshot`, `/api/meta`, `/api/control/...`) per mostrare e comandare luci, cover, lock ed extra.
+- Build Docker estesa con stage Node (`npm ci` + `vite build`) e pubblicazione degli asset sotto `/static/eface`.
+- User port: `/e-face` autorizzata come pagina utente; aggiunto link e-Face nella barra Admin.
+- Version bump: 0.1.402 -> 0.1.403.
+
 ## 2026-06-05 (Home+ wall panel refresh)
 - User UI Home+: rinominato `Quick Links` in `Menu` per chiarire che mostra tutti i collegamenti disponibili.
 - User UI Home+: i `Preferiti` ora sono una selezione configurabile dal pannello `Personalizza` e non duplicano piu' automaticamente il menu.
