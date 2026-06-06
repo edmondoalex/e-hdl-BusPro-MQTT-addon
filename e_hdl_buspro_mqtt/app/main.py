@@ -78,7 +78,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.404"
+ADDON_VERSION = "0.1.405"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -1679,9 +1679,16 @@ self.addEventListener('fetch', (event) => {{
             # If base_url already contains an app path (for example
             # http://host:8080/thermostats), links such as /thermostats/1
             # must resolve to /thermostats/1, not /thermostats/thermostats/1.
+            # Root app endpoints rewritten by the bootstrap (for example /api/cmd)
+            # must still resolve from the upstream origin root, not from /thermostats.
             base_path = (base_parsed.path or "").strip("/")
+            rootish_prefixes = ("api/", "assets/", "static/", "ws", "socket.io/")
             if base_path and (path_for_upstream == base_path or path_for_upstream.startswith(base_path + "/")):
                 path_for_upstream = path_for_upstream[len(base_path) :].lstrip("/")
+            elif base_path and path_for_upstream.startswith(rootish_prefixes):
+                base = urllib.parse.urlunparse(
+                    (base_parsed.scheme, base_parsed.netloc, "/", "", "", "")
+                )
         except Exception:
             pass
         upstream_url = urllib.parse.urljoin(base, path_for_upstream)

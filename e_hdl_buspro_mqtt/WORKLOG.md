@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-06-06 (Proxy root API with app path)
+- Proxy `/ext/...`: per target con `base_url` sotto path applicativo (es. `/thermostats`), le chiamate root come `/api/cmd` ora vengono inoltrate alla root dell'upstream.
+- Risolve i comandi proxati che fallivano con 404 su `/ext/<name>/api/cmd`.
+- Version bump: 0.1.404 -> 0.1.405.
+
 ## 2026-06-06 (Proxy app-path dedupe)
 - Proxy `/ext/...`: quando un target ha `base_url` con path applicativo (es. `/thermostats`), la navigazione interna non duplica piu' il prefisso (`/thermostats/thermostats/1`).
 - Risolve le pagine proxate che si aprivano ma caricavano dati vuoti perche' l'app riceveva un id percorso sbagliato.
