@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-06-06 (Proxy app-path dedupe)
+- Proxy `/ext/...`: quando un target ha `base_url` con path applicativo (es. `/thermostats`), la navigazione interna non duplica piu' il prefisso (`/thermostats/thermostats/1`).
+- Risolve le pagine proxate che si aprivano ma caricavano dati vuoti perche' l'app riceveva un id percorso sbagliato.
+- Version bump: 0.1.403 -> 0.1.404.
+
 ## 2026-06-05 (Vue/Vite e-Face shell)
 - Aggiunta nuova interfaccia `/e-face` basata su Vue 3 + Vite, separata da `Home+`.
 - e-Face usa le API esistenti dell'addon (`/api/user/snapshot`, `/api/meta`, `/api/control/...`) per mostrare e comandare luci, cover, lock ed extra.

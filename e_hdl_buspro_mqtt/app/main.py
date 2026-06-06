@@ -78,7 +78,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.403"
+ADDON_VERSION = "0.1.404"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -1674,7 +1674,17 @@ self.addEventListener('fetch', (event) => {{
             (base_parsed.scheme, base_parsed.netloc, base_parsed.path, base_parsed.params, "", base_parsed.fragment)
         )
         base = base_no_query.rstrip("/") + "/"
-        upstream_url = urllib.parse.urljoin(base, str(path or "").lstrip("/"))
+        path_for_upstream = str(path or "").lstrip("/")
+        try:
+            # If base_url already contains an app path (for example
+            # http://host:8080/thermostats), links such as /thermostats/1
+            # must resolve to /thermostats/1, not /thermostats/thermostats/1.
+            base_path = (base_parsed.path or "").strip("/")
+            if base_path and (path_for_upstream == base_path or path_for_upstream.startswith(base_path + "/")):
+                path_for_upstream = path_for_upstream[len(base_path) :].lstrip("/")
+        except Exception:
+            pass
+        upstream_url = urllib.parse.urljoin(base, path_for_upstream)
 
         # Preserve query defined in base_url (e.g. http://host:1980/?view=user)
         # for root proxy calls (/ext/<name>/), then merge request query params.
