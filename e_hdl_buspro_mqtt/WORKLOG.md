@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-06-08 (Active group indicators)
+- User UI Luci: gli header gruppo mostrano un'icona lampadina e si colorano leggermente quando almeno una luce del gruppo e' accesa.
+- User UI Extra: gli header gruppo mostrano un'icona extra e si colorano leggermente quando almeno un elemento del gruppo e' attivo.
+- I conteggi realtime aggiornano anche lo stato visivo attivo degli header gruppo.
+- Version bump: 0.1.411 -> 0.1.412.
+
 ## 2026-06-08 (Admin group dropdown refresh)
 - Admin UI: la tendina gruppo dei form dispositivo viene aggiornata anche dopo il caricamento e il salvataggio dell'ordine gruppi User UI.
 - Risolve i gruppi creati ma non ancora usati che comparivano nella lista ordinabile ma non nel menu del form.

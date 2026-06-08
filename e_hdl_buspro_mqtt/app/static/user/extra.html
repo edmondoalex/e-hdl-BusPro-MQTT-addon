@@ -76,6 +76,28 @@
       }
       .section:active{background:rgba(0,0,0,.06)}
       .section .count{font-size:11px;letter-spacing:.08em;color:rgba(255,255,255,.40)}
+      .section.active{
+        color:rgba(255,255,255,.82);
+        background:linear-gradient(90deg, rgba(104,166,255,.14), rgba(104,166,255,.04) 48%, rgba(0,0,0,.04));
+        box-shadow:0 0 20px rgba(104,166,255,.09) inset;
+      }
+      .section.active .count{color:rgba(174,207,255,.80)}
+      .sectionLabel{display:flex;align-items:center;gap:10px;min-width:0}
+      .sectionLabel span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .sectionIcon{
+        width:18px;height:18px;flex:0 0 18px;
+        background:rgba(242,245,255,.34);
+        -webkit-mask-repeat:no-repeat;
+        -webkit-mask-position:center;
+        -webkit-mask-size:contain;
+        mask-repeat:no-repeat;
+        mask-position:center;
+        mask-size:contain;
+      }
+      .section.active .sectionIcon{
+        background:rgba(104,166,255,.98);
+        filter:drop-shadow(0 0 7px rgba(104,166,255,.48));
+      }
       .row{
         display:flex;gap:14px;align-items:center;
         padding:14px 16px;
@@ -361,6 +383,7 @@
           const st = groupStats.get(k) || { total: 0, active: 0 };
           const count = el.querySelector('.count');
           if (count) count.textContent = `${st.active}/${st.total}`;
+          el.classList.toggle('active', st.active > 0);
         }
       }
 
@@ -409,7 +432,9 @@
             sec.setAttribute('data-act', 'toggle-group');
             sec.setAttribute('data-group', groupKey);
             const st = groupStats.get(groupKey) || { total: 0, active: 0 };
-            sec.innerHTML = `<span>${escapeHtml(label)}</span><span class="count">${escapeHtml(String(st.active))}/${escapeHtml(String(st.total))}</span>`;
+            sec.classList.toggle('active', st.active > 0);
+            const sectionIcon = iconUrl('mdi:shape');
+            sec.innerHTML = `<span class="sectionLabel"><span class="sectionIcon" style="-webkit-mask-image:url('${escapeHtml(sectionIcon)}');mask-image:url('${escapeHtml(sectionIcon)}')"></span><span>${escapeHtml(label)}</span></span><span class="count">${escapeHtml(String(st.active))}/${escapeHtml(String(st.total))}</span>`;
             root.appendChild(sec);
             sectionByGroup.set(groupKey, sec);
             lastGroupKey = groupKey;
