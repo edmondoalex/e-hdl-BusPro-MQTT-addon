@@ -1,5 +1,9 @@
 # WORKLOG
 
+## 2026-06-08 (Floor header emphasis)
+- User UI Luci/Extra: le intestazioni piano `# ...` sono piu' grandi, in grassetto e piu' leggibili.
+- Version bump: 0.1.414 -> 0.1.415.
+
 ## 2026-06-08 (Group rename action)
 - Admin UI: aggiunto comando `Rinomina gruppo` per aggiornare realmente il nome gruppo nei dispositivi BusPro e nei dispositivi Home Assistant importati.
 - API: aggiunto `POST /api/ui/groups/rename`, con broadcast realtime di dispositivi e ordine gruppi dopo la rinomina.
