@@ -1393,7 +1393,11 @@
                   </div>
                   <div>
                     <label>Gruppo</label>
-                    <input id="ha_group" placeholder="Es: Sala" />
+                    <select id="ha_groupSel">
+                      <option value="">(nessuno)</option>
+                      <option value="__custom__">Altro (custom)</option>
+                    </select>
+                    <input id="ha_groupCustom" placeholder="Nuovo gruppo" style="display:none;margin-top:6px" />
                   </div>
                 </div>
                 <div class="row3">
@@ -1889,7 +1893,8 @@
         const airSel = qs('a_groupSel');
         const drySel = qs('d_groupSel');
         const presSel = qs('p_groupSel');
-        for (const sel of [lightSel, coverSel, tempSel, humSel, illumSel, airSel, presSel, drySel]) {
+        const haSel = qs('ha_groupSel');
+        for (const sel of [lightSel, coverSel, tempSel, humSel, illumSel, airSel, presSel, drySel, haSel]) {
           if (!sel) continue;
           const cur = String(sel.value || '');
           // keep first two options: "" and "__custom__"
@@ -5453,7 +5458,7 @@
         qs('ha_id').value = isEdit ? String(item.id || '') : '';
         qs('ha_entity').value = isEdit ? String(item.entity_id || '') : '';
         qs('ha_page').value = isEdit ? String(item.page || 'lights') : 'lights';
-        qs('ha_group').value = isEdit ? String(item.group || '') : '';
+        setGroupValue('ha_groupSel', 'ha_groupCustom', isEdit ? String(item.group || '') : '');
         qs('ha_name').value = isEdit ? String(item.name || '') : '';
         qs('ha_icon').value = isEdit ? String(item.icon || '') : '';
         qs('ha_invert_cover').checked = isEdit ? !!item.invert_cover : false;
@@ -5746,6 +5751,7 @@
       attachGroupSelect('a_groupSel', 'a_groupCustom');
       attachGroupSelect('p_groupSel', 'p_groupCustom');
       attachGroupSelect('d_groupSel', 'd_groupCustom');
+      attachGroupSelect('ha_groupSel', 'ha_groupCustom');
       refreshHubConfig();
       refreshHubLinks();
       refreshHomeActions();
@@ -5810,7 +5816,7 @@
           const id = String(qs('ha_id').value || '').trim();
           const entity_id = String(qs('ha_entity').value || '').trim();
           const page = String(qs('ha_page').value || '').trim();
-          const group = String(qs('ha_group').value || '').trim();
+          const group = getGroupValue('ha_groupSel', 'ha_groupCustom');
           const name = String(qs('ha_name').value || '').trim();
           const icon = String(qs('ha_icon').value || '').trim();
           const invert_cover = !!qs('ha_invert_cover').checked;

@@ -1,5 +1,9 @@
 # WORKLOG
 
+## 2026-06-08 (HA device group selector)
+- Admin UI: il form Home Assistant devices usa la stessa select gruppo dei dispositivi BusPro, con opzione `Altro (custom)`.
+- Version bump: 0.1.418 -> 0.1.419.
+
 ## 2026-06-08 (Hide floor marker in user UI)
 - User UI Luci/Extra: il prefisso tecnico `#` resta nell'admin ma non viene mostrato nelle intestazioni piano della vista utente.
 - Version bump: 0.1.417 -> 0.1.418.
