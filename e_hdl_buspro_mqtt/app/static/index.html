@@ -2032,7 +2032,7 @@
             const arr = items.slice();
             const [moved] = arr.splice(dragIndex, 1);
             arr.splice(to, 0, moved);
-            groupOrder = arr.map(x => x.name);
+            setOrderFromItems(arr);
             renderGroupDnD();
           });
 

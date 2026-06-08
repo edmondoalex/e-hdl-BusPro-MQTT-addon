@@ -1,5 +1,9 @@
 # WORKLOG
 
+## 2026-06-08 (Preserve floor marker while dragging)
+- Admin UI: il drag & drop dell'ordine gruppi mantiene il prefisso `#` sulle intestazioni piano.
+- Version bump: 0.1.416 -> 0.1.417.
+
 ## 2026-06-08 (Visible floor marker)
 - User UI Luci/Extra: le intestazioni piano mostrano il prefisso `#` anche nella vista utente, per distinguerle chiaramente dai gruppi.
 - Version bump: 0.1.415 -> 0.1.416.
