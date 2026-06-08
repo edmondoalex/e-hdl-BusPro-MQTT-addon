@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-06-08 (Admin group dropdown refresh)
+- Admin UI: la tendina gruppo dei form dispositivo viene aggiornata anche dopo il caricamento e il salvataggio dell'ordine gruppi User UI.
+- Risolve i gruppi creati ma non ancora usati che comparivano nella lista ordinabile ma non nel menu del form.
+- Version bump: 0.1.410 -> 0.1.411.
+
 ## 2026-06-08 (Docker build arch fallback)
 - Dockerfile: l'immagine base ora deriva direttamente da `BUILD_ARCH` invece di forzare `amd64-base`.
 - Risolve il build su host `aarch64` che falliva con `exec /bin/ash: exec format error` usando per errore l'immagine base amd64.

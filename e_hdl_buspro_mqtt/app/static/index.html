@@ -1834,6 +1834,7 @@
           groupOrder = Array.isArray(ui.group_order) ? ui.group_order.map(normalizeGroup).filter(Boolean) : [];
           qs('groupOrder').value = groupOrder.join('\n');
           renderGroupDnD();
+          refreshUsedGroups();
         } catch (e) {}
       }
 
@@ -4204,6 +4205,7 @@
           groupOrder = Array.isArray(res.group_order) ? res.group_order : order;
           qs('groupOrder').value = groupOrder.join('\n');
           renderGroupDnD();
+          refreshUsedGroups();
           qs('groupsMsg').textContent = 'Salvato';
           setTimeout(() => { qs('groupsMsg').textContent = ''; }, 1500);
         } catch (e) {
