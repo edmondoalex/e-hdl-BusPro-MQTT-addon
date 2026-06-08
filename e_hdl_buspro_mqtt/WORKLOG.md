@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-06-08 (Admin group selector includes ordered groups)
+- Admin UI: le select `group` dei form dispositivo includono anche i gruppi creati/ordinati in `User UI: ordine gruppi`, anche se non sono ancora usati da nessun dispositivo.
+- Mantiene l'opzione `Altro (custom)` per nuovi gruppi liberi.
+- Version bump: 0.1.405 -> 0.1.406.
+
 ## 2026-06-06 (Proxy root API with app path)
 - Proxy `/ext/...`: per target con `base_url` sotto path applicativo (es. `/thermostats`), le chiamate root come `/api/cmd` ora vengono inoltrate alla root dell'upstream.
 - Risolve i comandi proxati che fallivano con 404 su `/ext/<name>/api/cmd`.

@@ -1850,8 +1850,12 @@
         return Array.from(counts.values()).sort((a,b)=> String(a.name).localeCompare(String(b.name), undefined, {sensitivity:'base'}));
       }
 
+      function availableGroups() {
+        return effectiveGroupOrder(lastDevices).map(x => x.name).filter(Boolean);
+      }
+
       function refreshUsedGroups() {
-        const groups = groupsFromDevices(lastDevices).map(x => x.name);
+        const groups = availableGroups();
         const lightSel = qs('groupSel');
         const coverSel = qs('c_groupSel');
         const tempSel = qs('t_groupSel');
