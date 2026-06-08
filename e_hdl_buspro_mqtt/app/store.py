@@ -346,7 +346,15 @@ class StateStore:
             go_list = [str(x).strip() for x in go if str(x).strip()]
         else:
             go_list = []
-        ui["group_order"] = [s[1:].strip() if s.startswith("#") else s for s in go_list if s]
+        normalized_group_order: list[str] = []
+        for s in go_list:
+            if s.startswith("#"):
+                header = s[1:].strip()
+                if header:
+                    normalized_group_order.append(f"# {header}")
+            else:
+                normalized_group_order.append(s)
+        ui["group_order"] = normalized_group_order
         if not isinstance(ui.get("cover_groups", []), list):
             ui["cover_groups"] = []
         if not isinstance(ui.get("cover_groups_published", []), list):
@@ -1408,9 +1416,10 @@ class StateStore:
             if not s:
                 continue
             if s.startswith("#"):
-                s = s[1:].strip()
-            if not s:
-                continue
+                header = s[1:].strip()
+                if not header:
+                    continue
+                s = f"# {header}"
             out.append(s)
         return out
 
@@ -1423,10 +1432,13 @@ class StateStore:
             if not s:
                 continue
             if s.startswith("#"):
-                s = s[1:].strip()
-            if not s:
-                continue
-            key = s.casefold()
+                header = s[1:].strip()
+                if not header:
+                    continue
+                s = f"# {header}"
+                key = f"floor:{header.casefold()}"
+            else:
+                key = f"group:{s.casefold()}"
             if key in seen:
                 continue
             seen.add(key)

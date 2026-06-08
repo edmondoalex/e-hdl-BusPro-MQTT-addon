@@ -59,6 +59,7 @@
       .chip{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid var(--line);font-size:12px;color:var(--muted)}
       .gList{display:flex;flex-direction:column;gap:8px;margin-top:10px}
       .gItem{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:rgba(11,18,32,.55);cursor:grab;user-select:none}
+      .gItem.floorItem{background:rgba(96,165,250,.10);border-color:rgba(96,165,250,.30)}
       .gItem:active{cursor:grabbing}
       .gItem.dragging{opacity:.55}
       .gHandle{width:14px;height:14px;opacity:.75}
@@ -1782,6 +1783,20 @@
         return s.startsWith('#') ? s.slice(1).trim() : s;
       }
 
+      function isGroupHeader(v) {
+        return String(v || '').trim().startsWith('#');
+      }
+
+      function normalizeGroupOrderEntry(v) {
+        const s = String(v || '').trim();
+        if (!s) return '';
+        if (s.startsWith('#')) {
+          const title = normalizeGroup(s.slice(1));
+          return title ? `# ${title}` : '';
+        }
+        return normalizeGroup(s);
+      }
+
       function getGroupValue(selId, customId) {
         const sel = qs(selId);
         const custom = qs(customId);
@@ -1831,7 +1846,7 @@
       async function loadUiConfig() {
         try {
           const ui = await getJson('api/ui');
-          groupOrder = Array.isArray(ui.group_order) ? ui.group_order.map(normalizeGroup).filter(Boolean) : [];
+          groupOrder = Array.isArray(ui.group_order) ? ui.group_order.map(normalizeGroupOrderEntry).filter(Boolean) : [];
           qs('groupOrder').value = groupOrder.join('\n');
           renderGroupDnD();
           refreshUsedGroups();
@@ -1886,22 +1901,32 @@
       }
 
       function effectiveGroupOrder(devices) {
+        return effectiveGroupEntries(devices).filter((x) => x.kind === 'group');
+      }
+
+      function effectiveGroupEntries(devices) {
         const fromDev = groupsFromDevices(devices);
         const byKey = new Map(fromDev.map(x => [String(x.name).toLowerCase(), x]));
         const out = [];
         const seen = new Set();
         for (const g of (groupOrder || [])) {
-          const n = normalizeGroup(g);
+          const entry = normalizeGroupOrderEntry(g);
+          if (!entry) continue;
+          if (isGroupHeader(entry)) {
+            out.push({ kind: 'floor', name: entry.slice(1).trim(), count: 0, raw: entry });
+            continue;
+          }
+          const n = normalizeGroup(entry);
           if (!n) continue;
           const k = n.toLowerCase();
           if (seen.has(k)) continue;
           seen.add(k);
-          out.push({ name: n, count: (byKey.get(k)?.count || 0) });
+          out.push({ kind: 'group', name: n, count: (byKey.get(k)?.count || 0), raw: n });
         }
         for (const x of fromDev) {
           const k = String(x.name).toLowerCase();
           if (seen.has(k)) continue;
-          out.push({ name: x.name, count: x.count });
+          out.push({ kind: 'group', name: x.name, count: x.count, raw: x.name });
         }
         return out;
       }
@@ -1909,7 +1934,7 @@
       function renderGroupDnD() {
         const root = qs('groupDnD');
         if (!root) return;
-        const items = effectiveGroupOrder(lastDevices);
+        const items = effectiveGroupEntries(lastDevices);
         root.innerHTML = '';
         if (items.length === 0) {
           root.innerHTML = '<div class="muted" style="padding:8px 2px">Nessun gruppo trovato (imposta <code>group</code> nei dispositivi).</div>';
@@ -1923,7 +1948,7 @@
         }
 
         function setOrderFromItems(list) {
-          groupOrder = list.map(x => x.name);
+          groupOrder = list.map(x => x.kind === 'floor' ? `# ${x.name}` : x.name);
           syncTextarea();
         }
 
@@ -1931,15 +1956,15 @@
 
         items.forEach((it, idx) => {
           const el = document.createElement('div');
-          el.className = 'gItem';
+          el.className = it.kind === 'floor' ? 'gItem floorItem' : 'gItem';
           el.draggable = true;
           el.dataset.idx = String(idx);
           el.innerHTML = `
             <svg class="gHandle" viewBox="0 0 24 24" aria-hidden="true">
               <path fill="currentColor" d="M7 5h2v2H7V5zm8 0h2v2h-2V5zM7 11h2v2H7v-2zm8 0h2v2h-2v-2zM7 17h2v2H7v-2zm8 0h2v2h-2v-2z"></path>
             </svg>
-            <div class="gName">${escapeHtml(it.name)}</div>
-            <div class="gCount">${it.count ? `${it.count} dev` : ''}</div>
+            <div class="gName">${escapeHtml(it.kind === 'floor' ? `# ${it.name}` : it.name)}</div>
+            <div class="gCount">${it.kind === 'floor' ? 'piano' : (it.count ? `${it.count} dev` : '')}</div>
           `;
 
           el.addEventListener('dragstart', (e) => {
@@ -4196,7 +4221,7 @@
       qs('btnSaveGroups').addEventListener('click', async () => {
         try {
           const raw = String(qs('groupOrder').value || '');
-          const order = raw.split(/\r?\n/).map(normalizeGroup).filter(Boolean);
+          const order = raw.split(/\r?\n/).map(normalizeGroupOrderEntry).filter(Boolean);
           const res = await getJson('api/ui', {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},

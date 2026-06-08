@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-06-08 (Floor headers in group order)
+- Admin UI: `User UI: ordine gruppi` supporta righe `# NOME PIANO` come intestazioni, mantenendole nel salvataggio senza mostrarle nelle select gruppo dei dispositivi.
+- User UI Luci/Extra: inseriti divisori piano sopra i gruppi assegnati sotto ciascuna riga `#`.
+- Store: `group_order` conserva le intestazioni `#` invece di convertirle in gruppi normali.
+- Version bump: 0.1.412 -> 0.1.413.
+
 ## 2026-06-08 (Active group indicators)
 - User UI Luci: gli header gruppo mostrano un'icona lampadina e si colorano leggermente quando almeno una luce del gruppo e' accesa.
 - User UI Extra: gli header gruppo mostrano un'icona extra e si colorano leggermente quando almeno un elemento del gruppo e' attivo.

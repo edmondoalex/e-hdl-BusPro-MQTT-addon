@@ -98,6 +98,15 @@
         background:rgba(255,215,0,.96);
         filter:drop-shadow(0 0 7px rgba(255,215,0,.45));
       }
+      .floorSection{
+        padding:16px 16px 8px;
+        font-size:11px;
+        letter-spacing:.16em;
+        text-transform:uppercase;
+        color:rgba(255,255,255,.42);
+        border-top:1px solid rgba(255,255,255,.08);
+        background:linear-gradient(180deg, rgba(255,255,255,.035), rgba(0,0,0,.02));
+      }
       .row{
         display:flex;gap:14px;align-items:center;
         padding:14px 16px;
@@ -2216,14 +2225,44 @@
         if (!s) return ''; 
         return s.startsWith('#') ? s.slice(1).trim() : s; 
       } 
+      function isGroupHeader(v) {
+        return String(v || '').trim().startsWith('#');
+      }
+      function normalizeGroupOrderEntry(v) {
+        const s = (v === null || v === undefined) ? '' : String(v).trim();
+        if (!s) return '';
+        if (s.startsWith('#')) {
+          const title = normalizeGroup(s.slice(1));
+          return title ? `# ${title}` : '';
+        }
+        return normalizeGroup(s);
+      }
       function groupIndex(groupName) { 
         const key = normalizeGroup(groupName).toLowerCase(); 
         if (!key) return 1e9; 
         for (let i = 0; i < groupOrder.length; i++) { 
-          if (String(groupOrder[i] || '').toLowerCase() === key) return i; 
+          const entry = normalizeGroupOrderEntry(groupOrder[i]);
+          if (!entry || isGroupHeader(entry)) continue;
+          if (normalizeGroup(entry).toLowerCase() === key) return i; 
         } 
         return 1e8; 
       } 
+
+      function floorLabelForGroupKey(groupKey) {
+        const key = String(groupKey || '').toLowerCase();
+        if (!key || key === GROUP_NONE) return '';
+        let floor = '';
+        for (const item of groupOrder || []) {
+          const entry = normalizeGroupOrderEntry(item);
+          if (!entry) continue;
+          if (isGroupHeader(entry)) {
+            floor = entry.slice(1).trim();
+            continue;
+          }
+          if (normalizeGroup(entry).toLowerCase() === key) return floor;
+        }
+        return '';
+      }
 
       function isExtraSwitch(d) {
         const t = String(d.type || 'light').toLowerCase();
@@ -2377,11 +2416,22 @@
         setCollapseIcon(allCollapsed);
  
         let lastGroupKey = null; 
+        let lastFloorLabel = null;
         for (const item of lights) { 
           const dForGroup = item.kind === 'rgb' ? { group: item.group } : item.d;
           const groupKey = groupKeyFromGroup(dForGroup.group);
           const label = groupLabelFromKey(groupKey);
           if (groupKey !== lastGroupKey) { 
+            const floorLabel = floorLabelForGroupKey(groupKey);
+            if (floorLabel && floorLabel !== lastFloorLabel) {
+              const floor = document.createElement('div');
+              floor.className = 'floorSection';
+              floor.textContent = floorLabel;
+              root.appendChild(floor);
+              lastFloorLabel = floorLabel;
+            } else if (!floorLabel) {
+              lastFloorLabel = '';
+            }
             const sec = document.createElement('div'); 
             sec.className = 'section'; 
             sec.setAttribute('data-act', 'toggle-group');
@@ -2804,7 +2854,7 @@
               return; 
             } 
             if (msg.type === 'ui') { 
-              groupOrder = Array.isArray(msg.data && msg.data.group_order) ? msg.data.group_order.map(normalizeGroup).filter(Boolean) : groupOrder; 
+              groupOrder = Array.isArray(msg.data && msg.data.group_order) ? msg.data.group_order.map(normalizeGroupOrderEntry).filter(Boolean) : groupOrder; 
               queueRender(); 
               return; 
             } 
@@ -2882,7 +2932,7 @@
           const meta = await getJson('api/meta', { cache:'no-store' }, 12000); 
           uiLog('meta_ok', 'ok');
           window.__backGestureEnabled = !(meta && typeof meta.back_gesture_enabled === 'boolean') ? true : !!meta.back_gesture_enabled;
-          groupOrder = Array.isArray(meta.group_order) ? meta.group_order.map(normalizeGroup).filter(Boolean) : []; 
+          groupOrder = Array.isArray(meta.group_order) ? meta.group_order.map(normalizeGroupOrderEntry).filter(Boolean) : []; 
           lastDevices = await getJson('api/user/devices', { cache:'no-store' }, 12000); 
           uiLog('devices_ok', `count=${Array.isArray(lastDevices) ? lastDevices.length : 0}`);
           refreshDeviceIndex();
