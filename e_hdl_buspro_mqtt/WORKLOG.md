@@ -1,5 +1,9 @@
 # WORKLOG
 
+## 2026-06-08 (Hide floor marker in user UI)
+- User UI Luci/Extra: il prefisso tecnico `#` resta nell'admin ma non viene mostrato nelle intestazioni piano della vista utente.
+- Version bump: 0.1.417 -> 0.1.418.
+
 ## 2026-06-08 (Preserve floor marker while dragging)
 - Admin UI: il drag & drop dell'ordine gruppi mantiene il prefisso `#` sulle intestazioni piano.
 - Version bump: 0.1.416 -> 0.1.417.
