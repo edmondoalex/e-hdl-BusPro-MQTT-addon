@@ -1,13 +1,5 @@
-ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base:3.19
-FROM node:20-alpine AS eface_build
-
-WORKDIR /src
-COPY app/eface_frontend/package*.json ./
-RUN npm ci
-COPY app/eface_frontend/ ./
-RUN npm run build
-
-FROM $BUILD_FROM
+ARG BUILD_ARCH=aarch64
+FROM ghcr.io/home-assistant/${BUILD_ARCH}-base:3.19
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -25,7 +17,6 @@ COPY requirements.txt /app/requirements.txt
 RUN "$VIRTUAL_ENV/bin/pip" install --no-cache-dir -r /app/requirements.txt
 
 COPY app /app/app
-COPY --from=eface_build /src/dist /app/app/static/eface
 RUN "$VIRTUAL_ENV/bin/python" -m compileall -q /app/app
 COPY www /app/www
 COPY run.sh /app/run.sh

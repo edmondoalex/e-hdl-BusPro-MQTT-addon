@@ -1,5 +1,15 @@
 # WORKLOG
 
+## 2026-06-08 (Docker build arch fallback)
+- Dockerfile: l'immagine base ora deriva direttamente da `BUILD_ARCH` invece di forzare `amd64-base`.
+- Risolve il build su host `aarch64` che falliva con `exec /bin/ash: exec format error` usando per errore l'immagine base amd64.
+- Version bump: 0.1.409 -> 0.1.410.
+
+## 2026-06-08 (Prebuilt e-Face assets for add-on build)
+- Build add-on: rimossa la dipendenza da `node:20-alpine` e `npm ci` durante il build Docker Home Assistant.
+- e-Face Vue/Vite viene pubblicata come asset statico precompilato sotto `app/static/eface`, riducendo i punti di errore dell'update add-on.
+- Version bump: 0.1.408 -> 0.1.409.
+
 ## 2026-06-08 (VENTIL category shown in Extra)
 - User UI: i dispositivi BusPro `type=light` con `category=VENTIL` vengono mostrati automaticamente in `/extra`.
 - User UI Luci: gli stessi dispositivi vengono esclusi da `/lights`, come gia' avviene per `Switch` ed `Extra`.
