@@ -1687,13 +1687,22 @@
           </div> 
           <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:14px">
             <h3 style="margin:0;font-size:14px">User UI: ordine gruppi</h3>
-            <div class="muted" style="margin-top:6px">Uno per riga. Il <code>#</code> e' opzionale.</div>
-            <textarea id="groupOrder" rows="7" placeholder="SALA&#10;CUCINA&#10;CAMERE" style="margin-top:10px;resize:vertical"></textarea>
+            <div class="muted" style="margin-top:6px">Uno per riga. Usa <code># NOME PIANO</code> per creare intestazioni piano.</div>
+            <textarea id="groupOrder" rows="7" placeholder="# PIANO TERRA&#10;SALA&#10;CUCINA&#10;# ESTERNO&#10;GIARDINO" style="margin-top:10px;resize:vertical"></textarea>
             <div class="muted" style="margin-top:10px">Trascina per riordinare:</div>
             <div id="groupDnD" class="gList" aria-label="group order list"></div>
             <div class="flex" style="margin-top:10px">
               <button class="btn secondary small" id="btnSaveGroups" type="button">Salva</button>
               <span class="muted" id="groupsMsg"></span>
+            </div>
+            <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
+              <div class="muted">Rinomina gruppo usato dai dispositivi:</div>
+              <select id="renameGroupOld" style="margin-top:8px"></select>
+              <input id="renameGroupNew" placeholder="Nuovo nome gruppo" style="margin-top:8px" />
+              <div class="flex" style="margin-top:8px">
+                <button class="btn secondary small" id="btnRenameGroup" type="button">Rinomina</button>
+                <span class="muted" id="renameGroupMsg"></span>
+              </div>
             </div>
           </div>
           <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:14px">
@@ -1898,6 +1907,41 @@
           if (values.includes(cur)) sel.value = cur;
           else if (cur && cur !== '__custom__') sel.value = '__custom__';
         }
+        refreshRenameGroupSelect(groups);
+      }
+
+      function refreshRenameGroupSelect(groupsArg) {
+        const sel = qs('renameGroupOld');
+        if (!sel) return;
+        const groups = Array.isArray(groupsArg) ? groupsArg : availableGroups();
+        const cur = String(sel.value || '');
+        sel.innerHTML = '';
+        const empty = document.createElement('option');
+        empty.value = '';
+        empty.textContent = '(scegli gruppo)';
+        sel.appendChild(empty);
+        for (const g of groups) {
+          const opt = document.createElement('option');
+          opt.value = g;
+          opt.textContent = g;
+          sel.appendChild(opt);
+        }
+        if (groups.includes(cur)) sel.value = cur;
+      }
+
+      function renderAllDeviceTables(devices) {
+        renderDevices(devices);
+        renderCovers(devices);
+        renderTemps(devices);
+        renderHumidity(devices);
+        renderIlluminance(devices);
+        renderAir(devices);
+        renderPresence(devices);
+        renderDryContacts(devices);
+        renderCoverGroupMembersOptions();
+        renderGroupDnD();
+        refreshUsedGroups();
+        refreshUsedIcons();
       }
 
       function effectiveGroupOrder(devices) {
@@ -4235,6 +4279,37 @@
           setTimeout(() => { qs('groupsMsg').textContent = ''; }, 1500);
         } catch (e) {
           qs('groupsMsg').textContent = 'Errore';
+        }
+      });
+
+      qs('btnRenameGroup').addEventListener('click', async () => {
+        const msg = qs('renameGroupMsg');
+        try {
+          const oldName = normalizeGroup(qs('renameGroupOld').value || '');
+          const newName = normalizeGroup(qs('renameGroupNew').value || '');
+          if (!oldName || !newName) {
+            msg.textContent = 'Scegli vecchio e nuovo nome';
+            return;
+          }
+          if (oldName.toLowerCase() === newName.toLowerCase()) {
+            msg.textContent = 'Nome invariato';
+            return;
+          }
+          if (!confirm(`Rinominare il gruppo "${oldName}" in "${newName}" su tutti i dispositivi?`)) return;
+          const res = await getJson('api/ui/groups/rename', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ old_name: oldName, new_name: newName })
+          });
+          groupOrder = Array.isArray(res.group_order_value) ? res.group_order_value.map(normalizeGroupOrderEntry).filter(Boolean) : groupOrder;
+          qs('groupOrder').value = groupOrder.join('\n');
+          qs('renameGroupNew').value = '';
+          try { lastDevices = await getJson('api/devices'); } catch (e) {}
+          renderAllDeviceTables(lastDevices);
+          msg.textContent = `Rinominati ${Number(res.devices || 0)} dev + ${Number(res.ha_devices || 0)} HA`;
+          setTimeout(() => { msg.textContent = ''; }, 2200);
+        } catch (e) {
+          msg.textContent = e.message || String(e);
         }
       });
 

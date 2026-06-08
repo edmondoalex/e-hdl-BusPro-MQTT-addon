@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-06-08 (Group rename action)
+- Admin UI: aggiunto comando `Rinomina gruppo` per aggiornare realmente il nome gruppo nei dispositivi BusPro e nei dispositivi Home Assistant importati.
+- API: aggiunto `POST /api/ui/groups/rename`, con broadcast realtime di dispositivi e ordine gruppi dopo la rinomina.
+- Store: la rinomina aggiorna anche `group_order`, mantenendo intatte le intestazioni piano `#`.
+- Version bump: 0.1.413 -> 0.1.414.
+
 ## 2026-06-08 (Floor headers in group order)
 - Admin UI: `User UI: ordine gruppi` supporta righe `# NOME PIANO` come intestazioni, mantenendole nel salvataggio senza mostrarle nelle select gruppo dei dispositivi.
 - User UI Luci/Extra: inseriti divisori piano sopra i gruppi assegnati sotto ciascuna riga `#`.

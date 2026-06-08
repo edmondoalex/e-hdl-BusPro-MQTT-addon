@@ -78,7 +78,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.413"
+ADDON_VERSION = "0.1.414"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -5147,6 +5147,26 @@ self.addEventListener('fetch', (event) => {{
         cleaned = store.set_group_order(order)
         await hub.broadcast("ui", {"group_order": cleaned})
         return {"group_order": cleaned}
+
+    @api.post("/api/ui/groups/rename")
+    async def api_ui_group_rename(payload: dict[str, Any]):
+        old_name = str(payload.get("old_name") or payload.get("old") or "").strip()
+        new_name = str(payload.get("new_name") or payload.get("new") or "").strip()
+        if old_name.startswith("#"):
+            old_name = old_name[1:].strip()
+        if new_name.startswith("#"):
+            new_name = new_name[1:].strip()
+        if not old_name or not new_name:
+            raise HTTPException(status_code=400, detail="old_name and new_name are required")
+        if old_name.casefold() == new_name.casefold():
+            return {"changed": False, "old_name": old_name, "new_name": new_name, "devices": 0, "ha_devices": 0, "group_order": 0, "group_order_value": store.get_group_order()}
+        try:
+            res = store.rename_group(old_name=old_name, new_name=new_name)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        await _broadcast_devices()
+        await hub.broadcast("ui", {"group_order": store.get_group_order()})
+        return {"changed": True, **res}
 
     @api.get("/api/hub_links")
     async def api_hub_links_list():

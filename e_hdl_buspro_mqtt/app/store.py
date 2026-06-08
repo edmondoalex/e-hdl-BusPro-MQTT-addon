@@ -1423,8 +1423,8 @@ class StateStore:
             out.append(s)
         return out
 
-    def set_group_order(self, group_order: list[str]) -> list[str]:
-        # de-duplicate preserving order
+    @staticmethod
+    def _dedupe_group_order_entries(group_order: list[str]) -> list[str]:
         cleaned: list[str] = []
         seen: set[str] = set()
         for v in group_order or []:
@@ -1443,13 +1443,96 @@ class StateStore:
                 continue
             seen.add(key)
             cleaned.append(s)
+        return cleaned
 
+    def set_group_order(self, group_order: list[str]) -> list[str]:
+        # de-duplicate preserving order
+        cleaned = self._dedupe_group_order_entries(group_order)
         raw = self.read_raw()
         ui = dict(raw.get("ui") or {})
         ui["group_order"] = cleaned
         raw["ui"] = ui
         self.write_raw(raw)
         return cleaned
+
+    def rename_group(self, *, old_name: str, new_name: str) -> dict[str, Any]:
+        old = str(old_name or "").strip()
+        new = str(new_name or "").strip()
+        if old.startswith("#"):
+            old = old[1:].strip()
+        if new.startswith("#"):
+            new = new[1:].strip()
+        if not old or not new:
+            raise ValueError("old_name and new_name are required")
+        old_key = old.casefold()
+
+        raw = self.read_raw()
+        devices = list(raw.get("devices", []) or [])
+        ui = dict(raw.get("ui") or {})
+
+        device_count = 0
+        renamed_devices: list[dict[str, Any]] = []
+        for d in devices:
+            if not isinstance(d, dict):
+                renamed_devices.append(d)
+                continue
+            cur = str(d.get("group") or "").strip()
+            if cur.casefold() == old_key:
+                nd = dict(d)
+                nd["group"] = new
+                renamed_devices.append(nd)
+                device_count += 1
+            else:
+                renamed_devices.append(d)
+
+        ha_count = 0
+        ha_items = ui.get("ha_devices") or []
+        renamed_ha: list[dict[str, Any]] = []
+        if isinstance(ha_items, list):
+            for it in ha_items:
+                if not isinstance(it, dict):
+                    continue
+                cur = str(it.get("group") or "").strip()
+                if cur.casefold() == old_key:
+                    nit = dict(it)
+                    nit["group"] = new
+                    renamed_ha.append(nit)
+                    ha_count += 1
+                else:
+                    renamed_ha.append(dict(it))
+            ui["ha_devices"] = renamed_ha
+
+        order_count = 0
+        order = ui.get("group_order") or []
+        new_order: list[str] = []
+        if isinstance(order, list):
+            for v in order:
+                s = str(v or "").strip()
+                if not s:
+                    continue
+                if s.startswith("#"):
+                    header = s[1:].strip()
+                    if header:
+                        new_order.append(f"# {header}")
+                    continue
+                if s.casefold() == old_key:
+                    new_order.append(new)
+                    order_count += 1
+                else:
+                    new_order.append(s)
+            ui["group_order"] = self._dedupe_group_order_entries(new_order)
+
+        raw["devices"] = renamed_devices
+        raw["ui"] = ui
+        self.write_raw(raw)
+        return {
+            "old_name": old,
+            "new_name": new,
+            "devices": device_count,
+            "ha_devices": ha_count,
+            "group_order": order_count,
+            "group_order_value": self.get_group_order(),
+        }
 
     def get_hub_icons(self) -> dict[str, str]:
         raw = self.read_raw()
