@@ -78,7 +78,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.406"
+ADDON_VERSION = "0.1.407"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -1867,7 +1867,11 @@ self.addEventListener('fetch', (event) => {{
             return JSONResponse({"detail": "Not Found"}, status_code=404)
 
         q = request.url.query or ""
-        base = upstream_base.rstrip("/") + "/"
+        base_parsed = urllib.parse.urlparse(upstream_base)
+        if (base_parsed.path or "").strip("/"):
+            base = urllib.parse.urlunparse((base_parsed.scheme, base_parsed.netloc, "/", "", "", ""))
+        else:
+            base = upstream_base.rstrip("/") + "/"
         upstream_url = urllib.parse.urljoin(base, "api/stream")
         if q:
             upstream_url = upstream_url + ("&" if "?" in upstream_url else "?") + q
@@ -1879,6 +1883,22 @@ self.addEventListener('fetch', (event) => {{
         queue: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=40)
         stop = threading.Event()
 
+        def _safe_queue_put(item: bytes | None) -> None:
+            try:
+                queue.put_nowait(item)
+            except asyncio.QueueFull:
+                if item is None:
+                    try:
+                        queue.get_nowait()
+                    except Exception:
+                        pass
+                    try:
+                        queue.put_nowait(None)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
         def _run():
             try:
                 req = urllib.request.Request(url=upstream_url, method="GET", headers={"Accept": "text/event-stream"})
@@ -1889,14 +1909,14 @@ self.addEventListener('fetch', (event) => {{
                         if not chunk:
                             break
                         try:
-                            api.state.loop.call_soon_threadsafe(queue.put_nowait, bytes(chunk))
+                            api.state.loop.call_soon_threadsafe(_safe_queue_put, bytes(chunk))
                         except Exception:
                             break
             except Exception:
                 _LOGGER.exception("api_stream_proxy upstream stream error: name=%s upstream=%s", name, upstream_url)
             finally:
                 try:
-                    api.state.loop.call_soon_threadsafe(queue.put_nowait, None)
+                    api.state.loop.call_soon_threadsafe(_safe_queue_put, None)
                 except Exception:
                     pass
 

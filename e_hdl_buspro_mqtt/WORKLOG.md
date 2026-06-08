@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-06-08 (Proxy stream queue hardening)
+- Proxy stream: eliminati gli stack trace `asyncio.queues.QueueFull` quando il browser consuma lentamente lo stream proxato.
+- Per target con `base_url` sotto path applicativo, `/api/stream` viene inoltrato alla root dell'upstream come gli altri endpoint `/api/...`.
+- Version bump: 0.1.406 -> 0.1.407.
+
 ## 2026-06-08 (Admin group selector includes ordered groups)
 - Admin UI: le select `group` dei form dispositivo includono anche i gruppi creati/ordinati in `User UI: ordine gruppi`, anche se non sono ancora usati da nessun dispositivo.
 - Mantiene l'opzione `Altro (custom)` per nuovi gruppi liberi.
