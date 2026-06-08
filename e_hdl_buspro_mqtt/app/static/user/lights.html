@@ -2207,7 +2207,7 @@
         const t = String(d.type || 'light').toLowerCase();
         if (t !== 'light') return false;
         const cat = String(d.category || '').trim().toLowerCase();
-        return cat === 'switch' || cat === 'extra';
+        return cat === 'switch' || cat === 'extra' || cat === 'ventil';
       }
 
       function isLightListDevice(d) {

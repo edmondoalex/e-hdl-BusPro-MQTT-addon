@@ -303,7 +303,7 @@
         if (t !== 'light') return false;
         if (String(d.origin || '') === 'ha') return String(d.page || 'extra') === 'extra';
         const cat = String(d.category || '').trim().toLowerCase();
-        return cat === 'switch' || cat === 'extra';
+        return cat === 'switch' || cat === 'extra' || cat === 'ventil';
       }
       function isActive(d) {
         const addr = addrOf(d);

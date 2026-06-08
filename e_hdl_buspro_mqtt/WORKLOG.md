@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-06-08 (VENTIL category shown in Extra)
+- User UI: i dispositivi BusPro `type=light` con `category=VENTIL` vengono mostrati automaticamente in `/extra`.
+- User UI Luci: gli stessi dispositivi vengono esclusi da `/lights`, come gia' avviene per `Switch` ed `Extra`.
+- Version bump: 0.1.407 -> 0.1.408.
+
 ## 2026-06-08 (Proxy stream queue hardening)
 - Proxy stream: eliminati gli stack trace `asyncio.queues.QueueFull` quando il browser consuma lentamente lo stream proxato.
 - Per target con `base_url` sotto path applicativo, `/api/stream` viene inoltrato alla root dell'upstream come gli altri endpoint `/api/...`.
