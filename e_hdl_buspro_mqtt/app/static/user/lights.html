@@ -2427,7 +2427,7 @@
             if (floorLabel && floorLabel !== lastFloorLabel) {
               const floor = document.createElement('div');
               floor.className = 'floorSection';
-              floor.textContent = floorLabel;
+              floor.textContent = `# ${floorLabel}`;
               root.appendChild(floor);
               lastFloorLabel = floorLabel;
             } else if (!floorLabel) {

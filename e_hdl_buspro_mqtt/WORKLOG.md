@@ -1,5 +1,9 @@
 # WORKLOG
 
+## 2026-06-08 (Visible floor marker)
+- User UI Luci/Extra: le intestazioni piano mostrano il prefisso `#` anche nella vista utente, per distinguerle chiaramente dai gruppi.
+- Version bump: 0.1.415 -> 0.1.416.
+
 ## 2026-06-08 (Floor header emphasis)
 - User UI Luci/Extra: le intestazioni piano `# ...` sono piu' grandi, in grassetto e piu' leggibili.
 - Version bump: 0.1.414 -> 0.1.415.
