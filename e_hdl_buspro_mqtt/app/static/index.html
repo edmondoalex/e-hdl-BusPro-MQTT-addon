@@ -1800,12 +1800,24 @@
         return String(v || '').trim().startsWith('#');
       }
 
+      function parseGroupHeader(v) {
+        const raw = String(v || '').trim();
+        if (!raw.startsWith('#')) return null;
+        const body = raw.slice(1).trim();
+        if (!body) return null;
+        const parts = body.split('|');
+        const title = normalizeGroup(parts.shift() || '');
+        const color = parts.join('|').trim();
+        if (!title) return null;
+        return { title, color, raw: color ? `# ${title} | ${color}` : `# ${title}` };
+      }
+
       function normalizeGroupOrderEntry(v) {
         const s = String(v || '').trim();
         if (!s) return '';
         if (s.startsWith('#')) {
-          const title = normalizeGroup(s.slice(1));
-          return title ? `# ${title}` : '';
+          const header = parseGroupHeader(s);
+          return header ? header.raw : '';
         }
         return normalizeGroup(s);
       }
@@ -1962,7 +1974,8 @@
           const entry = normalizeGroupOrderEntry(g);
           if (!entry) continue;
           if (isGroupHeader(entry)) {
-            out.push({ kind: 'floor', name: entry.slice(1).trim(), count: 0, raw: entry });
+            const header = parseGroupHeader(entry);
+            if (header) out.push({ kind: 'floor', name: header.title, color: header.color, count: 0, raw: header.raw });
             continue;
           }
           const n = normalizeGroup(entry);
@@ -1997,7 +2010,7 @@
         }
 
         function setOrderFromItems(list) {
-          groupOrder = list.map(x => x.kind === 'floor' ? `# ${x.name}` : x.name);
+          groupOrder = list.map(x => x.kind === 'floor' ? (x.raw || (`# ${x.name}${x.color ? ` | ${x.color}` : ''}`)) : x.name);
           syncTextarea();
         }
 
@@ -2012,7 +2025,7 @@
             <svg class="gHandle" viewBox="0 0 24 24" aria-hidden="true">
               <path fill="currentColor" d="M7 5h2v2H7V5zm8 0h2v2h-2V5zM7 11h2v2H7v-2zm8 0h2v2h-2v-2zM7 17h2v2H7v-2zm8 0h2v2h-2v-2z"></path>
             </svg>
-            <div class="gName">${escapeHtml(it.kind === 'floor' ? `# ${it.name}` : it.name)}</div>
+            <div class="gName">${escapeHtml(it.kind === 'floor' ? (it.raw || `# ${it.name}`) : it.name)}</div>
             <div class="gCount">${it.kind === 'floor' ? 'piano' : (it.count ? `${it.count} dev` : '')}</div>
           `;
 

@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-06-08 (Colored floor headers)
+- User UI Luci/Extra: le intestazioni piano supportano colore opzionale con sintassi `# Piano | #ffd700`.
+- Admin UI: il drag & drop conserva anche il colore configurato sulle intestazioni piano.
+- Version bump: 0.1.419 -> 0.1.420.
+
 ## 2026-06-08 (HA device group selector)
 - Admin UI: il form Home Assistant devices usa la stessa select gruppo dei dispositivi BusPro, con opzione `Altro (custom)`.
 - Version bump: 0.1.418 -> 0.1.419.

@@ -99,14 +99,15 @@
         filter:drop-shadow(0 0 7px rgba(255,215,0,.45));
       }
       .floorSection{
+        --floor-color:rgba(255,255,255,.62);
         padding:16px 16px 8px;
         font-size:13px;
         font-weight:700;
         letter-spacing:.16em;
         text-transform:uppercase;
-        color:rgba(255,255,255,.62);
-        border-top:1px solid rgba(255,255,255,.08);
-        background:linear-gradient(180deg, rgba(255,255,255,.035), rgba(0,0,0,.02));
+        color:var(--floor-color);
+        border-top:1px solid color-mix(in srgb, var(--floor-color) 36%, transparent);
+        background:linear-gradient(180deg, color-mix(in srgb, var(--floor-color) 12%, transparent), rgba(0,0,0,.02));
       }
       .row{
         display:flex;gap:14px;align-items:center;
@@ -2229,12 +2230,29 @@
       function isGroupHeader(v) {
         return String(v || '').trim().startsWith('#');
       }
+      function isValidCssColor(value) {
+        const v = String(value || '').trim();
+        if (!v || !window.CSS || !CSS.supports) return false;
+        return CSS.supports('color', v);
+      }
+      function parseGroupHeader(v) {
+        const raw = String(v || '').trim();
+        if (!raw.startsWith('#')) return null;
+        const body = raw.slice(1).trim();
+        if (!body) return null;
+        const parts = body.split('|');
+        const title = normalizeGroup(parts.shift() || '');
+        const colorRaw = parts.join('|').trim();
+        const color = isValidCssColor(colorRaw) ? colorRaw : '';
+        if (!title) return null;
+        return { title, color, raw: colorRaw ? `# ${title} | ${colorRaw}` : `# ${title}` };
+      }
       function normalizeGroupOrderEntry(v) {
         const s = (v === null || v === undefined) ? '' : String(v).trim();
         if (!s) return '';
         if (s.startsWith('#')) {
-          const title = normalizeGroup(s.slice(1));
-          return title ? `# ${title}` : '';
+          const header = parseGroupHeader(s);
+          return header ? header.raw : '';
         }
         return normalizeGroup(s);
       }
@@ -2249,20 +2267,20 @@
         return 1e8; 
       } 
 
-      function floorLabelForGroupKey(groupKey) {
+      function floorInfoForGroupKey(groupKey) {
         const key = String(groupKey || '').toLowerCase();
-        if (!key || key === GROUP_NONE) return '';
-        let floor = '';
+        if (!key || key === GROUP_NONE) return null;
+        let floor = null;
         for (const item of groupOrder || []) {
           const entry = normalizeGroupOrderEntry(item);
           if (!entry) continue;
           if (isGroupHeader(entry)) {
-            floor = entry.slice(1).trim();
+            floor = parseGroupHeader(entry);
             continue;
           }
           if (normalizeGroup(entry).toLowerCase() === key) return floor;
         }
-        return '';
+        return null;
       }
 
       function isExtraSwitch(d) {
@@ -2417,21 +2435,23 @@
         setCollapseIcon(allCollapsed);
  
         let lastGroupKey = null; 
-        let lastFloorLabel = null;
+        let lastFloorKey = null;
         for (const item of lights) { 
           const dForGroup = item.kind === 'rgb' ? { group: item.group } : item.d;
           const groupKey = groupKeyFromGroup(dForGroup.group);
           const label = groupLabelFromKey(groupKey);
           if (groupKey !== lastGroupKey) { 
-            const floorLabel = floorLabelForGroupKey(groupKey);
-            if (floorLabel && floorLabel !== lastFloorLabel) {
+            const floorInfo = floorInfoForGroupKey(groupKey);
+            const floorKey = floorInfo ? `${floorInfo.title}|${floorInfo.color || ''}` : '';
+            if (floorInfo && floorKey !== lastFloorKey) {
               const floor = document.createElement('div');
               floor.className = 'floorSection';
-              floor.textContent = floorLabel;
+              floor.textContent = floorInfo.title;
+              if (floorInfo.color) floor.style.setProperty('--floor-color', floorInfo.color);
               root.appendChild(floor);
-              lastFloorLabel = floorLabel;
-            } else if (!floorLabel) {
-              lastFloorLabel = '';
+              lastFloorKey = floorKey;
+            } else if (!floorInfo) {
+              lastFloorKey = '';
             }
             const sec = document.createElement('div'); 
             sec.className = 'section'; 
