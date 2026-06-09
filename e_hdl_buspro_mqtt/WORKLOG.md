@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-06-09 (WebView parse diagnostics)
+- Proxy: il bootstrap JS iniettato usa sintassi piu' conservativa per compatibilita' con WebView embedded.
+- User UI: i log `js_error` includono filename, riga e colonna per isolare eventuali parse error residui.
+- Version bump: 0.1.425 -> 0.1.426.
+
 ## 2026-06-09 (Proxy upstream unavailable log)
 - Proxy: gli errori upstream `URLError`/connection refused vengono loggati come warning sintetico invece di stampare traceback completi.
 - UX/API: quando un target proxato non e' raggiungibile, il proxy risponde con `502` e detail `Upstream unavailable`.

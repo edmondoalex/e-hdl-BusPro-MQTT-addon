@@ -78,7 +78,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.425"
+ADDON_VERSION = "0.1.426"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -1350,24 +1350,24 @@ self.addEventListener('fetch', (event) => {{
 <script>
 // buspro proxy bootstrap (best-effort)
 (function() {{
-  const PROXY_PREFIX = '/ext/{name}';
-  const WS_PREFIX = '/extws/{name}';
-  const UPSTREAM_HOST = {json.dumps(upstream_host)};
+  var PROXY_PREFIX = '/ext/{name}';
+  var WS_PREFIX = '/extws/{name}';
+  var UPSTREAM_HOST = {json.dumps(upstream_host)};
   // NOTE: keep debug transport syntax very conservative for embedded webviews.
-  const DEBUG_URL = PROXY_PREFIX + '/__debug/bootstrap';
-  const T0 = Date.now();
-  let DEBUG_SENT = false;
+  var DEBUG_URL = PROXY_PREFIX + '/__debug/bootstrap';
+  var T0 = Date.now();
+  var DEBUG_SENT = false;
   function _enc(v) {{
     try {{ return encodeURIComponent(String(v || '')); }} catch(e) {{ return ''; }}
   }}
   function sendDbg(kind, msg) {{
     try {{
-      const u = DEBUG_URL
+      var u = DEBUG_URL
         + '?k=' + _enc(kind)
         + '&dt=' + _enc(Date.now() - T0)
         + '&m=' + _enc(msg || '')
         + '&rs=' + _enc(document && document.readyState ? document.readyState : '');
-      const i = new Image();
+      var i = new Image();
       i.src = u;
     }} catch(e) {{}}
   }}
@@ -1378,14 +1378,14 @@ self.addEventListener('fetch', (event) => {{
       sendDbg('load', '');
     }});
     window.addEventListener('error', function(ev) {{
-      const m = (ev && ev.message) ? ev.message : '';
-      const s = (ev && ev.filename) ? ev.filename : '';
-      const l = (ev && ev.lineno) ? ev.lineno : 0;
-      const c = (ev && ev.colno) ? ev.colno : 0;
+      var m = (ev && ev.message) ? ev.message : '';
+      var s = (ev && ev.filename) ? ev.filename : '';
+      var l = (ev && ev.lineno) ? ev.lineno : 0;
+      var c = (ev && ev.colno) ? ev.colno : 0;
       sendDbg('js_error', m + ' @' + s + ':' + l + ':' + c);
     }});
     window.addEventListener('unhandledrejection', function(ev) {{
-      let reason = '';
+      var reason = '';
       try {{
         reason = (ev && ev.reason) ? String(ev.reason) : '';
       }} catch(e) {{}}
@@ -1398,9 +1398,9 @@ self.addEventListener('fetch', (event) => {{
   }} catch(e) {{}}
   // Hidden back gesture: long-press top-left corner (works even on proxied pages).
   (function() {{
-    const CORNER = 70;
-    const HOLD_MS = 450;
-    let timer = null;
+    var CORNER = 70;
+    var HOLD_MS = 450;
+    var timer = null;
     function inCornerXY(x, y) {{ return Number(x) <= CORNER && Number(y) <= CORNER; }}
     function clear() {{ if (timer) {{ clearTimeout(timer); timer = null; }} }}
     function goHome() {{ try {{ window.location.href = new URL('/home2', window.location.href).toString(); }} catch(e) {{}} }}
@@ -1420,7 +1420,7 @@ self.addEventListener('fetch', (event) => {{
     }}
     function arm() {{
       if (timer) return;
-      timer = setTimeout(() => {{ timer = null; doBack(); }}, HOLD_MS);
+      timer = setTimeout(function() {{ timer = null; doBack(); }}, HOLD_MS);
     }}
     function onPointerDown(e) {{
       try {{
@@ -1430,7 +1430,7 @@ self.addEventListener('fetch', (event) => {{
     }}
     function onTouchStart(e) {{
       try {{
-        const t = (e.touches && e.touches[0]) ? e.touches[0] : null;
+        var t = (e.touches && e.touches[0]) ? e.touches[0] : null;
         if (!t) return;
         if (!inCornerXY(t.clientX, t.clientY)) return;
         arm();
@@ -1439,18 +1439,18 @@ self.addEventListener('fetch', (event) => {{
     document.addEventListener('pointerdown', onPointerDown, {{ passive: true }});
     document.addEventListener('pointerup', clear, {{ passive: true }});
     document.addEventListener('pointercancel', clear, {{ passive: true }});
-    document.addEventListener('pointermove', (e) => {{ if (!timer) return; try {{ if (!inCornerXY(e.clientX, e.clientY)) clear(); }} catch(ex) {{ clear(); }} }}, {{ passive: true }});
+    document.addEventListener('pointermove', function(e) {{ if (!timer) return; try {{ if (!inCornerXY(e.clientX, e.clientY)) clear(); }} catch(ex) {{ clear(); }} }}, {{ passive: true }});
     document.addEventListener('touchstart', onTouchStart, {{ passive: true }});
     document.addEventListener('touchend', clear, {{ passive: true }});
     document.addEventListener('touchcancel', clear, {{ passive: true }});
     document.addEventListener('mousedown', onPointerDown, {{ passive: true }});
     document.addEventListener('mouseup', clear, {{ passive: true }});
-    document.addEventListener('mousemove', (e) => {{ if (!timer) return; try {{ if (!inCornerXY(e.clientX, e.clientY)) clear(); }} catch(ex) {{ clear(); }} }}, {{ passive: true }});
+    document.addEventListener('mousemove', function(e) {{ if (!timer) return; try {{ if (!inCornerXY(e.clientX, e.clientY)) clear(); }} catch(ex) {{ clear(); }} }}, {{ passive: true }});
   }})();
 
   function abs(u) {{ try {{ return new URL(u, window.location.href).toString(); }} catch(e) {{ return String(u||''); }} }}
   function rewriteNav(u) {{
-    const s = String(u||'');
+    var s = String(u||'');
     if (!s) return s;
     if (s.startsWith(PROXY_PREFIX) || s.startsWith(WS_PREFIX)) return s;
     if (s.startsWith('ext/{name}')) return '/' + s;
@@ -1458,16 +1458,16 @@ self.addEventListener('fetch', (event) => {{
     if (s.startsWith('#')) return s;
     if (s.startsWith('/')) return PROXY_PREFIX + s;
     try {{
-      const parsed = new URL(s, window.location.href);
+      var parsed = new URL(s, window.location.href);
       if (parsed && parsed.host && parsed.host === window.location.host) {{
-        const p = (parsed.pathname || '/');
+        var p = (parsed.pathname || '/');
         if (p.startsWith(PROXY_PREFIX) || p === PROXY_PREFIX || p.startsWith(WS_PREFIX) || p === WS_PREFIX) {{
           return p + (parsed.search||'') + (parsed.hash||'');
         }}
         return PROXY_PREFIX + p + (parsed.search||'') + (parsed.hash||'');
       }}
       if (parsed && parsed.host && parsed.host === UPSTREAM_HOST) {{
-        const p = (parsed.pathname || '/');
+        var p = (parsed.pathname || '/');
         if (p.startsWith(PROXY_PREFIX) || p === PROXY_PREFIX || p.startsWith(WS_PREFIX) || p === WS_PREFIX) {{
           return p + (parsed.search||'') + (parsed.hash||'');
         }}
@@ -1477,7 +1477,7 @@ self.addEventListener('fetch', (event) => {{
     return s;
   }}
   function rewritePath(u) {{
-    const s = String(u||'');
+    var s = String(u||'');
     if (!s) return s;
     if (s.startsWith(PROXY_PREFIX) || s.startsWith(WS_PREFIX)) return s;
     if (s.startsWith('ext/{name}')) return '/' + s;
@@ -1485,9 +1485,9 @@ self.addEventListener('fetch', (event) => {{
     if (s.startsWith('/')) return PROXY_PREFIX + s;
     // Absolute URL on same origin (our add-on) -> force through proxy
     try {{
-      const parsed = new URL(s, window.location.href);
+      var parsed = new URL(s, window.location.href);
       if (parsed && parsed.host && parsed.host === window.location.host) {{
-        const p = (parsed.pathname || '/');
+        var p = (parsed.pathname || '/');
         if (p.startsWith(PROXY_PREFIX) || p === PROXY_PREFIX || p.startsWith(WS_PREFIX) || p === WS_PREFIX) {{
           return p + (parsed.search||'') + (parsed.hash||'');
         }}
@@ -1495,7 +1495,7 @@ self.addEventListener('fetch', (event) => {{
       }}
       // Absolute URL pointing to upstream host -> force through proxy
       if (parsed && parsed.host && parsed.host === UPSTREAM_HOST) {{
-        const p = (parsed.pathname || '/');
+        var p = (parsed.pathname || '/');
         if (p.startsWith(PROXY_PREFIX) || p === PROXY_PREFIX || p.startsWith(WS_PREFIX) || p === WS_PREFIX) {{
           return p + (parsed.search||'') + (parsed.hash||'');
         }}
@@ -1507,16 +1507,16 @@ self.addEventListener('fetch', (event) => {{
 
   // Intercept clicks on absolute paths (e.g. /security/functions) and keep them inside /ext/<name>/...
   try {{
-    document.addEventListener('click', (e) => {{
+    document.addEventListener('click', function(e) {{
       try {{
-        const t = e.target;
+        var t = e.target;
         if (!t) return;
-        const a = (t.closest && t.closest('a')) ? t.closest('a') : null;
+        var a = (t.closest && t.closest('a')) ? t.closest('a') : null;
         if (!a) return;
-        const hrefAttr = a.getAttribute('href') || '';
+        var hrefAttr = a.getAttribute('href') || '';
         if (!hrefAttr) return;
         if (hrefAttr.startsWith('#') || hrefAttr.startsWith('mailto:') || hrefAttr.startsWith('tel:')) return;
-        const rewritten = rewriteNav(hrefAttr);
+        var rewritten = rewriteNav(hrefAttr);
         if (rewritten !== hrefAttr) {{
           e.preventDefault();
           e.stopPropagation();
@@ -1524,13 +1524,13 @@ self.addEventListener('fetch', (event) => {{
         }}
       }} catch(ex) {{}}
     }}, true);
-    document.addEventListener('submit', (e) => {{
+    document.addEventListener('submit', function(e) {{
       try {{
-        const f = e.target;
+        var f = e.target;
         if (!f || !f.getAttribute) return;
-        const action = f.getAttribute('action') || '';
+        var action = f.getAttribute('action') || '';
         if (!action) return;
-        const rewritten = rewriteNav(action);
+        var rewritten = rewriteNav(action);
         if (rewritten !== action) f.setAttribute('action', rewritten);
       }} catch(ex) {{}}
     }}, true);
@@ -1538,7 +1538,7 @@ self.addEventListener('fetch', (event) => {{
 
   // Best-effort patch for location.assign/replace and window.open used by some apps
   try {{
-    const _open = window.open;
+    var _open = window.open;
     if (typeof _open === 'function') {{
       window.open = function(url, target, features) {{
         try {{ url = abs(rewriteNav(url)); }} catch(e) {{}}
@@ -1547,15 +1547,15 @@ self.addEventListener('fetch', (event) => {{
     }}
   }} catch(e) {{}}
   try {{
-    const loc = window.location;
-    const _assign = loc.assign ? loc.assign.bind(loc) : null;
-    const _replace = loc.replace ? loc.replace.bind(loc) : null;
+    var loc = window.location;
+    var _assign = loc.assign ? loc.assign.bind(loc) : null;
+    var _replace = loc.replace ? loc.replace.bind(loc) : null;
     if (_assign) loc.assign = function(u) {{ return _assign(abs(rewriteNav(u))); }};
     if (_replace) loc.replace = function(u) {{ return _replace(abs(rewriteNav(u))); }};
   }} catch(e) {{}}
   // fetch wrapper
   try {{
-    const _fetch = window.fetch;
+    var _fetch = window.fetch;
     if (typeof _fetch === 'function') {{
       window.fetch = function(input, init) {{
         try {{
@@ -1563,9 +1563,9 @@ self.addEventListener('fetch', (event) => {{
             return _fetch(rewritePath(input), init);
           }}
           if (input && typeof input.url === 'string') {{
-            const u = rewritePath(input.url);
+            var u = rewritePath(input.url);
             if (u !== input.url) {{
-              const req = new Request(abs(u), input);
+              var req = new Request(abs(u), input);
               return _fetch(req, init);
             }}
           }}
@@ -1576,13 +1576,13 @@ self.addEventListener('fetch', (event) => {{
   }} catch(e) {{}}
   // XHR wrapper
   try {{
-    const X = window.XMLHttpRequest;
+    var X = window.XMLHttpRequest;
     if (X && X.prototype && typeof X.prototype.open === 'function') {{
-      const _open = X.prototype.open;
+      var _open = X.prototype.open;
       X.prototype.open = function(method, url) {{
         try {{
-          const u = rewritePath(url);
-          const args = Array.prototype.slice.call(arguments);
+          var u = rewritePath(url);
+          var args = Array.prototype.slice.call(arguments);
           args[1] = abs(u);
           return _open.apply(this, args);
         }} catch(e) {{}}
@@ -1592,14 +1592,14 @@ self.addEventListener('fetch', (event) => {{
   }} catch(e) {{}}
   // EventSource wrapper (important on iOS where referer/cookies can be inconsistent in embedded webviews)
   try {{
-    const _ES = window.EventSource;
+    var _ES = window.EventSource;
     if (typeof _ES === 'function') {{
       window.EventSource = function(url, conf) {{
         try {{
-          const u = abs(rewritePath(url));
-          const es = conf ? new _ES(u, conf) : new _ES(u);
+          var u = abs(rewritePath(url));
+          var es = conf ? new _ES(u, conf) : new _ES(u);
           try {{
-            let sent = false;
+            var sent = false;
             es.addEventListener('error', function() {{
               if (sent) return;
               sent = true;
@@ -1617,25 +1617,25 @@ self.addEventListener('fetch', (event) => {{
   }} catch(e) {{}}
   // WebSocket wrapper
   try {{
-    const _WS = window.WebSocket;
+    var _WS = window.WebSocket;
     if (typeof _WS === 'function') {{
       window.WebSocket = function(url, protocols) {{
         try {{
-          let u = String(url||'');
+          var u = String(url||'');
           if (u.startsWith('/')) {{
             u = WS_PREFIX + u;
           }} else {{
-            const parsed = new URL(u, window.location.href);
+            var parsed = new URL(u, window.location.href);
             if (parsed && parsed.host && parsed.host === UPSTREAM_HOST) {{
               u = WS_PREFIX + (parsed.pathname || '/');
               if (parsed.search) u += parsed.search;
             }}
           }}
-          const absu = abs(u);
-          const ws = protocols ? new _WS(absu, protocols) : new _WS(absu);
+          var absu = abs(u);
+          var ws = protocols ? new _WS(absu, protocols) : new _WS(absu);
           try {{
-            let errSent = false;
-            let closeSent = false;
+            var errSent = false;
+            var closeSent = false;
             ws.addEventListener('error', function() {{
               if (errSent) return;
               errSent = true;
@@ -1644,8 +1644,8 @@ self.addEventListener('fetch', (event) => {{
             ws.addEventListener('close', function(ev) {{
               if (closeSent) return;
               closeSent = true;
-              const code = ev && ev.code ? ev.code : 0;
-              const reason = ev && ev.reason ? ev.reason : '';
+              var code = ev && ev.code ? ev.code : 0;
+              var reason = ev && ev.reason ? ev.reason : '';
               sendDbg('ws_close', absu + ' code=' + code + ' reason=' + reason);
             }});
           }} catch(e) {{}}
@@ -5054,7 +5054,13 @@ self.addEventListener('fetch', (event) => {{
       throw e;
     }}
   }};
-  window.addEventListener('error', function(evt) {{ log('js_error', (evt && evt.message) || 'error'); }});
+  window.addEventListener('error', function(evt) {{
+    var msg = (evt && evt.message) || 'error';
+    var src = (evt && evt.filename) ? evt.filename : '';
+    var line = (evt && evt.lineno) ? evt.lineno : 0;
+    var col = (evt && evt.colno) ? evt.colno : 0;
+    log('js_error', msg + ' @' + src + ':' + line + ':' + col);
+  }});
   window.addEventListener('unhandledrejection', function(evt) {{
     var r = evt && evt.reason;
     log('js_rejection', (r && r.message) ? r.message : String(r || 'rejection'));
