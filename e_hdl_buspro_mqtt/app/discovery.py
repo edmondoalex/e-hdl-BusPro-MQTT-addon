@@ -15,6 +15,31 @@ def node_id(gateway_host: str, gateway_port: int) -> str:
     return f"buspro_{gateway_host.replace('.', '_')}_{gateway_port}"
 
 
+def normalize_icon(value: Any) -> str | None:
+    icon = str(value or "").strip()
+    if not icon:
+        return None
+    icon = icon.replace(" ", "-").lower()
+    aliases = {
+        "strip": "mdi:led-strip",
+        "led-strip": "mdi:led-strip",
+        "ledstrip": "mdi:led-strip",
+    }
+    if icon in aliases:
+        return aliases[icon]
+    if re.match(r"^[a-z][a-z0-9_+.-]*:[a-z0-9_-]+$", icon, re.IGNORECASE):
+        return icon
+    if re.match(r"^[a-z0-9_-]+$", icon, re.IGNORECASE):
+        return f"mdi:{icon}"
+    return None
+
+
+def set_icon(payload: dict[str, Any], value: Any) -> None:
+    icon = normalize_icon(value)
+    if icon:
+        payload["icon"] = icon
+
+
 def light_scenario_button_discovery(
     *,
     discovery_prefix: str,
@@ -176,9 +201,7 @@ def light_discovery(
         },
     }
 
-    icon = device.get("icon")
-    if icon:
-        payload["icon"] = str(icon)
+    set_icon(payload, device.get("icon"))
 
     if dimmable:
         payload["brightness"] = True
@@ -231,9 +254,7 @@ def switch_discovery(
         },
     }
 
-    icon = device.get("icon")
-    if icon:
-        payload["icon"] = str(icon)
+    set_icon(payload, device.get("icon"))
 
     topic = f"{discovery_prefix}/switch/{nid}/{oid}/config"
     return topic, payload
@@ -294,9 +315,7 @@ def cover_discovery(
         },
     }
 
-    icon = device.get("icon")
-    if icon:
-        payload["icon"] = str(icon)
+    set_icon(payload, device.get("icon"))
 
     topic = f"{discovery_prefix}/cover/{nid}/{oid}/config"
     return topic, payload
@@ -345,9 +364,7 @@ def cover_no_pct_discovery(
         },
     }
 
-    icon = device.get("icon")
-    if icon:
-        payload["icon"] = str(icon)
+    set_icon(payload, device.get("icon"))
 
     topic = f"{discovery_prefix}/cover/{nid}/{oid}/config"
     return topic, payload
@@ -405,9 +422,7 @@ def cover_group_discovery(
         },
     }
 
-    icon = group.get("icon")
-    if icon:
-        payload["icon"] = str(icon)
+    set_icon(payload, group.get("icon"))
 
     topic = f"{discovery_prefix}/cover/{nid}/{oid}/config"
     return topic, payload
@@ -454,9 +469,7 @@ def cover_group_no_pct_discovery(
         },
     }
 
-    icon = group.get("icon")
-    if icon:
-        payload["icon"] = str(icon)
+    set_icon(payload, group.get("icon"))
 
     topic = f"{discovery_prefix}/cover/{nid}/{oid}/config"
     return topic, payload
@@ -503,9 +516,7 @@ def temperature_discovery(
         },
     }
 
-    icon = device.get("icon")
-    if icon:
-        payload["icon"] = str(icon)
+    set_icon(payload, device.get("icon"))
 
     topic = f"{discovery_prefix}/sensor/{nid}/{oid}/config"
     return topic, payload
@@ -557,9 +568,7 @@ def dry_contact_discovery(
     if device_class and device_class.lower() not in ("none", "null", "undefined"):
         payload["device_class"] = device_class
 
-    icon = device.get("icon")
-    if icon:
-        payload["icon"] = str(icon)
+    set_icon(payload, device.get("icon"))
 
     topic = f"{discovery_prefix}/binary_sensor/{nid}/{oid}/config"
     return topic, payload
@@ -607,9 +616,7 @@ def pir_discovery(
         },
     }
 
-    icon = device.get("icon")
-    if icon:
-        payload["icon"] = str(icon)
+    set_icon(payload, device.get("icon"))
 
     topic = f"{discovery_prefix}/binary_sensor/{nid}/{oid}/config"
     return topic, payload
@@ -657,9 +664,7 @@ def ultrasonic_discovery(
         },
     }
 
-    icon = device.get("icon")
-    if icon:
-        payload["icon"] = str(icon)
+    set_icon(payload, device.get("icon"))
 
     topic = f"{discovery_prefix}/binary_sensor/{nid}/{oid}/config"
     return topic, payload
@@ -706,9 +711,7 @@ def humidity_discovery(
         },
     }
 
-    icon = device.get("icon")
-    if icon:
-        payload["icon"] = str(icon)
+    set_icon(payload, device.get("icon"))
 
     topic = f"{discovery_prefix}/sensor/{nid}/{oid}/config"
     return topic, payload
@@ -755,9 +758,7 @@ def illuminance_discovery(
         },
     }
 
-    icon = device.get("icon")
-    if icon:
-        payload["icon"] = str(icon)
+    set_icon(payload, device.get("icon"))
 
     topic = f"{discovery_prefix}/sensor/{nid}/{oid}/config"
     return topic, payload
@@ -803,9 +804,7 @@ def air_quality_discovery(
         },
     }
 
-    icon = device.get("icon")
-    if icon:
-        payload["icon"] = str(icon)
+    set_icon(payload, device.get("icon"))
 
     topic = f"{discovery_prefix}/sensor/{nid}/{oid}/config"
     return topic, payload
@@ -853,9 +852,7 @@ def gas_percent_discovery(
     }
 
     # Allow separate icon (optional)
-    icon2 = device.get("gas_icon")
-    if icon2:
-        payload["icon"] = str(icon2)
+    set_icon(payload, device.get("gas_icon"))
 
     topic = f"{discovery_prefix}/sensor/{nid}/{oid}/config"
     return topic, payload

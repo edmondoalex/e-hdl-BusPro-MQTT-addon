@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-06-09 (Normalize MQTT discovery icons)
+- MQTT Discovery: le icone vengono normalizzate nel formato richiesto da Home Assistant `prefix:name`.
+- Compatibilita': valori legacy come `strip` vengono pubblicati come `mdi:led-strip`, evitando errori MQTT discovery su `data['icon']`.
+- Version bump: 0.1.421 -> 0.1.422.
+
 ## 2026-06-09 (Ignore invalid UDP telegrams)
 - BusPro UDP: i datagrammi con CRC non valido vengono scartati prima dei callback, evitando `AttributeError: 'NoneType' object has no attribute 'target_address'`.
 - Parser BusPro: i CRC falliti passano a log debug invece di stampare ripetutamente su stdout.
