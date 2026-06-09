@@ -78,7 +78,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.422"
+ADDON_VERSION = "0.1.423"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -220,6 +220,152 @@ def _parse_light_cmd(payload: str) -> tuple[bool, int | None]:
         return up == "ON", None
 
     raise ValueError("unsupported payload")
+
+
+def _len_or_minus(value: Any) -> int:
+    try:
+        return len(value)
+    except Exception:
+        return -1
+
+
+def _read_proc_memory() -> dict[str, Any]:
+    out: dict[str, Any] = {"rss_mb": -1.0, "vms_mb": -1.0, "swap_mb": -1.0, "threads": -1}
+    try:
+        with open("/proc/self/status", "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    out["rss_mb"] = round(int(line.split()[1]) / 1024, 1)
+                elif line.startswith("VmSize:"):
+                    out["vms_mb"] = round(int(line.split()[1]) / 1024, 1)
+                elif line.startswith("VmSwap:"):
+                    out["swap_mb"] = round(int(line.split()[1]) / 1024, 1)
+                elif line.startswith("Threads:"):
+                    out["threads"] = int(line.split()[1])
+    except Exception:
+        pass
+    return out
+
+
+def _task_name(task: asyncio.Task[Any]) -> str:
+    try:
+        name = task.get_name()
+        if name and not name.startswith("Task-"):
+            return name
+    except Exception:
+        pass
+    try:
+        coro = task.get_coro()
+        return str(getattr(coro, "__qualname__", "") or getattr(coro, "__name__", "") or type(coro).__name__)
+    except Exception:
+        return "unknown"
+
+
+def _async_task_summary() -> tuple[int, str]:
+    try:
+        tasks = list(asyncio.all_tasks())
+    except Exception:
+        return -1, ""
+    counts: dict[str, int] = {}
+    for task in tasks:
+        name = _task_name(task)
+        counts[name] = counts.get(name, 0) + 1
+    top = sorted(counts.items(), key=lambda it: (-it[1], it[0]))[:12]
+    return len(tasks), ",".join(f"{k}:{v}" for k, v in top)
+
+
+def _memory_debug_snapshot(api: FastAPI, store: StateStore, mqtt: MqttClient, hub: RealtimeHub) -> dict[str, Any]:
+    snap: dict[str, Any] = _read_proc_memory()
+    task_count, task_top = _async_task_summary()
+    snap["tasks"] = task_count
+    snap["task_top"] = task_top
+
+    try:
+        status = mqtt.status()
+        snap["mqtt_clients"] = 1
+        snap["mqtt_connected"] = int(bool(status.connected))
+        snap["mqtt_error"] = status.last_error or ""
+        snap["mqtt_subscriptions"] = _len_or_minus(getattr(mqtt, "_subscriptions", None))
+    except Exception as e:
+        snap["mqtt_clients"] = 0
+        snap["mqtt_connected"] = 0
+        snap["mqtt_error"] = str(e)
+        snap["mqtt_subscriptions"] = -1
+
+    snap["ws_clients"] = _len_or_minus(getattr(hub, "_clients", None))
+
+    try:
+        raw = store.read_raw()
+    except Exception:
+        raw = {}
+    ui = raw.get("ui", {}) if isinstance(raw, dict) else {}
+    snap["devices"] = _len_or_minus(raw.get("devices", []) if isinstance(raw, dict) else [])
+    snap["states"] = _len_or_minus(raw.get("states", {}) if isinstance(raw, dict) else {})
+    snap["ha_devices"] = _len_or_minus(ui.get("ha_devices", []) if isinstance(ui, dict) else [])
+    snap["group_order"] = _len_or_minus(ui.get("group_order", []) if isinstance(ui, dict) else [])
+    snap["cover_groups"] = _len_or_minus(ui.get("cover_groups", []) if isinstance(ui, dict) else [])
+    snap["light_scenarios"] = _len_or_minus(ui.get("light_scenarios", []) if isinstance(ui, dict) else [])
+    snap["scenario_ha_triggers"] = _len_or_minus(ui.get("scenario_ha_triggers", []) if isinstance(ui, dict) else [])
+    snap["proxy_targets"] = _len_or_minus(ui.get("proxy_targets", []) if isinstance(ui, dict) else [])
+    snap["guard_cameras"] = _len_or_minus(ui.get("guard_cameras", []) if isinstance(ui, dict) else [])
+
+    state_names = (
+        "ha_states",
+        "ha_caps",
+        "_last_light_state",
+        "_last_cover_state",
+        "_last_cover_group_state",
+        "_last_temp_value",
+        "_last_humidity_value",
+        "_last_illuminance_value",
+        "_last_dry_contact_state",
+        "_last_pir_state",
+        "_last_ultrasonic_state",
+        "_last_air_quality",
+        "_last_gas_percent",
+        "cover_groups_by_gid",
+        "cover_group_membership",
+        "temp_index",
+        "dry_contact_index",
+        "air_index",
+        "pir_index",
+        "ultrasonic_index",
+        "cover_sim_tasks",
+        "scenario_tasks",
+        "scenario_running",
+        "scenario_trigger_last",
+    )
+    for name in state_names:
+        snap[name] = _len_or_minus(getattr(api.state, name, None))
+
+    try:
+        sniffer_status = api.state.sniffer.status()
+        snap["sniffer_enabled"] = int(bool(sniffer_status.get("enabled")))
+        snap["sniffer_buffer"] = int(sniffer_status.get("buffer_len") or 0)
+        snap["sniffer_buffer_max"] = int(sniffer_status.get("buffer_max") or 0)
+        snap["sniffer_matched"] = int(sniffer_status.get("matched") or 0)
+        snap["sniffer_dropped"] = int(sniffer_status.get("dropped") or 0)
+    except Exception:
+        snap["sniffer_enabled"] = 0
+        snap["sniffer_buffer"] = -1
+        snap["sniffer_buffer_max"] = -1
+        snap["sniffer_matched"] = -1
+        snap["sniffer_dropped"] = -1
+
+    return snap
+
+
+async def _memory_debug_loop(api: FastAPI, store: StateStore, mqtt: MqttClient, hub: RealtimeHub) -> None:
+    while True:
+        try:
+            snap = _memory_debug_snapshot(api, store, mqtt, hub)
+            detail = " ".join(f"{k}={v}" for k, v in snap.items())
+            _LOGGER.info("memory_diag %s", detail)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            _LOGGER.exception("memory_diag failed")
+        await asyncio.sleep(60)
 
 
 def create_app() -> FastAPI: 
@@ -850,6 +996,7 @@ def create_app() -> FastAPI:
     api.state.scenario_tasks = {}
     api.state.scenario_running = {}
     api.state.scenario_trigger_last = {}
+    api.state.memory_debug_task = None
     api.state.sun_cache = {"ts": 0.0, "next_rising": None, "next_setting": None}
 
     @api.middleware("http")
@@ -3552,6 +3699,10 @@ self.addEventListener('fetch', (event) => {{
         api.state.air_index = {}
         api.state.pir_index = {}
         api.state.ultrasonic_index = {}
+        api.state.memory_debug_task = asyncio.create_task(
+            _memory_debug_loop(api, store, mqtt, hub),
+            name="buspro_memory_debug",
+        )
 
         # Cleanup: remove SET_POSITION from scenario covers (direct-only).
         try:
@@ -4752,6 +4903,17 @@ self.addEventListener('fetch', (event) => {{
         if not do_shutdown:
             _LOGGER.info("Secondary server shutdown detected: skipping duplicate runtime shutdown")
             return
+
+        mem_task = getattr(api.state, "memory_debug_task", None)
+        if mem_task is not None:
+            mem_task.cancel()
+            try:
+                await mem_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                pass
+            api.state.memory_debug_task = None
 
         try:
             mqtt.publish(f"{settings.mqtt.base_topic}/availability", "offline", retain=True)

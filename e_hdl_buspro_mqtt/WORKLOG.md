@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-06-09 (Runtime memory diagnostics)
+- Runtime: aggiunto log `memory_diag` ogni 60 secondi con RSS/VMS/swap, thread, task asyncio, stato MQTT, client WebSocket e dimensioni delle principali strutture dati.
+- Diagnostica: inclusi conteggi di device, stati, gruppi, scenari, dispositivi HA, cache runtime e buffer sniffer per individuare crescite anomale nel tempo.
+- Shutdown: il task diagnostico viene cancellato esplicitamente durante lo spegnimento reale del runtime.
+- Version bump: 0.1.422 -> 0.1.423.
+
 ## 2026-06-09 (Normalize MQTT discovery icons)
 - MQTT Discovery: le icone vengono normalizzate nel formato richiesto da Home Assistant `prefix:name`.
 - Compatibilita': valori legacy come `strip` vengono pubblicati come `mdi:led-strip`, evitando errori MQTT discovery su `data['icon']`.
