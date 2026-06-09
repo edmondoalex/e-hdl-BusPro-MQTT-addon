@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-06-09 (Admin scenario editor)
+- Admin UI: la sezione scenari consente ora di creare scenari nuovi e modificare quelli esistenti senza passare dalla UI utente.
+- Admin UI: aggiunti ricerca, aggiunta singola e "Aggiungi visibili" per luci BusPro, cover BusPro, gruppi cover, luci/switch HA e cover HA supportati dal motore scenari.
+- Admin UI: le schede accordion partono chiuse/minimizzate a ogni apertura della pagina Admin.
+- Version bump: 0.1.429 -> 0.1.430.
+
 ## 2026-06-09 (Disable noisy global JS error telemetry)
 - User UI: disabilitata la cattura globale `window.onerror` per evitare warning ripetuti `Unexpected end of input` non azionabili su Android WebView.
 - Proxy: disabilitata la telemetria globale `js_error` del bootstrap, mantenendo rejection/stream/websocket diagnostics.

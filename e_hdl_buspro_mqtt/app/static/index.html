@@ -1277,8 +1277,63 @@
                   <input id="scCfgId" readonly placeholder="scenario_id" />
                 </div>
                 <div style="display:flex;align-items:end;gap:10px">
+                  <button class="btn small" id="btnScCfgNew" type="button">Nuovo scenario</button>
                   <button class="btn secondary small" id="btnScCfgReload" type="button">Ricarica lista</button>
                   <button class="btn secondary small" id="btnScCfgLoad" type="button">Carica</button>
+                </div>
+              </div>
+
+              <div class="row3" style="margin-top:10px">
+                <div>
+                  <label>Nome</label>
+                  <input id="scCfgName" placeholder="Nome scenario" />
+                </div>
+                <div>
+                  <label>Azioni</label>
+                  <div class="flex" style="margin-top:8px">
+                    <label style="display:flex;align-items:center;gap:8px;margin:0">
+                      <input id="scCfgRun" type="checkbox" />
+                      RUN
+                    </label>
+                    <label style="display:flex;align-items:center;gap:8px;margin:0">
+                      <input id="scCfgOnOff" type="checkbox" checked />
+                      ON/OFF
+                    </label>
+                  </div>
+                </div>
+                <div>
+                  <label>Trigger E-manager</label>
+                  <div class="flex" style="margin-top:8px">
+                    <label style="display:flex;align-items:center;gap:8px;margin:0">
+                      <input id="scCfgHaEnabled" type="checkbox" />
+                      Attivo
+                    </label>
+                    <select id="scCfgHaTrigger" style="min-width:180px">
+                      <option value="">Nessun trigger</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div class="row" style="margin-top:10px">
+                <div>
+                  <label>Cerca dispositivi</label>
+                  <input id="scCfgSearch" placeholder="Nome, gruppo, indirizzo, entity_id..." />
+                </div>
+                <div style="display:flex;align-items:end;gap:10px">
+                  <button class="btn secondary small" id="btnScCfgAddVisible" type="button">Aggiungi visibili</button>
+                  <button class="btn secondary small" id="btnScCfgRefreshDevices" type="button">Aggiorna dispositivi</button>
+                </div>
+              </div>
+
+              <div class="row" style="margin-top:10px;align-items:start">
+                <div>
+                  <label>Dispositivi disponibili</label>
+                  <div id="scCfgAvailable" style="max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:12px;margin-top:8px"></div>
+                </div>
+                <div>
+                  <label>Dispositivi nello scenario</label>
+                  <div id="scCfgSelected" style="max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:12px;margin-top:8px"></div>
                 </div>
               </div>
 
@@ -1789,6 +1844,8 @@
       let calibTicker = null; 
       let userFilter = 'all'; // all|light|cover 
       let groupOrder = [];
+      let scenarioConfigDraft = null;
+      let scenarioConfigAvailable = [];
 
       function normalizeGroup(v) {
         const s = String(v || '').trim();
@@ -2929,6 +2986,7 @@
           coverGroups = Array.isArray(res.groups) ? res.groups : [];
           renderCoverGroupsTable();
           renderCoverGroupIdsDatalist();
+          renderScenarioConfigLists();
         } catch (e) {
           // ignore
         }
@@ -3190,6 +3248,7 @@
               renderDryContacts(devices);
               renderCoverGroupMembersOptions();
               refreshCoverGroups();
+              renderScenarioConfigLists();
               renderGroupDnD();
               refreshUsedGroups();
               refreshUsedIcons();
@@ -3210,6 +3269,7 @@
               renderDryContacts(devices);
               renderDryContacts(devices);
               renderCoverGroupMembersOptions();
+              renderScenarioConfigLists();
               renderGroupDnD();
               refreshUsedGroups();
               refreshUsedIcons();
@@ -4552,7 +4612,7 @@
 
         document.querySelectorAll('details.acc[data-acc]').forEach((d) => {
           const k = d.getAttribute('data-acc') || '';
-          if (k && Object.prototype.hasOwnProperty.call(saved, k)) d.open = !!saved[k];
+          d.open = false;
           d.addEventListener('toggle', () => {
             if (!k) return;
             saved[k] = d.open;
@@ -5399,7 +5459,398 @@
         } catch (e) {
           scenarioHaTriggers = [];
         }
+        renderScenarioConfigHaTriggerOptions();
         renderScenarioHaTriggers();
+      }
+
+      function blankScenarioConfigDraft() {
+        return {
+          name: '',
+          items: [],
+          covers: [],
+          combination_targets: [],
+          run_enabled: false,
+          onoff_enabled: true,
+          ha_trigger_enabled: false,
+          ha_trigger_id: '',
+        };
+      }
+
+      function cloneScenarioConfigDraft(sc) {
+        const base = blankScenarioConfigDraft();
+        if (!sc || typeof sc !== 'object') return base;
+        const out = Object.assign(base, JSON.parse(JSON.stringify(sc)));
+        out.items = Array.isArray(out.items) ? out.items : [];
+        out.covers = Array.isArray(out.covers) ? out.covers : [];
+        out.combination_targets = Array.isArray(out.combination_targets) ? out.combination_targets : [];
+        out.run_enabled = !!out.run_enabled;
+        out.onoff_enabled = ('onoff_enabled' in out) ? !!out.onoff_enabled : true;
+        out.ha_trigger_enabled = !!out.ha_trigger_enabled;
+        out.ha_trigger_id = String(out.ha_trigger_id || '').trim();
+        return out;
+      }
+
+      function scenarioItemKey(it) {
+        if (!it || typeof it !== 'object') return '';
+        const eid = String(it.entity_id || '').trim().toLowerCase();
+        if (eid) return `ha_light:${eid}`;
+        const s = Number(it.subnet_id);
+        const d = Number(it.device_id);
+        const c = Number(it.channel);
+        if (!Number.isFinite(s) || !Number.isFinite(d) || !Number.isFinite(c)) return '';
+        return `buspro_light:${s}.${d}.${c}`;
+      }
+
+      function scenarioCoverKey(it) {
+        if (!it || typeof it !== 'object') return '';
+        const kind = String(it.kind || 'single').trim().toLowerCase();
+        if (kind === 'group') return `cover_group:${String(it.group_id || '').trim()}`;
+        if (kind === 'ha') return `ha_cover:${String(it.entity_id || '').trim().toLowerCase()}`;
+        const s = Number(it.subnet_id);
+        const d = Number(it.device_id);
+        const c = Number(it.channel);
+        if (!Number.isFinite(s) || !Number.isFinite(d) || !Number.isFinite(c)) return '';
+        return `buspro_cover:${s}.${d}.${c}`;
+      }
+
+      function selectedScenarioTargetKeys() {
+        const keys = new Set();
+        const draft = scenarioConfigDraft || blankScenarioConfigDraft();
+        for (const it of (draft.items || [])) {
+          const k = scenarioItemKey(it);
+          if (k) keys.add(k);
+        }
+        for (const it of (draft.covers || [])) {
+          const k = scenarioCoverKey(it);
+          if (k) keys.add(k);
+        }
+        return keys;
+      }
+
+      function scenarioTargetLabelForBuspro(d) {
+        const addr = addrOf(d);
+        const name = String(d.name || addr).trim();
+        const group = normalizeGroup(d.group || d.category || '');
+        return group ? `${name} - ${group}` : name;
+      }
+
+      function buildScenarioConfigAvailable() {
+        const out = [];
+        for (const d of (lastDevices || [])) {
+          if (!d || typeof d !== 'object') continue;
+          const type = String(d.type || 'light').trim().toLowerCase();
+          const addr = addrOf(d);
+          if (!addr) continue;
+          if (type === 'light') {
+            out.push({
+              key: `buspro_light:${addr}`,
+              kind: 'buspro_light',
+              label: scenarioTargetLabelForBuspro(d),
+              meta: `BusPro luce ${addr}${d.dimmable ? ' dimmer' : ''}`,
+              search: `${String(d.name || '')} ${String(d.group || '')} ${String(d.category || '')} ${addr}`,
+              data: d,
+            });
+          } else if (type === 'cover') {
+            out.push({
+              key: `buspro_cover:${addr}`,
+              kind: 'buspro_cover',
+              label: scenarioTargetLabelForBuspro(d),
+              meta: `BusPro cover ${addr}`,
+              search: `${String(d.name || '')} ${String(d.group || '')} ${String(d.category || '')} ${addr}`,
+              data: d,
+            });
+          }
+        }
+        for (const g of (coverGroups || [])) {
+          const gid = String(g.id || '').trim();
+          if (!gid) continue;
+          const name = String(g.name || gid).trim();
+          out.push({
+            key: `cover_group:${gid}`,
+            kind: 'cover_group',
+            label: name,
+            meta: `Gruppo cover ${gid}`,
+            search: `${name} ${gid}`,
+            data: g,
+          });
+        }
+        for (const it of (haDevices || [])) {
+          if (!it || typeof it !== 'object') continue;
+          const eid = String(it.entity_id || '').trim().toLowerCase();
+          if (!eid || !eid.includes('.')) continue;
+          const domain = String(it.domain || eid.split('.', 1)[0]).trim().toLowerCase();
+          const name = String(it.name || eid).trim();
+          const group = normalizeGroup(it.group || '');
+          if (domain === 'light' || domain === 'switch') {
+            out.push({
+              key: `ha_light:${eid}`,
+              kind: 'ha_light',
+              label: group ? `${name} - ${group}` : name,
+              meta: `Home Assistant ${domain} ${eid}`,
+              search: `${name} ${group} ${eid} ${domain}`,
+              data: Object.assign({}, it, { domain }),
+            });
+          } else if (domain === 'cover') {
+            out.push({
+              key: `ha_cover:${eid}`,
+              kind: 'ha_cover',
+              label: group ? `${name} - ${group}` : name,
+              meta: `Home Assistant cover ${eid}`,
+              search: `${name} ${group} ${eid} ${domain}`,
+              data: Object.assign({}, it, { domain }),
+            });
+          }
+        }
+        scenarioConfigAvailable = out;
+        return out;
+      }
+
+      function scenarioTargetToPayload(target) {
+        const kind = String((target && target.kind) || '');
+        const d = (target && target.data) || {};
+        if (kind === 'buspro_light') {
+          return {
+            list: 'items',
+            value: {
+              subnet_id: Number(d.subnet_id),
+              device_id: Number(d.device_id),
+              channel: Number(d.channel),
+              state: 'ON',
+              brightness: d.dimmable ? 255 : null,
+            },
+          };
+        }
+        if (kind === 'ha_light') {
+          const domain = String(d.domain || 'light').trim().toLowerCase();
+          return {
+            list: 'items',
+            value: {
+              entity_id: String(d.entity_id || '').trim().toLowerCase(),
+              domain,
+              state: 'ON',
+              brightness: domain === 'light' ? 255 : null,
+            },
+          };
+        }
+        const coverBase = {
+          command: 'OPEN',
+          position: null,
+          ramp_minutes: 0,
+          step_seconds: 5,
+          two_phase_open: false,
+          phase1_pct: 25,
+          phase2_delay_minutes: 4,
+        };
+        if (kind === 'buspro_cover') {
+          return {
+            list: 'covers',
+            value: Object.assign({}, coverBase, {
+              kind: 'single',
+              subnet_id: Number(d.subnet_id),
+              device_id: Number(d.device_id),
+              channel: Number(d.channel),
+            }),
+          };
+        }
+        if (kind === 'cover_group') {
+          return {
+            list: 'covers',
+            value: Object.assign({}, coverBase, {
+              kind: 'group',
+              group_id: String(d.id || '').trim(),
+            }),
+          };
+        }
+        if (kind === 'ha_cover') {
+          return {
+            list: 'covers',
+            value: Object.assign({}, coverBase, {
+              kind: 'ha',
+              entity_id: String(d.entity_id || '').trim().toLowerCase(),
+            }),
+          };
+        }
+        return null;
+      }
+
+      function addScenarioConfigTarget(target) {
+        const converted = scenarioTargetToPayload(target);
+        if (!converted) return false;
+        if (!scenarioConfigDraft) scenarioConfigDraft = blankScenarioConfigDraft();
+        const keys = selectedScenarioTargetKeys();
+        const k = converted.list === 'items' ? scenarioItemKey(converted.value) : scenarioCoverKey(converted.value);
+        if (!k || keys.has(k)) return false;
+        scenarioConfigDraft[converted.list] = (scenarioConfigDraft[converted.list] || []).concat([converted.value]);
+        return true;
+      }
+
+      function renderScenarioConfigHaTriggerOptions() {
+        const sel = qs('scCfgHaTrigger');
+        if (!sel) return;
+        const prev = String(sel.value || '').trim();
+        sel.innerHTML = '<option value="">Nessun trigger</option>';
+        for (const tr of (scenarioHaTriggers || [])) {
+          const id = String(tr.id || '').trim();
+          if (!id) continue;
+          const o = document.createElement('option');
+          o.value = id;
+          o.textContent = String(tr.name || id);
+          sel.appendChild(o);
+        }
+        sel.value = prev;
+      }
+
+      function applyScenarioConfigDraftToControls() {
+        const draft = scenarioConfigDraft || blankScenarioConfigDraft();
+        const idEl = qs('scCfgId');
+        if (idEl) idEl.value = String(draft.id || '').trim();
+        if (qs('scCfgName')) qs('scCfgName').value = String(draft.name || '');
+        if (qs('scCfgRun')) qs('scCfgRun').checked = !!draft.run_enabled;
+        if (qs('scCfgOnOff')) qs('scCfgOnOff').checked = ('onoff_enabled' in draft) ? !!draft.onoff_enabled : true;
+        if (qs('scCfgHaEnabled')) qs('scCfgHaEnabled').checked = !!draft.ha_trigger_enabled;
+        renderScenarioConfigHaTriggerOptions();
+        if (qs('scCfgHaTrigger')) qs('scCfgHaTrigger').value = String(draft.ha_trigger_id || '').trim();
+      }
+
+      function readScenarioConfigControls() {
+        if (!scenarioConfigDraft) scenarioConfigDraft = blankScenarioConfigDraft();
+        scenarioConfigDraft.name = String((qs('scCfgName') && qs('scCfgName').value) || '').trim();
+        scenarioConfigDraft.run_enabled = !!(qs('scCfgRun') && qs('scCfgRun').checked);
+        scenarioConfigDraft.onoff_enabled = !!(qs('scCfgOnOff') && qs('scCfgOnOff').checked);
+        scenarioConfigDraft.ha_trigger_enabled = !!(qs('scCfgHaEnabled') && qs('scCfgHaEnabled').checked);
+        scenarioConfigDraft.ha_trigger_id = String((qs('scCfgHaTrigger') && qs('scCfgHaTrigger').value) || '').trim();
+        if (!scenarioConfigDraft.ha_trigger_enabled) scenarioConfigDraft.ha_trigger_id = '';
+        return scenarioConfigDraft;
+      }
+
+      function scenarioConfigPayloadFromDraft() {
+        const draft = readScenarioConfigControls();
+        const out = JSON.parse(JSON.stringify(draft));
+        if (!String(out.id || '').trim()) delete out.id;
+        return out;
+      }
+
+      function syncScenarioConfigJson() {
+        const ta = qs('scCfgJson');
+        if (!ta) return;
+        ta.value = JSON.stringify(scenarioConfigPayloadFromDraft(), null, 2);
+      }
+
+      function renderScenarioConfigAvailable() {
+        const root = qs('scCfgAvailable');
+        if (!root) return;
+        const keys = selectedScenarioTargetKeys();
+        const q = String((qs('scCfgSearch') && qs('scCfgSearch').value) || '').trim().toLowerCase();
+        const all = buildScenarioConfigAvailable();
+        const items = all.filter((x) => !q || String(`${x.label} ${x.meta} ${x.search}`).toLowerCase().includes(q));
+        if (!items.length) {
+          root.innerHTML = '<div class="muted" style="padding:10px">Nessun dispositivo trovato.</div>';
+          return;
+        }
+        root.innerHTML = '';
+        for (const target of items) {
+          const added = keys.has(target.key);
+          const row = document.createElement('div');
+          row.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 10px;border-bottom:1px solid var(--line)';
+          row.innerHTML = `
+            <div style="min-width:0">
+              <div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(target.label)}</div>
+              <div class="muted" style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(target.meta)}</div>
+            </div>
+            <button class="btn secondary small" type="button" data-key="${escapeHtml(target.key)}">${added ? "Gia' presente" : 'Aggiungi'}</button>
+          `;
+          const btn = row.querySelector('button');
+          btn.disabled = added;
+          btn.addEventListener('click', () => {
+            addScenarioConfigTarget(target);
+            syncScenarioConfigJson();
+            renderScenarioConfigLists();
+          });
+          root.appendChild(row);
+        }
+      }
+
+      function renderScenarioConfigSelected() {
+        const root = qs('scCfgSelected');
+        if (!root) return;
+        const draft = scenarioConfigDraft || blankScenarioConfigDraft();
+        const rows = [];
+        for (const it of (draft.items || [])) {
+          const key = scenarioItemKey(it);
+          if (!key) continue;
+          const isHa = key.startsWith('ha_light:');
+          const label = isHa
+            ? String(it.entity_id || key)
+            : String(`${it.subnet_id}.${it.device_id}.${it.channel}`);
+          rows.push({ list: 'items', key, label, meta: isHa ? `HA ${String(it.domain || 'light')}` : 'BusPro luce', value: it });
+        }
+        for (const it of (draft.covers || [])) {
+          const key = scenarioCoverKey(it);
+          if (!key) continue;
+          let label = key;
+          let meta = 'Cover';
+          const kind = String(it.kind || 'single').toLowerCase();
+          if (kind === 'group') {
+            label = String(it.group_id || key);
+            meta = 'Gruppo cover';
+          } else if (kind === 'ha') {
+            label = String(it.entity_id || key);
+            meta = 'HA cover';
+          } else {
+            label = String(`${it.subnet_id}.${it.device_id}.${it.channel}`);
+            meta = 'BusPro cover';
+          }
+          rows.push({ list: 'covers', key, label, meta, value: it });
+        }
+        if (!rows.length) {
+          root.innerHTML = '<div class="muted" style="padding:10px">Nessun dispositivo nello scenario.</div>';
+          return;
+        }
+        root.innerHTML = '';
+        for (const rowData of rows) {
+          const row = document.createElement('div');
+          row.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:9px 10px;border-bottom:1px solid var(--line)';
+          if (rowData.list === 'items') {
+            const state = String(rowData.value.state || 'ON').toUpperCase() === 'OFF' ? 'OFF' : 'ON';
+            const br = rowData.value.brightness === null || rowData.value.brightness === undefined ? '' : Number(rowData.value.brightness);
+            row.innerHTML = `
+              <div style="min-width:0">
+                <div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(rowData.label)}</div>
+                <div class="muted" style="font-size:12px">${escapeHtml(rowData.meta)}</div>
+              </div>
+              <div class="flex">
+                <select data-field="state" data-key="${escapeHtml(rowData.key)}" style="width:84px">
+                  <option value="ON">ON</option>
+                  <option value="OFF">OFF</option>
+                </select>
+                <input data-field="brightness" data-key="${escapeHtml(rowData.key)}" type="number" min="0" max="255" placeholder="dim" value="${escapeHtml(String(br))}" style="width:82px" />
+              </div>
+              <button class="btn danger small" data-act="remove" data-key="${escapeHtml(rowData.key)}" type="button">Rimuovi</button>
+            `;
+            row.querySelector('[data-field="state"]').value = state;
+          } else {
+            const cmd = String(rowData.value.command || 'OPEN').toUpperCase();
+            row.innerHTML = `
+              <div style="min-width:0">
+                <div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(rowData.label)}</div>
+                <div class="muted" style="font-size:12px">${escapeHtml(rowData.meta)}</div>
+              </div>
+              <select data-field="command" data-key="${escapeHtml(rowData.key)}" style="width:118px">
+                <option value="OPEN">OPEN</option>
+                <option value="CLOSE">CLOSE</option>
+                <option value="STOP">STOP</option>
+              </select>
+              <button class="btn danger small" data-act="remove" data-key="${escapeHtml(rowData.key)}" type="button">Rimuovi</button>
+            `;
+            row.querySelector('[data-field="command"]').value = ['OPEN', 'CLOSE', 'STOP'].includes(cmd) ? cmd : 'OPEN';
+          }
+          root.appendChild(row);
+        }
+      }
+
+      function renderScenarioConfigLists() {
+        renderScenarioConfigAvailable();
+        renderScenarioConfigSelected();
       }
 
       function setScenarioConfigEditor(sc) {
@@ -5409,12 +5860,18 @@
         const ta = qs('scCfgJson');
         if (!idEl || !ta) return;
         if (!sc || typeof sc !== 'object') {
+          scenarioConfigDraft = blankScenarioConfigDraft();
           idEl.value = '';
-          ta.value = '';
+          applyScenarioConfigDraftToControls();
+          syncScenarioConfigJson();
+          renderScenarioConfigLists();
           return;
         }
-        idEl.value = String(sc.id || '').trim();
-        ta.value = JSON.stringify(sc, null, 2);
+        scenarioConfigDraft = cloneScenarioConfigDraft(sc);
+        idEl.value = String(scenarioConfigDraft.id || '').trim();
+        applyScenarioConfigDraftToControls();
+        syncScenarioConfigJson();
+        renderScenarioConfigLists();
       }
 
       function getSelectedScenarioFromCache() {
@@ -5431,7 +5888,6 @@
         const ta = qs('scCfgJson');
         const sid = String((qs('scCfgSelect') && qs('scCfgSelect').value) || '').trim();
         const raw = String((ta && ta.value) || '').trim();
-        if (!sid) throw new Error('Seleziona uno scenario');
         if (!raw) throw new Error('JSON vuoto');
         let parsed = null;
         try {
@@ -5443,10 +5899,11 @@
           throw new Error('Il JSON deve essere un oggetto');
         }
         const payloadId = String(parsed.id || '').trim();
-        if (payloadId && payloadId !== sid) {
+        if (sid && payloadId && payloadId !== sid) {
           throw new Error('ID nel JSON diverso dallo scenario selezionato');
         }
-        parsed.id = sid;
+        if (sid) parsed.id = sid;
+        if (!sid && !String(parsed.name || '').trim()) throw new Error('Nome scenario obbligatorio');
         return { sid, payload: parsed };
       }
 
@@ -5573,6 +6030,7 @@
           haDevices = [];
         }
         renderHaDevices();
+        renderScenarioConfigLists();
       }
 
       function setGuardEditing(item) {
@@ -5991,6 +6449,103 @@
         setScenarioConfigEditor(sc);
       });
 
+      qs('btnScCfgNew').addEventListener('click', () => {
+        if (qs('scCfgSelect')) qs('scCfgSelect').value = '';
+        setScenarioConfigEditor(null);
+        const msg = qs('scCfgMsg');
+        if (msg) msg.textContent = 'Nuovo scenario';
+      });
+
+      for (const id of ['scCfgName', 'scCfgRun', 'scCfgOnOff', 'scCfgHaEnabled', 'scCfgHaTrigger']) {
+        const el = qs(id);
+        if (!el) continue;
+        el.addEventListener('change', () => {
+          syncScenarioConfigJson();
+        });
+        el.addEventListener('input', () => {
+          syncScenarioConfigJson();
+        });
+      }
+
+      qs('scCfgSearch').addEventListener('input', () => {
+        renderScenarioConfigAvailable();
+      });
+
+      qs('btnScCfgAddVisible').addEventListener('click', () => {
+        const q = String((qs('scCfgSearch') && qs('scCfgSearch').value) || '').trim().toLowerCase();
+        const all = buildScenarioConfigAvailable();
+        let added = 0;
+        for (const target of all) {
+          if (q && !String(`${target.label} ${target.meta} ${target.search}`).toLowerCase().includes(q)) continue;
+          if (addScenarioConfigTarget(target)) added += 1;
+        }
+        syncScenarioConfigJson();
+        renderScenarioConfigLists();
+        const msg = qs('scCfgMsg');
+        if (msg) {
+          msg.textContent = added ? `Aggiunti ${added} dispositivi` : 'Nessun nuovo dispositivo da aggiungere';
+          setTimeout(() => { msg.textContent = ''; }, 1600);
+        }
+      });
+
+      qs('btnScCfgRefreshDevices').addEventListener('click', async () => {
+        const msg = qs('scCfgMsg');
+        if (msg) msg.textContent = '';
+        try {
+          lastDevices = await getJson('api/devices');
+          await refreshCoverGroups();
+          await refreshHaDevices();
+          renderScenarioConfigLists();
+          if (msg) {
+            msg.textContent = 'Dispositivi aggiornati';
+            setTimeout(() => { msg.textContent = ''; }, 1400);
+          }
+        } catch (e) {
+          if (msg) msg.textContent = (e && e.message) ? e.message : 'Errore aggiornamento dispositivi';
+        }
+      });
+
+      qs('scCfgSelected').addEventListener('change', (ev) => {
+        const el = ev.target;
+        if (!el || !el.getAttribute) return;
+        const key = String(el.getAttribute('data-key') || '');
+        const field = String(el.getAttribute('data-field') || '');
+        if (!key || !field || !scenarioConfigDraft) return;
+        if (key.startsWith('buspro_light:') || key.startsWith('ha_light:')) {
+          for (const it of (scenarioConfigDraft.items || [])) {
+            if (scenarioItemKey(it) !== key) continue;
+            if (field === 'state') {
+              it.state = String(el.value || 'ON').toUpperCase() === 'OFF' ? 'OFF' : 'ON';
+              if (it.state === 'OFF') it.brightness = null;
+            }
+            if (field === 'brightness') {
+              const n = Number(el.value);
+              it.brightness = Number.isFinite(n) ? Math.max(0, Math.min(255, n)) : null;
+            }
+          }
+        } else {
+          for (const it of (scenarioConfigDraft.covers || [])) {
+            if (scenarioCoverKey(it) !== key) continue;
+            if (field === 'command') {
+              const cmd = String(el.value || 'OPEN').toUpperCase();
+              it.command = ['OPEN', 'CLOSE', 'STOP'].includes(cmd) ? cmd : 'OPEN';
+            }
+          }
+        }
+        syncScenarioConfigJson();
+        renderScenarioConfigLists();
+      });
+
+      qs('scCfgSelected').addEventListener('click', (ev) => {
+        const btn = ev.target && ev.target.closest ? ev.target.closest('[data-act="remove"]') : null;
+        if (!btn || !scenarioConfigDraft) return;
+        const key = String(btn.getAttribute('data-key') || '');
+        scenarioConfigDraft.items = (scenarioConfigDraft.items || []).filter((it) => scenarioItemKey(it) !== key);
+        scenarioConfigDraft.covers = (scenarioConfigDraft.covers || []).filter((it) => scenarioCoverKey(it) !== key);
+        syncScenarioConfigJson();
+        renderScenarioConfigLists();
+      });
+
       qs('btnScCfgReload').addEventListener('click', async () => {
         const msg = qs('scCfgMsg');
         if (msg) msg.textContent = '';
@@ -6078,12 +6633,23 @@
         if (msg) msg.textContent = '';
         try {
           const parsed = parseScenarioConfigJson();
-          await getJson(`api/user/light_scenarios/${encodeURIComponent(parsed.sid)}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(parsed.payload),
-          });
+          let savedScenario = null;
+          if (parsed.sid) {
+            savedScenario = await getJson(`api/user/light_scenarios/${encodeURIComponent(parsed.sid)}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(parsed.payload),
+            });
+          } else {
+            savedScenario = await getJson('api/user/light_scenarios', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(parsed.payload),
+            });
+          }
           await refreshScenarioIdsDatalist();
+          const savedId = String((savedScenario && savedScenario.id) || parsed.sid || '').trim();
+          if (savedId && qs('scCfgSelect')) qs('scCfgSelect').value = savedId;
           const sc = getSelectedScenarioFromCache();
           setScenarioConfigEditor(sc);
           if (msg) {

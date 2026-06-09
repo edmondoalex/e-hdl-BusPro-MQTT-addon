@@ -15,6 +15,16 @@ Configura `auth.mode` in `config.json` / opzioni add-on:
 ## MQTT
 Per ora viene pubblicata solo la discovery; lo stato/comandi via UDP verranno aggiunti nello step successivo.
 
+## Scenari da Admin
+
+Nella pagina Admin, sezione `Scenari: configurazione JSON`, puoi creare un nuovo scenario o modificare uno scenario esistente senza passare dalla UI utente.
+
+- `Nuovo scenario` apre una configurazione vuota.
+- La ricerca filtra per nome, gruppo, indirizzo BusPro o `entity_id`.
+- `Aggiungi visibili` inserisce nello scenario tutti i dispositivi compatibili attualmente filtrati.
+- Sono supportati luci BusPro, cover BusPro, gruppi cover, luci/switch Home Assistant e cover Home Assistant.
+- Sensori e lock non vengono mostrati perche' il motore scenari non li esegue.
+
 ## Control4 WebViewer su iPhone
 
 Quando le pagine dell'add-on vengono aperte dentro Control4 WebViewer su iPhone, la WebView iOS puo' chiudere in modo anomalo il WebSocket (`code=1006`). Il sintomo tipico e' una pagina che ogni tanto resta in caricamento o non aggiorna piu' gli stati, anche se il server risponde correttamente.
