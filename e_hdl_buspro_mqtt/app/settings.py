@@ -53,6 +53,7 @@ class Settings:
     guard_enabled: bool
     debug: bool
     debug_telegram: bool
+    memory_log: bool
     access_log: bool
 
 
@@ -132,6 +133,7 @@ def load_settings(options: dict[str, Any]) -> Settings:
     back_gesture_enabled = bool(options.get("back_gesture_enabled", True))
     guard_enabled = bool(options.get("guard_enabled", False))
     access_log = bool(options.get("access_log", False))
+    memory_log = bool(options.get("memory_log", False))
 
     return Settings(
         gateway=GatewayConfig(host=str(gw), port=gw_port, local_ip=gw_local_ip),
@@ -147,5 +149,6 @@ def load_settings(options: dict[str, Any]) -> Settings:
         guard_enabled=guard_enabled,
         debug=bool(options.get("debug") or False),
         debug_telegram=bool(options.get("debug_telegram") or False),
+        memory_log=memory_log,
         access_log=access_log,
     )

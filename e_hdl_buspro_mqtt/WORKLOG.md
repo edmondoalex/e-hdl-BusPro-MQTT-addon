@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-06-09 (Memory diagnostics option)
+- Runtime: aggiunta opzione `memory_log` per abilitare esplicitamente i log `memory_diag`.
+- Runtime: i diagnostici memoria sono spenti di default e non vengono piu' stampati ogni minuto con `debug` disattivato.
+- Version bump: 0.1.432 -> 0.1.433.
+
 ## 2026-06-09 (Readable admin scenario devices)
 - Admin UI: nella lista `Dispositivi nello scenario` vengono mostrati i nomi reali dei dispositivi invece dei soli indirizzi tecnici.
 - Admin UI: le righe dei dispositivi selezionati sono piu' leggibili, con nome/metadati sopra e controlli sotto.

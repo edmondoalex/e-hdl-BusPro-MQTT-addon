@@ -3700,10 +3700,13 @@ self.addEventListener('fetch', (event) => {{
         api.state.air_index = {}
         api.state.pir_index = {}
         api.state.ultrasonic_index = {}
-        api.state.memory_debug_task = asyncio.create_task(
-            _memory_debug_loop(api, store, mqtt, hub),
-            name="buspro_memory_debug",
-        )
+        if bool(getattr(settings, "memory_log", False)):
+            api.state.memory_debug_task = asyncio.create_task(
+                _memory_debug_loop(api, store, mqtt, hub),
+                name="buspro_memory_debug",
+            )
+        else:
+            api.state.memory_debug_task = None
 
         # Cleanup: remove SET_POSITION from scenario covers (direct-only).
         try:
