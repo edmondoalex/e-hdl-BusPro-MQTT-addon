@@ -5606,6 +5606,15 @@
         return out;
       }
 
+      function scenarioConfigTargetInfoForKey(key, fallbackLabel, fallbackMeta) {
+        const k = String(key || '').trim();
+        if (!k) return { label: String(fallbackLabel || ''), meta: String(fallbackMeta || '') };
+        const all = buildScenarioConfigAvailable();
+        const found = all.find((x) => String(x.key || '') === k);
+        if (found) return { label: String(found.label || fallbackLabel || k), meta: String(found.meta || fallbackMeta || '') };
+        return { label: String(fallbackLabel || k), meta: String(fallbackMeta || '') };
+      }
+
       function scenarioTargetToPayload(target) {
         const kind = String((target && target.kind) || '');
         const d = (target && target.data) || {};
@@ -5780,10 +5789,11 @@
           const key = scenarioItemKey(it);
           if (!key) continue;
           const isHa = key.startsWith('ha_light:');
-          const label = isHa
+          const fallbackLabel = isHa
             ? String(it.entity_id || key)
             : String(`${it.subnet_id}.${it.device_id}.${it.channel}`);
-          rows.push({ list: 'items', key, label, meta: isHa ? `HA ${String(it.domain || 'light')}` : 'BusPro luce', value: it });
+          const info = scenarioConfigTargetInfoForKey(key, fallbackLabel, isHa ? `HA ${String(it.domain || 'light')}` : `BusPro luce ${fallbackLabel}`);
+          rows.push({ list: 'items', key, label: info.label, meta: info.meta, value: it });
         }
         for (const it of (draft.covers || [])) {
           const key = scenarioCoverKey(it);
@@ -5799,9 +5809,10 @@
             meta = 'HA cover';
           } else {
             label = String(`${it.subnet_id}.${it.device_id}.${it.channel}`);
-            meta = 'BusPro cover';
+            meta = `BusPro cover ${label}`;
           }
-          rows.push({ list: 'covers', key, label, meta, value: it });
+          const info = scenarioConfigTargetInfoForKey(key, label, meta);
+          rows.push({ list: 'covers', key, label: info.label, meta: info.meta, value: it });
         }
         if (!rows.length) {
           root.innerHTML = '<div class="muted" style="padding:10px">Nessun dispositivo nello scenario.</div>';
@@ -5810,38 +5821,42 @@
         root.innerHTML = '';
         for (const rowData of rows) {
           const row = document.createElement('div');
-          row.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:9px 10px;border-bottom:1px solid var(--line)';
+          row.style.cssText = 'padding:10px;border-bottom:1px solid var(--line)';
           if (rowData.list === 'items') {
             const state = String(rowData.value.state || 'ON').toUpperCase() === 'OFF' ? 'OFF' : 'ON';
             const br = rowData.value.brightness === null || rowData.value.brightness === undefined ? '' : Number(rowData.value.brightness);
             row.innerHTML = `
-              <div style="min-width:0">
-                <div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(rowData.label)}</div>
-                <div class="muted" style="font-size:12px">${escapeHtml(rowData.meta)}</div>
+              <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:start">
+                <div style="min-width:0">
+                  <div style="font-weight:800;white-space:normal;overflow-wrap:anywhere;line-height:1.25">${escapeHtml(rowData.label)}</div>
+                  <div class="muted" style="font-size:12px;overflow-wrap:anywhere;margin-top:2px">${escapeHtml(rowData.meta)}</div>
+                </div>
+                <button class="btn danger small" data-act="remove" data-key="${escapeHtml(rowData.key)}" type="button">Rimuovi</button>
               </div>
-              <div class="flex">
+              <div class="flex" style="margin-top:8px">
                 <select data-field="state" data-key="${escapeHtml(rowData.key)}" style="width:84px">
                   <option value="ON">ON</option>
                   <option value="OFF">OFF</option>
                 </select>
                 <input data-field="brightness" data-key="${escapeHtml(rowData.key)}" type="number" min="0" max="255" placeholder="dim" value="${escapeHtml(String(br))}" style="width:82px" />
               </div>
-              <button class="btn danger small" data-act="remove" data-key="${escapeHtml(rowData.key)}" type="button">Rimuovi</button>
             `;
             row.querySelector('[data-field="state"]').value = state;
           } else {
             const cmd = String(rowData.value.command || 'OPEN').toUpperCase();
             row.innerHTML = `
-              <div style="min-width:0">
-                <div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(rowData.label)}</div>
-                <div class="muted" style="font-size:12px">${escapeHtml(rowData.meta)}</div>
+              <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:start">
+                <div style="min-width:0">
+                  <div style="font-weight:800;white-space:normal;overflow-wrap:anywhere;line-height:1.25">${escapeHtml(rowData.label)}</div>
+                  <div class="muted" style="font-size:12px;overflow-wrap:anywhere;margin-top:2px">${escapeHtml(rowData.meta)}</div>
+                </div>
+                <button class="btn danger small" data-act="remove" data-key="${escapeHtml(rowData.key)}" type="button">Rimuovi</button>
               </div>
-              <select data-field="command" data-key="${escapeHtml(rowData.key)}" style="width:118px">
+              <select data-field="command" data-key="${escapeHtml(rowData.key)}" style="width:118px;margin-top:8px">
                 <option value="OPEN">OPEN</option>
                 <option value="CLOSE">CLOSE</option>
                 <option value="STOP">STOP</option>
               </select>
-              <button class="btn danger small" data-act="remove" data-key="${escapeHtml(rowData.key)}" type="button">Rimuovi</button>
             `;
             row.querySelector('[data-field="command"]').value = ['OPEN', 'CLOSE', 'STOP'].includes(cmd) ? cmd : 'OPEN';
           }

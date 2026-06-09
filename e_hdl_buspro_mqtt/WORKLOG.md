@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-06-09 (Readable admin scenario devices)
+- Admin UI: nella lista `Dispositivi nello scenario` vengono mostrati i nomi reali dei dispositivi invece dei soli indirizzi tecnici.
+- Admin UI: le righe dei dispositivi selezionati sono piu' leggibili, con nome/metadati sopra e controlli sotto.
+- Version bump: 0.1.431 -> 0.1.432.
+
 ## 2026-06-09 (Admin duplicate scenarios)
 - Admin UI: aggiunto pulsante `Duplica scenario` nella configurazione scenari.
 - Admin UI: la duplicazione copia dispositivi, cover, trigger e flag dello scenario selezionato, rimuove l'ID e salva come nuovo scenario.
