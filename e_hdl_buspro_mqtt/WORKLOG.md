@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-06-09 (Admin duplicate scenarios)
+- Admin UI: aggiunto pulsante `Duplica scenario` nella configurazione scenari.
+- Admin UI: la duplicazione copia dispositivi, cover, trigger e flag dello scenario selezionato, rimuove l'ID e salva come nuovo scenario.
+- Version bump: 0.1.430 -> 0.1.431.
+
 ## 2026-06-09 (Admin scenario editor)
 - Admin UI: la sezione scenari consente ora di creare scenari nuovi e modificare quelli esistenti senza passare dalla UI utente.
 - Admin UI: aggiunti ricerca, aggiunta singola e "Aggiungi visibili" per luci BusPro, cover BusPro, gruppi cover, luci/switch HA e cover HA supportati dal motore scenari.

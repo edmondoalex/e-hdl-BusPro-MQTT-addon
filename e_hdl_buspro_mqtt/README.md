@@ -20,6 +20,7 @@ Per ora viene pubblicata solo la discovery; lo stato/comandi via UDP verranno ag
 Nella pagina Admin, sezione `Scenari: configurazione JSON`, puoi creare un nuovo scenario o modificare uno scenario esistente senza passare dalla UI utente.
 
 - `Nuovo scenario` apre una configurazione vuota.
+- `Duplica scenario` copia lo scenario selezionato e lo prepara come nuovo scenario senza ID.
 - La ricerca filtra per nome, gruppo, indirizzo BusPro o `entity_id`.
 - `Aggiungi visibili` inserisce nello scenario tutti i dispositivi compatibili attualmente filtrati.
 - Sono supportati luci BusPro, cover BusPro, gruppi cover, luci/switch Home Assistant e cover Home Assistant.

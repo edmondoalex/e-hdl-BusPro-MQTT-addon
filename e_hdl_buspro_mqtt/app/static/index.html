@@ -1278,6 +1278,7 @@
                 </div>
                 <div style="display:flex;align-items:end;gap:10px">
                   <button class="btn small" id="btnScCfgNew" type="button">Nuovo scenario</button>
+                  <button class="btn secondary small" id="btnScCfgDuplicate" type="button">Duplica scenario</button>
                   <button class="btn secondary small" id="btnScCfgReload" type="button">Ricarica lista</button>
                   <button class="btn secondary small" id="btnScCfgLoad" type="button">Carica</button>
                 </div>
@@ -6454,6 +6455,26 @@
         setScenarioConfigEditor(null);
         const msg = qs('scCfgMsg');
         if (msg) msg.textContent = 'Nuovo scenario';
+      });
+
+      qs('btnScCfgDuplicate').addEventListener('click', () => {
+        const msg = qs('scCfgMsg');
+        if (msg) msg.textContent = '';
+        const sc = getSelectedScenarioFromCache();
+        if (!sc) {
+          if (msg) msg.textContent = 'Seleziona uno scenario da duplicare';
+          return;
+        }
+        const copy = cloneScenarioConfigDraft(sc);
+        delete copy.id;
+        const name = String(copy.name || '').trim();
+        copy.name = name ? `Copia di ${name}` : 'Copia scenario';
+        scenarioConfigDraft = copy;
+        if (qs('scCfgSelect')) qs('scCfgSelect').value = '';
+        applyScenarioConfigDraftToControls();
+        syncScenarioConfigJson();
+        renderScenarioConfigLists();
+        if (msg) msg.textContent = 'Copia pronta: modifica il nome e salva';
       });
 
       for (const id of ['scCfgName', 'scCfgRun', 'scCfgOnOff', 'scCfgHaEnabled', 'scCfgHaTrigger']) {
