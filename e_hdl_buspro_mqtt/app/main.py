@@ -78,7 +78,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.423"
+ADDON_VERSION = "0.1.424"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -1718,7 +1718,8 @@ self.addEventListener('fetch', (event) => {{
     @api.api_route("/ext/{name}/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
     async def ext_proxy(name: str, request: Request, path: str = ""):
         # User-side reverse proxy for configured local targets.
-        is_sunmind = str(name or "").strip().lower() == "e-sunmind"
+        normalized_name = str(name or "").strip().lower().replace("_", "-")
+        is_sunmind = normalized_name == "e-sunmind"
         target = store.find_proxy_target(name=name)
         if not target:
             _LOGGER.debug("ext_proxy target not found: name=%s path=%s", name, request.url.path)
@@ -5165,7 +5166,13 @@ self.addEventListener('fetch', (event) => {{
         phase = str(params.get("phase") or "").strip()[:80]
         detail = str(params.get("detail") or "").strip()[:240]
         real_ip, proxy_ip, ua = _request_client_info(request)
-        _LOGGER.warning(
+        log_fn = _LOGGER.warning if phase in {
+            "js_error",
+            "js_rejection",
+            "fetch_error",
+            "load_error",
+        } else _LOGGER.debug
+        log_fn(
             "ui_log page=%s phase=%s detail=%s real_ip=%s proxy_ip=%s ua=%s",
             page or "-",
             phase or "-",

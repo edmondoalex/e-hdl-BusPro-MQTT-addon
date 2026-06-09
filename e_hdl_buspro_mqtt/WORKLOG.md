@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-06-09 (SunMind proxy log cleanup)
+- Proxy: normalizzato il nome target `e_SunMind`/`e-SunMind` prima del controllo pass-through, evitando l'iniezione bootstrap sulle pagine SunMind.
+- Log UI: gli eventi informativi `ui_log` passano a debug; restano warning solo errori JS/fetch reali.
+- Version bump: 0.1.423 -> 0.1.424.
+
 ## 2026-06-09 (Runtime memory diagnostics)
 - Runtime: aggiunto log `memory_diag` ogni 60 secondi con RSS/VMS/swap, thread, task asyncio, stato MQTT, client WebSocket e dimensioni delle principali strutture dati.
 - Diagnostica: inclusi conteggi di device, stati, gruppi, scenari, dispositivi HA, cache runtime e buffer sniffer per individuare crescite anomale nel tempo.
