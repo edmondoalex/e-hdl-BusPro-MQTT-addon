@@ -78,7 +78,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.426"
+ADDON_VERSION = "0.1.427"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -5029,7 +5029,7 @@ self.addEventListener('fetch', (event) => {{
     window.busproPollMode = new URL(window.location.href).searchParams.get('poll') === '1';
     if (window.busproPollMode) log('poll_mode', 'enabled');
   }} catch (e) {{}}
-  window.busproFetchWithTimeout = async function(url, opts, timeoutMs) {{
+  window.busproFetchWithTimeout = function(url, opts, timeoutMs) {{
     var ms = Math.max(1000, Number(timeoutMs || 12000));
     var init = Object.assign({{}}, opts || {{}});
     var timer = null;
@@ -5038,20 +5038,22 @@ self.addEventListener('fetch', (event) => {{
         var controller = new AbortController();
         init.signal = controller.signal;
         timer = setTimeout(function() {{ try {{ controller.abort(); }} catch (e) {{}} }}, ms);
-        try {{
-          return await fetch(url, init);
-        }} finally {{
+        return fetch(url, init).then(function(resp) {{
           try {{ clearTimeout(timer); }} catch (e) {{}}
-        }}
+          return resp;
+        }}, function(err) {{
+          try {{ clearTimeout(timer); }} catch (e) {{}}
+          throw err;
+        }});
       }}
-      return await Promise.race([
+      return Promise.race([
         fetch(url, init),
         new Promise(function(_, reject) {{ setTimeout(function() {{ reject(new Error('timeout')); }}, ms); }})
       ]);
     }} catch (e) {{
       var msg = (e && e.name === 'AbortError') ? 'timeout' : ((e && e.message) ? e.message : String(e));
       try {{ log('fetch_error', new URL(url, window.location.href).pathname + ' ' + msg); }} catch (_) {{ log('fetch_error', msg); }}
-      throw e;
+      return Promise.reject(e);
     }}
   }};
   window.addEventListener('error', function(evt) {{

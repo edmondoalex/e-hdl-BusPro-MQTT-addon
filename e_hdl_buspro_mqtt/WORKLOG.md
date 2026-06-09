@@ -1,5 +1,9 @@
 # WORKLOG
 
+## 2026-06-09 (WebView UI diagnostic compatibility)
+- User UI: lo script diagnostico comune non usa piu' `async`/`await`, riducendo i parse error su Android WebView embedded.
+- Version bump: 0.1.426 -> 0.1.427.
+
 ## 2026-06-09 (WebView parse diagnostics)
 - Proxy: il bootstrap JS iniettato usa sintassi piu' conservativa per compatibilita' con WebView embedded.
 - User UI: i log `js_error` includono filename, riga e colonna per isolare eventuali parse error residui.
