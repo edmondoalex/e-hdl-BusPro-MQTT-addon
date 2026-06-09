@@ -78,7 +78,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.428"
+ADDON_VERSION = "0.1.429"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -1373,13 +1373,8 @@ self.addEventListener('fetch', (event) => {{
       DEBUG_SENT = true;
       sendDbg('load', '');
     }});
-    window.addEventListener('error', function(ev) {{
-      var m = (ev && ev.message) ? ev.message : '';
-      var s = (ev && ev.filename) ? ev.filename : '';
-      var l = (ev && ev.lineno) ? ev.lineno : 0;
-      var c = (ev && ev.colno) ? ev.colno : 0;
-      sendDbg('js_error', m + ' @' + s + ':' + l + ':' + c);
-    }});
+    // Do not capture global script parse errors here: embedded WebViews can emit
+    // non-actionable SyntaxError events for document-level scripts and flood logs.
     window.addEventListener('unhandledrejection', function(ev) {{
       var reason = '';
       try {{
@@ -5052,13 +5047,8 @@ self.addEventListener('fetch', (event) => {{
       return Promise.reject(e);
     }}
   }};
-  window.addEventListener('error', function(evt) {{
-    var msg = (evt && evt.message) || 'error';
-    var src = (evt && evt.filename) ? evt.filename : '';
-    var line = (evt && evt.lineno) ? evt.lineno : 0;
-    var col = (evt && evt.colno) ? evt.colno : 0;
-    log('js_error', msg + ' @' + src + ':' + line + ':' + col);
-  }});
+  // Do not capture global script parse errors here: embedded WebViews can emit
+  // non-actionable SyntaxError events for document-level scripts and flood logs.
   window.addEventListener('unhandledrejection', function(evt) {{
     var r = evt && evt.reason;
     log('js_rejection', (r && r.message) ? r.message : String(r || 'rejection'));

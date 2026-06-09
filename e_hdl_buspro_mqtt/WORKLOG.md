@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-06-09 (Disable noisy global JS error telemetry)
+- User UI: disabilitata la cattura globale `window.onerror` per evitare warning ripetuti `Unexpected end of input` non azionabili su Android WebView.
+- Proxy: disabilitata la telemetria globale `js_error` del bootstrap, mantenendo rejection/stream/websocket diagnostics.
+- Version bump: 0.1.428 -> 0.1.429.
+
 ## 2026-06-09 (No-store user HTML)
 - User UI: le pagine HTML utente vengono servite con `Cache-Control: no-store` per evitare bundle diagnostici stale in Android WebView.
 - PWA: il service worker non precache-a piu' pagine HTML e forza `cache: reload` sulle navigazioni.
