@@ -78,7 +78,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.427"
+ADDON_VERSION = "0.1.428"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -1184,8 +1184,6 @@ def create_app() -> FastAPI:
 // buspro minimal service worker
 const CACHE = 'buspro-pwa-{ADDON_VERSION}';
 const PRECACHE = [
-  '/home2',
-  '/home_plus',
   '/manifest.webmanifest',
   '/static/logo_ekonex.png',
   '/static/e-face-nobg.png',
@@ -1212,16 +1210,14 @@ self.addEventListener('fetch', (event) => {{
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
 
-  // Navigation: network first, fallback to cached /home2
+  // Navigation: always ask the network/browser cache to reload HTML pages.
   if (req.mode === 'navigate') {{
     event.respondWith((async () => {{
       try {{
-        const res = await fetch(req);
+        const res = await fetch(new Request(req, {{ cache: 'reload' }}));
         return res;
       }} catch (e) {{
-        const cache = await caches.open(CACHE);
-        const cached = await cache.match('/home2');
-        return cached || new Response('Offline', {{ status: 503 }});
+        return new Response('Offline', {{ status: 503 }});
       }}
     }})());
     return;
@@ -5075,7 +5071,14 @@ self.addEventListener('fetch', (event) => {{
             html = html.replace("</head>", diag + "\n</head>", 1)
         else:
             html = diag + "\n" + html
-        return HTMLResponse(content=html)
+        return HTMLResponse(
+            content=html,
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
 
     @api.get("/home", response_class=HTMLResponse)
     async def user_home():

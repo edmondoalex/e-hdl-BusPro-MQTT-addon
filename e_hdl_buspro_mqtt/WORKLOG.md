@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-06-09 (No-store user HTML)
+- User UI: le pagine HTML utente vengono servite con `Cache-Control: no-store` per evitare bundle diagnostici stale in Android WebView.
+- PWA: il service worker non precache-a piu' pagine HTML e forza `cache: reload` sulle navigazioni.
+- Version bump: 0.1.427 -> 0.1.428.
+
 ## 2026-06-09 (WebView UI diagnostic compatibility)
 - User UI: lo script diagnostico comune non usa piu' `async`/`await`, riducendo i parse error su Android WebView embedded.
 - Version bump: 0.1.426 -> 0.1.427.
