@@ -2,12 +2,16 @@ import traceback
 import os
 import socket
 import ipaddress
+import logging
 from struct import pack
 
 from .enums import DeviceType
 from .generics import Generics
 from ..core.telegram import Telegram
 from ..devices.control import *
+
+
+LOGGER = logging.getLogger("buspro.log")
 
 
 class TelegramHelper:
@@ -120,13 +124,13 @@ class TelegramHelper:
             telegram.crc = crc
 
             if not self._check_crc(telegram):
-                print("crc check failed")
+                LOGGER.debug("crc check failed")
                 return None
 
             return telegram
 
         except Exception:
-            print("error building telegram: {}".format(traceback.format_exc()))
+            LOGGER.warning("error building telegram: %s", traceback.format_exc())
             return None
 
     @staticmethod

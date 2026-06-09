@@ -32,6 +32,12 @@ class NetworkInterface:
     def _udp_request_received(self, data, address):
         if self.callback is not None:
             telegram = self._th.build_telegram_from_udp_data(data, address)
+            if telegram is None:
+                try:
+                    self.buspro.logger.debug("Ignoring invalid BusPro UDP datagram from %s", address)
+                except Exception:
+                    pass
+                return
             self.callback(telegram)
 
     async def _send_message(self, message):

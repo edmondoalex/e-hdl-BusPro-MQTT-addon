@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-06-09 (Ignore invalid UDP telegrams)
+- BusPro UDP: i datagrammi con CRC non valido vengono scartati prima dei callback, evitando `AttributeError: 'NoneType' object has no attribute 'target_address'`.
+- Parser BusPro: i CRC falliti passano a log debug invece di stampare ripetutamente su stdout.
+- Version bump: 0.1.420 -> 0.1.421.
+
 ## 2026-06-08 (Colored floor headers)
 - User UI Luci/Extra: le intestazioni piano supportano colore opzionale con sintassi `# Piano | #ffd700`.
 - Admin UI: il drag & drop conserva anche il colore configurato sulle intestazioni piano.
