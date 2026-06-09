@@ -78,7 +78,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.424"
+ADDON_VERSION = "0.1.425"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -1906,6 +1906,15 @@ self.addEventListener('fetch', (event) => {{
                 body,
                 120,
             )
+        except urllib.error.URLError as e:
+            reason = getattr(e, "reason", e)
+            _LOGGER.warning(
+                "ext_proxy upstream unavailable: name=%s upstream=%s error=%s",
+                name,
+                upstream_url,
+                reason,
+            )
+            return JSONResponse({"detail": "Upstream unavailable"}, status_code=502)
         except Exception:
             _LOGGER.exception("ext_proxy upstream error: name=%s upstream=%s", name, upstream_url)
             return JSONResponse({"detail": "Upstream error"}, status_code=502)

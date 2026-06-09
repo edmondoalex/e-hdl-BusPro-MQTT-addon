@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-06-09 (Proxy upstream unavailable log)
+- Proxy: gli errori upstream `URLError`/connection refused vengono loggati come warning sintetico invece di stampare traceback completi.
+- UX/API: quando un target proxato non e' raggiungibile, il proxy risponde con `502` e detail `Upstream unavailable`.
+- Version bump: 0.1.424 -> 0.1.425.
+
 ## 2026-06-09 (SunMind proxy log cleanup)
 - Proxy: normalizzato il nome target `e_SunMind`/`e-SunMind` prima del controllo pass-through, evitando l'iniezione bootstrap sulle pagine SunMind.
 - Log UI: gli eventi informativi `ui_log` passano a debug; restano warning solo errori JS/fetch reali.
