@@ -1114,12 +1114,18 @@
 
               <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
                 <h3 style="margin:0;font-size:14px">Smart link locale/remoto</h3>
-                <div class="muted" style="margin-top:6px">Se attivo, Home2 sceglie URL locale o remoto in base all'host con cui e' stata aperta.</div>
+                <div class="muted" style="margin-top:6px">Configura link manuali e redirect smart delle pagine utente in base alla raggiungibilita' dell'host locale.</div>
                 <div class="row3" style="margin-top:10px">
                   <div style="display:flex;align-items:end;gap:10px">
                     <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
                       <input id="smartLinksEnabled" type="checkbox" />
-                      Attivo
+                      Link manuali
+                    </label>
+                  </div>
+                  <div style="display:flex;align-items:end;gap:10px">
+                    <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
+                      <input id="smartRedirectEnabled" type="checkbox" />
+                      Redirect pagine
                     </label>
                   </div>
                   <div style="display:flex;align-items:end;gap:10px">
@@ -1128,17 +1134,39 @@
                       Debug
                     </label>
                   </div>
-                  <div></div>
                 </div>
                 <div class="row" style="margin-top:10px">
                   <div>
                     <label>Host locale</label>
-                    <input id="smartLocalHost" placeholder="192.168.3.24" />
+                    <input id="smartLocalHost" placeholder="192.168.3.24 oppure 192.168.3.24:8124" />
                   </div>
                   <div>
                     <label>Host remoto</label>
-                    <input id="smartRemoteHost" placeholder="manager.ekonex.it" />
+                    <input id="smartRemoteHost" placeholder="manager.ekonex.it oppure manager.ekonex.it:20052" />
                   </div>
+                </div>
+                <div class="row" style="margin-top:10px">
+                  <div>
+                    <label>Base URL locale (redirect pagine)</label>
+                    <input id="smartLocalBaseUrl" placeholder="http://192.168.3.24:8124" />
+                  </div>
+                  <div>
+                    <label>Base URL remoto (redirect pagine)</label>
+                    <input id="smartRemoteBaseUrl" placeholder="http://manager.ekonex.it:20052" />
+                  </div>
+                </div>
+                <div class="row3" style="margin-top:10px">
+                  <div>
+                    <label>Timeout test locale (ms)</label>
+                    <input id="smartRedirectTimeout" type="number" min="100" max="5000" step="50" placeholder="500" />
+                  </div>
+                  <div style="display:flex;align-items:end;gap:10px">
+                    <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
+                      <input id="smartRedirectCache" type="checkbox" checked />
+                      Cache esito
+                    </label>
+                  </div>
+                  <div></div>
                 </div>
               </div>
 
@@ -4734,9 +4762,14 @@
       function renderSmartLinks() {
         const cfg = smartLinks || {};
         qs('smartLinksEnabled').checked = !!cfg.enabled;
+        qs('smartRedirectEnabled').checked = !!cfg.redirect_enabled;
         qs('smartLinksDebug').checked = !!cfg.debug;
         qs('smartLocalHost').value = String(cfg.local_host || '192.168.3.24');
         qs('smartRemoteHost').value = String(cfg.remote_host || 'manager.ekonex.it');
+        qs('smartLocalBaseUrl').value = String(cfg.local_base_url || 'http://192.168.3.24:8124');
+        qs('smartRemoteBaseUrl').value = String(cfg.remote_base_url || 'http://manager.ekonex.it:20052');
+        qs('smartRedirectTimeout').value = String(cfg.redirect_timeout_ms || 500);
+        qs('smartRedirectCache').checked = cfg.redirect_cache !== false;
       }
 
       function hubKeyLabel(k) {
@@ -4874,9 +4907,14 @@
           hub_order: normalizeHubOrder(hubOrder || []),
           smart_links: {
             enabled: !!qs('smartLinksEnabled').checked,
+            redirect_enabled: !!qs('smartRedirectEnabled').checked,
             debug: !!qs('smartLinksDebug').checked,
             local_host: String(qs('smartLocalHost').value || '').trim(),
             remote_host: String(qs('smartRemoteHost').value || '').trim(),
+            local_base_url: String(qs('smartLocalBaseUrl').value || '').trim(),
+            remote_base_url: String(qs('smartRemoteBaseUrl').value || '').trim(),
+            redirect_timeout_ms: Number(qs('smartRedirectTimeout').value || 500),
+            redirect_cache: !!qs('smartRedirectCache').checked,
           },
         };
         if (!guardEnabled) {

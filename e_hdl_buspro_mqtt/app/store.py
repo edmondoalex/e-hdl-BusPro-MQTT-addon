@@ -68,6 +68,11 @@ class StateStore:
                 "debug": False,
                 "local_host": "192.168.3.24",
                 "remote_host": "manager.ekonex.it",
+                "redirect_enabled": False,
+                "redirect_cache": True,
+                "redirect_timeout_ms": 500,
+                "local_base_url": "http://192.168.3.24:8124",
+                "remote_base_url": "http://manager.ekonex.it:20052",
             },
             "guard_cameras": [],
             "hub_icons": StateStore.default_hub_icons(),
@@ -1768,21 +1773,39 @@ class StateStore:
         if not isinstance(cfg, dict):
             cfg = {}
         d = self._default_ui().get("smart_links", {}) or {}
+        try:
+            timeout_ms = int(cfg.get("redirect_timeout_ms") or d.get("redirect_timeout_ms") or 500)
+        except (TypeError, ValueError):
+            timeout_ms = 500
         return {
             "enabled": bool(cfg.get("enabled", d.get("enabled", False))),
             "debug": bool(cfg.get("debug", d.get("debug", False))),
             "local_host": str(cfg.get("local_host") or d.get("local_host") or "192.168.3.24").strip(),
             "remote_host": str(cfg.get("remote_host") or d.get("remote_host") or "manager.ekonex.it").strip(),
+            "redirect_enabled": bool(cfg.get("redirect_enabled", d.get("redirect_enabled", False))),
+            "redirect_cache": bool(cfg.get("redirect_cache", d.get("redirect_cache", True))),
+            "redirect_timeout_ms": max(100, min(5000, timeout_ms)),
+            "local_base_url": str(cfg.get("local_base_url") or d.get("local_base_url") or "http://192.168.3.24:8124").strip(),
+            "remote_base_url": str(cfg.get("remote_base_url") or d.get("remote_base_url") or "http://manager.ekonex.it:20052").strip(),
         }
 
     def set_smart_links_config(self, payload: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(payload, dict):
             raise ValueError("payload must be an object")
+        try:
+            timeout_ms = int(payload.get("redirect_timeout_ms") or 500)
+        except (TypeError, ValueError):
+            timeout_ms = 500
         cfg = {
             "enabled": bool(payload.get("enabled", False)),
             "debug": bool(payload.get("debug", False)),
             "local_host": str(payload.get("local_host") or "192.168.3.24").strip(),
             "remote_host": str(payload.get("remote_host") or "manager.ekonex.it").strip(),
+            "redirect_enabled": bool(payload.get("redirect_enabled", False)),
+            "redirect_cache": bool(payload.get("redirect_cache", True)),
+            "redirect_timeout_ms": max(100, min(5000, timeout_ms)),
+            "local_base_url": str(payload.get("local_base_url") or "http://192.168.3.24:8124").strip(),
+            "remote_base_url": str(payload.get("remote_base_url") or "http://manager.ekonex.it:20052").strip(),
         }
         raw = self.read_raw()
         ui = dict(raw.get("ui") or {})

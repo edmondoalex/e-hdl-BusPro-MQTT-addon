@@ -78,7 +78,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.429"
+ADDON_VERSION = "0.1.435"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -5000,9 +5000,9 @@ self.addEventListener('fetch', (event) => {{
         with open(p, "r", encoding="utf-8") as f:
             return f.read()
 
-    def _user_html(page: str) -> HTMLResponse:
-        p = os.path.join(static_dir, "user", page)
-        page_name = os.path.splitext(os.path.basename(page))[0]
+    def _user_html(page: str, path_override: str | None = None, page_name_override: str | None = None) -> HTMLResponse:
+        p = path_override or os.path.join(static_dir, "user", page)
+        page_name = page_name_override or os.path.splitext(os.path.basename(page))[0]
         with open(p, "r", encoding="utf-8") as f:
             html = f.read()
         diag = f"""
@@ -5052,6 +5052,121 @@ self.addEventListener('fetch', (event) => {{
       return Promise.reject(e);
     }}
   }};
+  (function smartLocalRemoteRedirect() {{
+    var cacheKey = 'buspro.smart_redirect.v1';
+    function cleanUrl(v) {{
+      return String(v || '').trim().replace(/[/]+$/, '');
+    }}
+    function hostOf(v) {{
+      try {{
+        var u = new URL(String(v || ''), window.location.href);
+        return {{
+          host: String(u.host || '').toLowerCase(),
+          hostname: String(u.hostname || '').toLowerCase(),
+          origin: String(u.origin || '').replace(/[/]+$/, '')
+        }};
+      }} catch (e) {{
+        var s = String(v || '').trim().replace(/^https?:[/][/]/i, '').replace(/[/].*$/, '').toLowerCase();
+        return {{host: s, hostname: s.split(':')[0] || s, origin: ''}};
+      }}
+    }}
+    function currentPath() {{
+      return String(window.location.pathname || '/') + String(window.location.search || '') + String(window.location.hash || '');
+    }}
+    function pageTarget(origin) {{
+      var base = cleanUrl(origin);
+      if (!base) return '';
+      return base + currentPath();
+    }}
+    function writeCache(mode) {{
+      try {{
+        localStorage.setItem(cacheKey, JSON.stringify({{mode: mode, ts: Date.now(), page: page}}));
+      }} catch (e) {{}}
+    }}
+    function readCache() {{
+      try {{
+        return JSON.parse(localStorage.getItem(cacheKey) || 'null') || null;
+      }} catch (e) {{
+        return null;
+      }}
+    }}
+    function logRedirect(cfg, mode, target, reason, extra) {{
+      if (!cfg || !cfg.debug) return;
+      try {{
+        var body = JSON.stringify({{
+          target: 'page_redirect:' + page,
+          host: String(window.location.host || window.location.hostname || ''),
+          mode: String(mode || ''),
+          selected: String(target || ''),
+          reason: String(reason || '') + (extra ? (' ' + String(extra).slice(0, 120)) : '')
+        }});
+        var url = new URL('api/smart_link_log', window.location.href).toString();
+        if (navigator.sendBeacon) {{
+          navigator.sendBeacon(url, new Blob([body], {{type: 'application/json'}}));
+        }} else {{
+          fetch(url, {{method: 'POST', headers: {{'Content-Type': 'application/json'}}, body: body, keepalive: true}}).catch(function() {{}});
+        }}
+      }} catch (e) {{}}
+    }}
+    function fetchWithTimeoutNoCors(url, timeoutMs) {{
+      var ms = Math.max(100, Math.min(5000, Number(timeoutMs || 500)));
+      var init = {{method: 'GET', mode: 'no-cors', cache: 'no-store'}};
+      if (typeof AbortController !== 'undefined') {{
+        var controller = new AbortController();
+        init.signal = controller.signal;
+        var timer = setTimeout(function() {{ try {{ controller.abort(); }} catch (e) {{}} }}, ms);
+        return fetch(url, init).then(function(resp) {{
+          try {{ clearTimeout(timer); }} catch (e) {{}}
+          return resp;
+        }}, function(err) {{
+          try {{ clearTimeout(timer); }} catch (e) {{}}
+          throw err;
+        }});
+      }}
+      return Promise.race([
+        fetch(url, init),
+        new Promise(function(_, reject) {{ setTimeout(function() {{ reject(new Error('timeout')); }}, ms); }})
+      ]);
+    }}
+    function run(cfg) {{
+      if (!cfg || !cfg.redirect_enabled) return;
+      try {{
+        if (new URL(window.location.href).searchParams.get('noredirect') === '1') return;
+      }} catch (e) {{}}
+      var localBase = cleanUrl(cfg.local_base_url || 'http://192.168.3.24:8124');
+      var remoteBase = cleanUrl(cfg.remote_base_url || window.location.origin);
+      var localInfo = hostOf(localBase || cfg.local_host);
+      var remoteInfo = hostOf(remoteBase || cfg.remote_host);
+      var here = hostOf(window.location.href);
+      if (localInfo.host && (here.host === localInfo.host || here.hostname === localInfo.hostname)) {{
+        writeCache('local');
+        logRedirect(cfg, 'local', window.location.href, 'already_local', '');
+        return;
+      }}
+      var cache = cfg.redirect_cache !== false ? readCache() : null;
+      var timeoutMs = Math.max(100, Math.min(5000, Number(cfg.redirect_timeout_ms || 500)));
+      if (cache && cache.mode) logRedirect(cfg, String(cache.mode), '', 'cache_seen', 'age_ms=' + Math.max(0, Date.now() - Number(cache.ts || 0)));
+      var probe = localBase + '/health?smart_redirect=1&t=' + Date.now();
+      var target = pageTarget(localBase);
+      if (!target) return;
+      fetchWithTimeoutNoCors(probe, timeoutMs).then(function() {{
+        writeCache('local');
+        logRedirect(cfg, 'local', target, 'probe_ok', 'timeout_ms=' + timeoutMs);
+        if (window.location.href !== target) window.location.replace(target);
+      }}, function(err) {{
+        writeCache('remote');
+        var remoteTarget = pageTarget(remoteBase);
+        logRedirect(cfg, 'remote', remoteTarget || window.location.href, 'probe_failed', (err && (err.name || err.message)) || '');
+      }});
+    }}
+    fetch(new URL('api/meta', window.location.href).toString(), {{cache: 'no-store'}})
+      .then(function(resp) {{ return resp && resp.ok ? resp.json() : null; }})
+      .then(function(meta) {{
+        var cfg = meta && meta.smart_links && typeof meta.smart_links === 'object' ? meta.smart_links : null;
+        run(cfg);
+      }})
+      .catch(function(err) {{ log('smart_redirect_meta_error', (err && err.message) ? err.message : String(err || 'error')); }});
+  }})();
   // Do not capture global script parse errors here: embedded WebViews can emit
   // non-actionable SyntaxError events for document-level scripts and flood logs.
   window.addEventListener('unhandledrejection', function(evt) {{
@@ -5092,8 +5207,7 @@ self.addEventListener('fetch', (event) => {{
         path = os.path.join(os.path.dirname(__file__), "static", "eface", "index.html")
         if not os.path.exists(path):
             raise HTTPException(status_code=404, detail="e-Face frontend not built")
-        with open(path, "r", encoding="utf-8") as f:
-            return HTMLResponse(content=f.read())
+        return _user_html("index.html", path_override=path, page_name_override="e-face")
 
     @api.get("/lights", response_class=HTMLResponse)
     async def user_lights():

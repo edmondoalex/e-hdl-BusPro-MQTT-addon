@@ -1,5 +1,12 @@
 # WORKLOG
 
+## 2026-06-10 (Smart page local/remote redirect)
+- User UI: aggiunto redirect smart locale/remoto comune a `/home`, `/home2`, `/home_plus`, `/e-face`, `/lights`, `/covers`, `/scenarios`, `/extra`, `/locks` e `/e-guard`.
+- Runtime: il redirect testa `Base URL locale + /health` con timeout configurabile e mantiene path/query/hash della pagina aperta.
+- Admin UI: aggiunti `Redirect pagine`, base URL locale/remoto, timeout test locale e cache esito nella sezione `Home (hub) links`.
+- Debug: i log `smart_link` includono anche le decisioni `page_redirect:*`; `noredirect=1` evita il redirect per singolo test.
+- Version bump: 0.1.434 -> 0.1.435.
+
 ## 2026-06-10 (Smart local/remote Home2 links)
 - Home2: aggiunta funzione opzionale Smart link locale/remoto per i link manuali della Home.
 - Admin UI: aggiunti switch `Attivo`/`Debug`, host locale/remoto e campi `URL locale`/`URL remoto` sui link Home.

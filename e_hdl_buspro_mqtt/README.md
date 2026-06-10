@@ -35,6 +35,18 @@ In Admin, sezione `Home (hub) links`, puoi abilitare gli Smart link locale/remot
 - Debug acceso: ogni click su un link smart scrive nei log la decisione presa.
 - Se `URL locale` o `URL remoto` sono vuoti, il link torna al campo `URL` normale.
 
+## Redirect pagine locale/remoto
+
+Nella stessa sezione Admin puoi abilitare `Redirect pagine` per le pagine native utente (`/home`, `/home2`, `/home_plus`, `/e-face`, `/lights`, `/covers`, `/scenarios`, `/extra`, `/locks`, `/e-guard`).
+
+- `Base URL locale`: ad esempio `http://192.168.3.24:8124`.
+- `Base URL remoto`: ad esempio `http://manager.ekonex.it:20052`.
+- All'apertura da remoto, la pagina prova `Base URL locale + /health` con timeout breve.
+- Se il locale risponde, resta sulla stessa pagina ma passa al base locale, ad esempio `/lights` -> `http://192.168.3.24:8124/lights`.
+- Se il locale non risponde, resta sull'URL remoto.
+- `noredirect=1` disattiva il redirect per una singola apertura, utile per test.
+- Con `Debug` acceso vengono loggati esito, host corrente, target scelto e motivo.
+
 ## Control4 WebViewer su iPhone
 
 Quando le pagine dell'add-on vengono aperte dentro Control4 WebViewer su iPhone, la WebView iOS puo' chiudere in modo anomalo il WebSocket (`code=1006`). Il sintomo tipico e' una pagina che ogni tanto resta in caricamento o non aggiorna piu' gli stati, anche se il server risponde correttamente.
