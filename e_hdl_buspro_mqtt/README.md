@@ -37,13 +37,16 @@ In Admin, sezione `Home (hub) links`, puoi abilitare gli Smart link locale/remot
 
 ## Redirect pagine locale/remoto
 
-Nella stessa sezione Admin puoi abilitare `Redirect pagine` per le pagine native utente (`/home`, `/home2`, `/home_plus`, `/e-face`, `/lights`, `/covers`, `/scenarios`, `/extra`, `/locks`, `/e-guard`).
+Nella stessa sezione Admin puoi abilitare `Redirect pagine` per le pagine utente (`/home`, `/home2`, `/home_plus`, `/e-face`, `/lights`, `/covers`, `/scenarios`, `/extra`, `/locks`, `/e-guard`) e per le pagine proxate `/ext/<nome>/`.
 
 - `Base URL locale`: ad esempio `http://192.168.3.24:8124`.
 - `Base URL remoto`: ad esempio `http://manager.ekonex.it:20052`.
 - All'apertura da remoto, la pagina prova `Base URL locale + /health` con timeout breve.
+- Se il browser blocca il `fetch()` verso IP privato, viene provato anche un fallback tramite immagine statica locale.
 - Se il locale risponde, resta sulla stessa pagina ma passa al base locale, ad esempio `/lights` -> `http://192.168.3.24:8124/lights`.
+- Per le pagine proxate mantiene anche il prefisso `/ext/<nome>/`, ad esempio `/ext/termostati/` -> `http://192.168.3.24:8124/ext/termostati/`.
 - Se il locale non risponde, resta sull'URL remoto.
+- Se passi da dati mobili a Wi-Fi con la pagina gia' aperta, il controllo viene ripetuto su focus/visibilita'/online e con retry leggero.
 - `noredirect=1` disattiva il redirect per una singola apertura, utile per test.
 - Con `Debug` acceso vengono loggati esito, host corrente, target scelto e motivo.
 

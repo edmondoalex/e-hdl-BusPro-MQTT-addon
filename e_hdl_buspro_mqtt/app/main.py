@@ -78,7 +78,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.435"
+ADDON_VERSION = "0.1.436"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -1369,6 +1369,172 @@ self.addEventListener('fetch', (event) => {{
       i.src = u;
     }} catch(e) {{}}
   }}
+  (function smartLocalRemoteRedirectExt() {{
+    var cacheKey = 'buspro.smart_redirect.v1';
+    function cleanUrl(v) {{
+      return String(v || '').trim().replace(/[/]+$/, '');
+    }}
+    function hostOf(v) {{
+      try {{
+        var u = new URL(String(v || ''), window.location.href);
+        return {{
+          host: String(u.host || '').toLowerCase(),
+          hostname: String(u.hostname || '').toLowerCase()
+        }};
+      }} catch(e) {{
+        var s = String(v || '').trim().replace(/^https?:[/][/]/i, '').replace(/[/].*$/, '').toLowerCase();
+        return {{host: s, hostname: s.split(':')[0] || s}};
+      }}
+    }}
+    function currentPath() {{
+      return String(window.location.pathname || '/') + String(window.location.search || '') + String(window.location.hash || '');
+    }}
+    function pageTarget(origin) {{
+      var base = cleanUrl(origin);
+      if (!base) return '';
+      return base + currentPath();
+    }}
+    function writeCache(mode) {{
+      try {{
+        localStorage.setItem(cacheKey, JSON.stringify({{mode: mode, ts: Date.now(), page: 'ext:{name}'}}));
+      }} catch(e) {{}}
+    }}
+    function logRedirect(cfg, mode, target, reason, extra) {{
+      if (!cfg || !cfg.debug) return;
+      try {{
+        var body = JSON.stringify({{
+          target: 'page_redirect:ext:{name}',
+          host: String(window.location.host || window.location.hostname || ''),
+          mode: String(mode || ''),
+          selected: String(target || ''),
+          reason: String(reason || '') + (extra ? (' ' + String(extra).slice(0, 120)) : '')
+        }});
+        var url = new URL('/api/smart_link_log', window.location.href).toString();
+        if (navigator.sendBeacon) {{
+          navigator.sendBeacon(url, new Blob([body], {{type: 'application/json'}}));
+        }} else {{
+          fetch(url, {{method: 'POST', headers: {{'Content-Type': 'application/json'}}, body: body, keepalive: true}}).catch(function() {{}});
+        }}
+      }} catch(e) {{}}
+    }}
+    function fetchWithTimeoutNoCors(url, timeoutMs) {{
+      var ms = Math.max(100, Math.min(5000, Number(timeoutMs || 500)));
+      var init = {{method: 'GET', mode: 'no-cors', cache: 'no-store'}};
+      if (typeof AbortController !== 'undefined') {{
+        var controller = new AbortController();
+        init.signal = controller.signal;
+        var timer = setTimeout(function() {{ try {{ controller.abort(); }} catch(e) {{}} }}, ms);
+        return fetch(url, init).then(function(resp) {{
+          try {{ clearTimeout(timer); }} catch(e) {{}}
+          return resp;
+        }}, function(err) {{
+          try {{ clearTimeout(timer); }} catch(e) {{}}
+          throw err;
+        }});
+      }}
+      return Promise.race([
+        fetch(url, init),
+        new Promise(function(_, reject) {{ setTimeout(function() {{ reject(new Error('timeout')); }}, ms); }})
+      ]);
+    }}
+    function imageProbe(url, timeoutMs) {{
+      var ms = Math.max(100, Math.min(5000, Number(timeoutMs || 500)));
+      return new Promise(function(resolve, reject) {{
+        var done = false;
+        var img = new Image();
+        var timer = setTimeout(function() {{
+          if (done) return;
+          done = true;
+          try {{ img.onload = null; img.onerror = null; img.src = ''; }} catch (e) {{}}
+          reject(new Error('image_timeout'));
+        }}, ms);
+        img.onload = function() {{
+          if (done) return;
+          done = true;
+          try {{ clearTimeout(timer); }} catch (e) {{}}
+          resolve(true);
+        }};
+        img.onerror = function() {{
+          if (done) return;
+          done = true;
+          try {{ clearTimeout(timer); }} catch (e) {{}}
+          reject(new Error('image_error'));
+        }};
+        img.src = url;
+      }});
+    }}
+    function localReachable(localBase, timeoutMs) {{
+      var t = Date.now();
+      var health = localBase + '/health?smart_redirect=1&t=' + t;
+      var img = localBase + '/static/e-face-nobg.png?smart_redirect=1&t=' + t;
+      return fetchWithTimeoutNoCors(health, timeoutMs).catch(function(fetchErr) {{
+        return imageProbe(img, timeoutMs).catch(function(imgErr) {{
+          var msg = ((fetchErr && (fetchErr.name || fetchErr.message)) || 'fetch_error') + '+' + ((imgErr && imgErr.message) || 'image_error');
+          throw new Error(msg);
+        }});
+      }});
+    }}
+    function run(cfg) {{
+      if (!cfg || !cfg.redirect_enabled) return;
+      try {{
+        if (new URL(window.location.href).searchParams.get('noredirect') === '1') return;
+      }} catch(e) {{}}
+      var localBase = cleanUrl(cfg.local_base_url || 'http://192.168.3.24:8124');
+      var remoteBase = cleanUrl(cfg.remote_base_url || window.location.origin);
+      var localInfo = hostOf(localBase || cfg.local_host);
+      var here = hostOf(window.location.href);
+      if (localInfo.host && (here.host === localInfo.host || here.hostname === localInfo.hostname)) {{
+        writeCache('local');
+        logRedirect(cfg, 'local', window.location.href, 'already_local', '');
+        return;
+      }}
+      var timeoutMs = Math.max(100, Math.min(5000, Number(cfg.redirect_timeout_ms || 500)));
+      var target = pageTarget(localBase);
+      if (!target) return;
+      var lastCheck = 0;
+      var checking = false;
+      var retryTimer = null;
+      function scheduleRetry() {{
+        if (retryTimer) return;
+        retryTimer = setTimeout(function() {{
+          retryTimer = null;
+          check('retry');
+        }}, 10000);
+      }}
+      function check(reason) {{
+        var now = Date.now();
+        if (checking || (now - lastCheck) < 1200) return;
+        checking = true;
+        lastCheck = now;
+        var okReason = reason === 'initial' ? 'probe_ok' : (reason || 'probe_ok');
+        var failReason = reason === 'initial' ? 'probe_failed' : (reason || 'probe_failed');
+        localReachable(localBase, timeoutMs).then(function() {{
+          checking = false;
+          writeCache('local');
+          logRedirect(cfg, 'local', target, okReason, 'timeout_ms=' + timeoutMs);
+          if (window.location.href !== target) window.location.replace(target);
+        }}, function(err) {{
+          checking = false;
+          writeCache('remote');
+          logRedirect(cfg, 'remote', pageTarget(remoteBase) || window.location.href, failReason, (err && (err.name || err.message)) || '');
+          scheduleRetry();
+        }});
+      }}
+      try {{
+        window.addEventListener('online', function() {{ check('online'); }});
+        window.addEventListener('focus', function() {{ check('focus'); }});
+        document.addEventListener('visibilitychange', function() {{ if (!document.hidden) check('visible'); }});
+      }} catch(e) {{}}
+      check('initial');
+    }}
+    fetch(new URL('/api/meta', window.location.href).toString(), {{cache: 'no-store'}})
+      .then(function(resp) {{ return resp && resp.ok ? resp.json() : null; }})
+      .then(function(meta) {{
+        var cfg = meta && meta.smart_links && typeof meta.smart_links === 'object' ? meta.smart_links : null;
+        run(cfg);
+      }})
+      .catch(function(err) {{ sendDbg('smart_redirect_meta_error', (err && err.message) ? err.message : String(err || 'error')); }});
+  }})();
   try {{
     window.addEventListener('load', function() {{
       if (DEBUG_SENT) return;
@@ -5128,6 +5294,43 @@ self.addEventListener('fetch', (event) => {{
         new Promise(function(_, reject) {{ setTimeout(function() {{ reject(new Error('timeout')); }}, ms); }})
       ]);
     }}
+    function imageProbe(url, timeoutMs) {{
+      var ms = Math.max(100, Math.min(5000, Number(timeoutMs || 500)));
+      return new Promise(function(resolve, reject) {{
+        var done = false;
+        var img = new Image();
+        var timer = setTimeout(function() {{
+          if (done) return;
+          done = true;
+          try {{ img.onload = null; img.onerror = null; img.src = ''; }} catch (e) {{}}
+          reject(new Error('image_timeout'));
+        }}, ms);
+        img.onload = function() {{
+          if (done) return;
+          done = true;
+          try {{ clearTimeout(timer); }} catch (e) {{}}
+          resolve(true);
+        }};
+        img.onerror = function() {{
+          if (done) return;
+          done = true;
+          try {{ clearTimeout(timer); }} catch (e) {{}}
+          reject(new Error('image_error'));
+        }};
+        img.src = url;
+      }});
+    }}
+    function localReachable(localBase, timeoutMs) {{
+      var t = Date.now();
+      var health = localBase + '/health?smart_redirect=1&t=' + t;
+      var img = localBase + '/static/e-face-nobg.png?smart_redirect=1&t=' + t;
+      return fetchWithTimeoutNoCors(health, timeoutMs).catch(function(fetchErr) {{
+        return imageProbe(img, timeoutMs).catch(function(imgErr) {{
+          var msg = ((fetchErr && (fetchErr.name || fetchErr.message)) || 'fetch_error') + '+' + ((imgErr && imgErr.message) || 'image_error');
+          throw new Error(msg);
+        }});
+      }});
+    }}
     function run(cfg) {{
       if (!cfg || !cfg.redirect_enabled) return;
       try {{
@@ -5146,18 +5349,44 @@ self.addEventListener('fetch', (event) => {{
       var cache = cfg.redirect_cache !== false ? readCache() : null;
       var timeoutMs = Math.max(100, Math.min(5000, Number(cfg.redirect_timeout_ms || 500)));
       if (cache && cache.mode) logRedirect(cfg, String(cache.mode), '', 'cache_seen', 'age_ms=' + Math.max(0, Date.now() - Number(cache.ts || 0)));
-      var probe = localBase + '/health?smart_redirect=1&t=' + Date.now();
       var target = pageTarget(localBase);
       if (!target) return;
-      fetchWithTimeoutNoCors(probe, timeoutMs).then(function() {{
-        writeCache('local');
-        logRedirect(cfg, 'local', target, 'probe_ok', 'timeout_ms=' + timeoutMs);
-        if (window.location.href !== target) window.location.replace(target);
-      }}, function(err) {{
-        writeCache('remote');
-        var remoteTarget = pageTarget(remoteBase);
-        logRedirect(cfg, 'remote', remoteTarget || window.location.href, 'probe_failed', (err && (err.name || err.message)) || '');
-      }});
+      var lastCheck = 0;
+      var checking = false;
+      var retryTimer = null;
+      function scheduleRetry() {{
+        if (retryTimer) return;
+        retryTimer = setTimeout(function() {{
+          retryTimer = null;
+          check('retry');
+        }}, 10000);
+      }}
+      function check(reason) {{
+        var now = Date.now();
+        if (checking || (now - lastCheck) < 1200) return;
+        checking = true;
+        lastCheck = now;
+        var okReason = reason === 'initial' ? 'probe_ok' : (reason || 'probe_ok');
+        var failReason = reason === 'initial' ? 'probe_failed' : (reason || 'probe_failed');
+        localReachable(localBase, timeoutMs).then(function() {{
+          checking = false;
+          writeCache('local');
+          logRedirect(cfg, 'local', target, okReason, 'timeout_ms=' + timeoutMs);
+          if (window.location.href !== target) window.location.replace(target);
+        }}, function(err) {{
+          checking = false;
+          writeCache('remote');
+          var remoteTarget = pageTarget(remoteBase);
+          logRedirect(cfg, 'remote', remoteTarget || window.location.href, failReason, (err && (err.name || err.message)) || '');
+          scheduleRetry();
+        }});
+      }}
+      try {{
+        window.addEventListener('online', function() {{ check('online'); }});
+        window.addEventListener('focus', function() {{ check('focus'); }});
+        document.addEventListener('visibilitychange', function() {{ if (!document.hidden) check('visible'); }});
+      }} catch (e) {{}}
+      check('initial');
     }}
     fetch(new URL('api/meta', window.location.href).toString(), {{cache: 'no-store'}})
       .then(function(resp) {{ return resp && resp.ok ? resp.json() : null; }})

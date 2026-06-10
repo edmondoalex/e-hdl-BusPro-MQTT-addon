@@ -1,5 +1,13 @@
 # WORKLOG
 
+## 2026-06-10 (Smart redirect for ext pages)
+- Proxy: aggiunto redirect smart locale/remoto anche alle pagine HTML servite da `/ext/<name>/`.
+- Debug: le pagine proxate scrivono `smart_link target=page_redirect:ext:<name>` quando `Debug` smart link e' attivo.
+- Runtime: il redirect `/ext` mantiene path/query/hash e cambia solo il base locale/remoto.
+- Runtime: aggiunto fallback probe via immagine statica locale quando `fetch()` verso IP privato viene bloccato dal browser.
+- Runtime: aggiunto recheck su `online`, `focus`, `visibilitychange` e retry leggero per passaggio dati mobili -> Wi-Fi senza refresh manuale.
+- Version bump: 0.1.435 -> 0.1.436.
+
 ## 2026-06-10 (Smart page local/remote redirect)
 - User UI: aggiunto redirect smart locale/remoto comune a `/home`, `/home2`, `/home_plus`, `/e-face`, `/lights`, `/covers`, `/scenarios`, `/extra`, `/locks` e `/e-guard`.
 - Runtime: il redirect testa `Base URL locale + /health` con timeout configurabile e mantiene path/query/hash della pagina aperta.
