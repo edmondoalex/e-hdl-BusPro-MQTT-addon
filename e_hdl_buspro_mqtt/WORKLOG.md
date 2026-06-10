@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-06-10 (SunMind smart redirect diagnostics)
+- Proxy: aggiunta iniezione minimale smart redirect/debug anche per `e_SunMind`, mantenendo il resto della pagina in pass-through.
+- Debug: gli errori probe ora riportano il messaggio composto (`fetch + image fallback`) invece del solo nome generico `Error`.
+- Version bump: 0.1.436 -> 0.1.437.
+
 ## 2026-06-10 (Smart redirect for ext pages)
 - Proxy: aggiunto redirect smart locale/remoto anche alle pagine HTML servite da `/ext/<name>/`.
 - Debug: le pagine proxate scrivono `smart_link target=page_redirect:ext:<name>` quando `Debug` smart link e' attivo.

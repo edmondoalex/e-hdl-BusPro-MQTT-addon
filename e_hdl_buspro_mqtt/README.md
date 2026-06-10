@@ -45,6 +45,7 @@ Nella stessa sezione Admin puoi abilitare `Redirect pagine` per le pagine utente
 - Se il browser blocca il `fetch()` verso IP privato, viene provato anche un fallback tramite immagine statica locale.
 - Se il locale risponde, resta sulla stessa pagina ma passa al base locale, ad esempio `/lights` -> `http://192.168.3.24:8124/lights`.
 - Per le pagine proxate mantiene anche il prefisso `/ext/<nome>/`, ad esempio `/ext/termostati/` -> `http://192.168.3.24:8124/ext/termostati/`.
+- `e_SunMind` usa un'iniezione minima solo per debug/redirect, senza riscrittura completa del proxy.
 - Se il locale non risponde, resta sull'URL remoto.
 - Se passi da dati mobili a Wi-Fi con la pagina gia' aperta, il controllo viene ripetuto su focus/visibilita'/online e con retry leggero.
 - `noredirect=1` disattiva il redirect per una singola apertura, utile per test.
