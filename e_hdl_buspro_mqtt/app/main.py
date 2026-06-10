@@ -1133,6 +1133,8 @@ def create_app() -> FastAPI:
             return await call_next(request)
         if path in ("/api/meta", "/api/buspro/status", "/api/mqtt/status"):
             return await call_next(request)
+        if path == "/api/smart_link_log" and request.method.upper() == "POST":
+            return await call_next(request)
         if path == "/api/stream":
             return await call_next(request)
         if path.startswith("/assets/"):
@@ -5165,6 +5167,7 @@ self.addEventListener('fetch', (event) => {{
             "hub_links": store.list_visible_hub_links(),
             "home_actions": store.list_visible_home_actions(),
             "home2_order": home2_order,
+            "smart_links": store.get_smart_links_config(),
             "hub_icons": hub_icons,
             "hub_show": hub_show,
             "hub_order": hub_order,
@@ -5195,6 +5198,30 @@ self.addEventListener('fetch', (event) => {{
             ua[:220],
         )
         return {"ok": True}
+
+    @api.post("/api/smart_link_log")
+    async def api_smart_link_log(payload: dict[str, Any], request: Request):
+        cfg = store.get_smart_links_config()
+        if not bool(cfg.get("debug")):
+            return {"ok": True, "logged": False}
+        target = str(payload.get("target") or "").strip()[:80]
+        host = str(payload.get("host") or "").strip()[:120]
+        mode = str(payload.get("mode") or "").strip()[:40]
+        selected = str(payload.get("selected") or "").strip()[:300]
+        reason = str(payload.get("reason") or "").strip()[:120]
+        real_ip, proxy_ip, ua = _request_client_info(request)
+        _LOGGER.info(
+            "smart_link target=%s host=%s mode=%s selected=%s reason=%s real_ip=%s proxy_ip=%s ua=%s",
+            target or "-",
+            host or "-",
+            mode or "-",
+            selected or "-",
+            reason or "-",
+            real_ip,
+            proxy_ip,
+            ua[:220],
+        )
+        return {"ok": True, "logged": True}
 
     @api.get("/api/diag/net")
     async def api_diag_net():
@@ -5410,6 +5437,7 @@ self.addEventListener('fetch', (event) => {{
             "hub_show": store.get_hub_show(),
             "hub_order": store.get_hub_order(),
             "guard_enabled": guard_enabled,
+            "smart_links": store.get_smart_links_config(),
         }
 
     @api.put("/api/hub_config")
@@ -5429,9 +5457,19 @@ self.addEventListener('fetch', (event) => {{
             raise HTTPException(status_code=400, detail="hub_order must be a list")
         else:
             cleaned_order = store.set_hub_order(order_raw)
+        smart_raw = payload.get("smart_links", None)
+        if smart_raw is None:
+            smart_links = store.get_smart_links_config()
+        elif not isinstance(smart_raw, dict):
+            raise HTTPException(status_code=400, detail="smart_links must be an object")
+        else:
+            try:
+                smart_links = store.set_smart_links_config(smart_raw)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
         asyncio.create_task(_sync_icons_for_hub_config({"hub_icons": cleaned}))
-        await hub.broadcast("hub_config", {"hub_icons": cleaned, "hub_show": cleaned_show, "hub_order": cleaned_order})
-        return {"hub_icons": cleaned, "hub_show": cleaned_show, "hub_order": cleaned_order}
+        await hub.broadcast("hub_config", {"hub_icons": cleaned, "hub_show": cleaned_show, "hub_order": cleaned_order, "smart_links": smart_links})
+        return {"hub_icons": cleaned, "hub_show": cleaned_show, "hub_order": cleaned_order, "smart_links": smart_links}
 
     @api.get("/api/ha_devices")
     async def api_ha_devices_list():

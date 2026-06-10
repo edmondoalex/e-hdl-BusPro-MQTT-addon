@@ -26,6 +26,15 @@ Nella pagina Admin, sezione `Scenari: configurazione JSON`, puoi creare un nuovo
 - Sono supportati luci BusPro, cover BusPro, gruppi cover, luci/switch Home Assistant e cover Home Assistant.
 - Sensori e lock non vengono mostrati perche' il motore scenari non li esegue.
 
+## Smart link Home2
+
+In Admin, sezione `Home (hub) links`, puoi abilitare gli Smart link locale/remoto per i link manuali di Home2.
+
+- Funzione spenta: ogni link usa il campo `URL` normale, come prima.
+- Funzione accesa: se Home2 e' aperta da `Host locale`, usa `URL locale`; se e' aperta da `Host remoto`, usa `URL remoto`.
+- Debug acceso: ogni click su un link smart scrive nei log la decisione presa.
+- Se `URL locale` o `URL remoto` sono vuoti, il link torna al campo `URL` normale.
+
 ## Control4 WebViewer su iPhone
 
 Quando le pagine dell'add-on vengono aperte dentro Control4 WebViewer su iPhone, la WebView iOS puo' chiudere in modo anomalo il WebSocket (`code=1006`). Il sintomo tipico e' una pagina che ogni tanto resta in caricamento o non aggiorna piu' gli stati, anche se il server risponde correttamente.

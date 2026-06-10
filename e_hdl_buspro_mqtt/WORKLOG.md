@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-06-10 (Smart local/remote Home2 links)
+- Home2: aggiunta funzione opzionale Smart link locale/remoto per i link manuali della Home.
+- Admin UI: aggiunti switch `Attivo`/`Debug`, host locale/remoto e campi `URL locale`/`URL remoto` sui link Home.
+- Runtime: aggiunto endpoint debug `api/smart_link_log`, attivo solo con debug smart link abilitato.
+- Version bump: 0.1.433 -> 0.1.434.
+
 ## 2026-06-09 (Memory diagnostics option)
 - Runtime: aggiunta opzione `memory_log` per abilitare esplicitamente i log `memory_diag`.
 - Runtime: i diagnostici memoria sono spenti di default e non vengono piu' stampati ogni minuto con `debug` disattivato.

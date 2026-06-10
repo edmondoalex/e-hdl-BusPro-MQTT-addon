@@ -277,7 +277,7 @@
           back.classList.add('show');
         });
       }
-      function makeTile({ title, href, icon, targetBlank }) {
+      function makeTile({ title, href, icon, targetBlank, onClick }) {
         const a = document.createElement('a');
         a.className = 'tile';
         a.href = href;
@@ -297,7 +297,52 @@
         label.textContent = title;
         a.appendChild(ring);
         a.appendChild(label);
+        if (typeof onClick === 'function') {
+          a.addEventListener('click', () => {
+            try { onClick(); } catch (e) {}
+          });
+        }
         return a;
+      }
+
+      function resolveSmartHref(item, meta) {
+        const normal = String((item && item.url) || '').trim();
+        const cfg = (meta && meta.smart_links && typeof meta.smart_links === 'object') ? meta.smart_links : {};
+        if (!cfg.enabled) return { href: normal, mode: 'normal', reason: 'disabled' };
+        const host = String(window.location.hostname || '').trim().toLowerCase();
+        const localHost = String(cfg.local_host || '192.168.3.24').trim().toLowerCase();
+        const remoteHost = String(cfg.remote_host || 'manager.ekonex.it').trim().toLowerCase();
+        const localUrl = String((item && item.local_url) || '').trim();
+        const remoteUrl = String((item && item.remote_url) || '').trim();
+        if (host === localHost) {
+          return localUrl ? { href: localUrl, mode: 'local', reason: 'host_match' } : { href: normal, mode: 'fallback', reason: 'missing_local_url' };
+        }
+        if (host === remoteHost) {
+          return remoteUrl ? { href: remoteUrl, mode: 'remote', reason: 'host_match' } : { href: normal, mode: 'fallback', reason: 'missing_remote_url' };
+        }
+        if (remoteUrl) return { href: remoteUrl, mode: 'remote', reason: 'unknown_host' };
+        return { href: normal, mode: 'fallback', reason: 'unknown_host' };
+      }
+
+      function logSmartLink(item, meta, decision) {
+        const cfg = (meta && meta.smart_links && typeof meta.smart_links === 'object') ? meta.smart_links : {};
+        if (!cfg.debug) return;
+        try {
+          const body = JSON.stringify({
+            target: String((item && (item.id || item.title)) || ''),
+            host: String(window.location.hostname || ''),
+            mode: String((decision && decision.mode) || ''),
+            selected: String((decision && decision.href) || ''),
+            reason: String((decision && decision.reason) || ''),
+          });
+          const url = absUrl('api/smart_link_log');
+          if (navigator.sendBeacon) {
+            const blob = new Blob([body], { type: 'application/json' });
+            navigator.sendBeacon(url, blob);
+          } else {
+            fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
+          }
+        } catch (e) {}
       }
 
       function makeActionTile({ title, icon, confirm, actionId }) {
@@ -445,13 +490,15 @@
         for (const it of links) {
           const id = String(it.id || '').trim().toLowerCase();
           const title = String(it.title || '').trim();
-          const url = String(it.url || '').trim();
+          const decision = resolveSmartHref(it, meta);
+          const url = String(decision.href || '').trim();
           if (!id || !title || !url) continue;
           linkMap.set(`link:${id}`, () => makeTile({
             title,
             href: url,
             icon: iconUrl(it.icon || 'mdi:link-variant', 'link-variant'),
-            targetBlank: !!it.new_tab
+            targetBlank: !!it.new_tab,
+            onClick: () => logSmartLink(it, meta, decision),
           }));
         }
 

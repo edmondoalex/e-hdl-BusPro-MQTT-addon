@@ -1112,6 +1112,36 @@
                 </div>
               </div>
 
+              <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
+                <h3 style="margin:0;font-size:14px">Smart link locale/remoto</h3>
+                <div class="muted" style="margin-top:6px">Se attivo, Home2 sceglie URL locale o remoto in base all'host con cui e' stata aperta.</div>
+                <div class="row3" style="margin-top:10px">
+                  <div style="display:flex;align-items:end;gap:10px">
+                    <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
+                      <input id="smartLinksEnabled" type="checkbox" />
+                      Attivo
+                    </label>
+                  </div>
+                  <div style="display:flex;align-items:end;gap:10px">
+                    <label style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
+                      <input id="smartLinksDebug" type="checkbox" />
+                      Debug
+                    </label>
+                  </div>
+                  <div></div>
+                </div>
+                <div class="row" style="margin-top:10px">
+                  <div>
+                    <label>Host locale</label>
+                    <input id="smartLocalHost" placeholder="192.168.3.24" />
+                  </div>
+                  <div>
+                    <label>Host remoto</label>
+                    <input id="smartRemoteHost" placeholder="manager.ekonex.it" />
+                  </div>
+                </div>
+              </div>
+
               <form id="hubLinkForm" style="margin-top:10px">
                 <input id="hl_id" type="hidden" />
                 <div class="row">
@@ -1122,6 +1152,16 @@
                   <div>
                     <label>URL</label>
                     <input id="hl_url" required placeholder="Es: https://... oppure /lovelace" />
+                  </div>
+                </div>
+                <div class="row" style="margin-top:10px">
+                  <div>
+                    <label>URL locale (smart link)</label>
+                    <input id="hl_local_url" placeholder="Es: http://192.168.3.24:8124/ext/termostati" />
+                  </div>
+                  <div>
+                    <label>URL remoto (smart link)</label>
+                    <input id="hl_remote_url" placeholder="Es: http://manager.ekonex.it:20052/ext/termostati" />
                   </div>
                 </div>
                 <div class="row3">
@@ -4654,6 +4694,7 @@
       let hubIcons = null;
       let hubShow = null;
       let hubOrder = null;
+      let smartLinks = null;
       let pwaCfg = null;
       let uiOpts = null;
       let guardEnabled = true;
@@ -4688,6 +4729,14 @@
         qs('hubShowExtra').checked = !!hubShow.extra;
         qs('hubShowLocks').checked = !!hubShow.locks;
         if (guardEnabled) qs('hubShowGuard').checked = !!hubShow.guard;
+      }
+
+      function renderSmartLinks() {
+        const cfg = smartLinks || {};
+        qs('smartLinksEnabled').checked = !!cfg.enabled;
+        qs('smartLinksDebug').checked = !!cfg.debug;
+        qs('smartLocalHost').value = String(cfg.local_host || '192.168.3.24');
+        qs('smartRemoteHost').value = String(cfg.remote_host || 'manager.ekonex.it');
       }
 
       function hubKeyLabel(k) {
@@ -4781,15 +4830,18 @@
           hubIcons = (res && res.hub_icons && typeof res.hub_icons === 'object') ? res.hub_icons : null;
           hubShow = (res && res.hub_show && typeof res.hub_show === 'object') ? res.hub_show : null;
           hubOrder = (res && Array.isArray(res.hub_order)) ? res.hub_order : null;
+          smartLinks = (res && res.smart_links && typeof res.smart_links === 'object') ? res.smart_links : null;
           guardEnabled = !(res && typeof res.guard_enabled === 'boolean') ? guardEnabled : !!res.guard_enabled;
         } catch (e) {
           hubIcons = null;
           hubShow = null;
           hubOrder = null;
+          smartLinks = null;
         }
         applyGuardEnabled();
         renderHubIcons();
         renderHubShow();
+        renderSmartLinks();
         renderHubOrder();
         if (guardEnabled) {
           refreshGuardCameras();
@@ -4820,6 +4872,12 @@
             guard: !!qs('hubShowGuard').checked,
           },
           hub_order: normalizeHubOrder(hubOrder || []),
+          smart_links: {
+            enabled: !!qs('smartLinksEnabled').checked,
+            debug: !!qs('smartLinksDebug').checked,
+            local_host: String(qs('smartLocalHost').value || '').trim(),
+            remote_host: String(qs('smartRemoteHost').value || '').trim(),
+          },
         };
         if (!guardEnabled) {
           try { delete payload.hub_icons.guard; } catch (e) {}
@@ -4835,8 +4893,10 @@
           hubIcons = (res && res.hub_icons && typeof res.hub_icons === 'object') ? res.hub_icons : payload.hub_icons;
           hubShow = (res && res.hub_show && typeof res.hub_show === 'object') ? res.hub_show : payload.hub_show;
           hubOrder = (res && Array.isArray(res.hub_order)) ? res.hub_order : payload.hub_order;
+          smartLinks = (res && res.smart_links && typeof res.smart_links === 'object') ? res.smart_links : payload.smart_links;
           renderHubIcons();
           renderHubShow();
+          renderSmartLinks();
           renderHubOrder();
           qs('hubIconsMsg').textContent = 'Salvato';
           setTimeout(() => { qs('hubIconsMsg').textContent = ''; }, 1400);
@@ -4928,6 +4988,8 @@
         qs('hl_id').value = isEdit ? String(link.id) : '';
         qs('hl_title').value = isEdit ? String(link.title || '') : '';
         qs('hl_url').value = isEdit ? String(link.url || '') : '';
+        qs('hl_local_url').value = isEdit ? String(link.local_url || '') : '';
+        qs('hl_remote_url').value = isEdit ? String(link.remote_url || '') : '';
         qs('hl_icon').value = isEdit ? String(link.icon || '') : '';
         qs('hl_show').checked = isEdit ? !!link.show : true;
         qs('hl_newtab').checked = isEdit ? !!link.new_tab : true;
@@ -4946,6 +5008,8 @@
           const tr = document.createElement('tr');
           const title = String(it.title || '').trim();
           const url = String(it.url || '').trim();
+          const localUrl = String(it.local_url || '').trim();
+          const remoteUrl = String(it.remote_url || '').trim();
           const icon = String(it.icon || '').trim();
           const show = !!it.show;
           const nt = !!it.new_tab;
@@ -4955,6 +5019,8 @@
             <td>
               <span class="pill">${show ? 'show' : 'hide'}</span>
               <span class="pill">${nt ? 'new tab' : 'same tab'}</span>
+              ${localUrl ? `<span class="pill">local</span>` : ''}
+              ${remoteUrl ? `<span class="pill">remote</span>` : ''}
               ${icon ? `<span class="pill">${escapeHtml(icon)}</span>` : ''}
             </td>
             <td>
@@ -5936,6 +6002,10 @@
         if (data.hub_order && Array.isArray(data.hub_order)) {
           hubOrder = data.hub_order;
         }
+        if (data.smart_links && typeof data.smart_links === 'object') {
+          smartLinks = data.smart_links;
+          renderSmartLinks();
+        }
         renderHome2Order();
       }
 
@@ -6279,13 +6349,15 @@
           const id = String(qs('hl_id').value || '').trim();
           const title = String(qs('hl_title').value || '').trim();
           const url = String(qs('hl_url').value || '').trim();
+          const local_url = String(qs('hl_local_url').value || '').trim();
+          const remote_url = String(qs('hl_remote_url').value || '').trim();
           const icon = String(qs('hl_icon').value || '').trim();
           const show = !!qs('hl_show').checked;
           const new_tab = !!qs('hl_newtab').checked;
           await getJson('api/hub_links', {
             method: 'POST',
             headers: {'Content-Type':'application/json'},
-            body: JSON.stringify(id ? { id, title, url, icon, show, new_tab } : { title, url, icon, show, new_tab })
+            body: JSON.stringify(id ? { id, title, url, local_url, remote_url, icon, show, new_tab } : { title, url, local_url, remote_url, icon, show, new_tab })
           });
           await refreshHubLinks();
           setHubLinkEditing(null);

@@ -63,6 +63,12 @@ class StateStore:
             "hub_links": [],
             "home_actions": [],
             "home2_order": [],
+            "smart_links": {
+                "enabled": False,
+                "debug": False,
+                "local_host": "192.168.3.24",
+                "remote_host": "manager.ekonex.it",
+            },
             "guard_cameras": [],
             "hub_icons": StateStore.default_hub_icons(),
             "hub_show": StateStore.default_hub_show(),
@@ -121,6 +127,7 @@ class StateStore:
         raw["ui"].setdefault("hub_links", [])
         raw["ui"].setdefault("home_actions", [])
         raw["ui"].setdefault("home2_order", [])
+        raw["ui"].setdefault("smart_links", self._default_ui().get("smart_links"))
         raw["ui"].setdefault("guard_cameras", [])
         raw["ui"].setdefault("hub_icons", self.default_hub_icons())
         raw["ui"].setdefault("hub_show", self.default_hub_show())
@@ -171,6 +178,8 @@ class StateStore:
             raw["ui"]["home_actions"] = []
         if not isinstance(raw["ui"].get("home2_order", []), list):
             raw["ui"]["home2_order"] = []
+        if not isinstance(raw["ui"].get("smart_links", {}), dict):
+            raw["ui"]["smart_links"] = self._default_ui().get("smart_links")
         if not isinstance(raw["ui"].get("pwa", {}), dict):
             raw["ui"]["pwa"] = self._default_ui().get("pwa")
         return raw
@@ -377,6 +386,8 @@ class StateStore:
             ui["home_actions"] = []
         if not isinstance(ui.get("home2_order", []), list):
             ui["home2_order"] = []
+        if not isinstance(ui.get("smart_links", {}), dict):
+            ui["smart_links"] = self._default_ui().get("smart_links")
         if not isinstance(ui.get("hub_icons", {}), dict):
             ui["hub_icons"] = self.default_hub_icons()
         if not isinstance(ui.get("hub_show", {}), dict):
@@ -1750,6 +1761,36 @@ class StateStore:
     def list_visible_hub_links(self) -> list[dict[str, Any]]:
         return [it for it in self.list_hub_links() if bool(it.get("show", True))]
 
+    def get_smart_links_config(self) -> dict[str, Any]:
+        raw = self.read_raw()
+        ui = raw.get("ui") or {}
+        cfg = ui.get("smart_links") or {}
+        if not isinstance(cfg, dict):
+            cfg = {}
+        d = self._default_ui().get("smart_links", {}) or {}
+        return {
+            "enabled": bool(cfg.get("enabled", d.get("enabled", False))),
+            "debug": bool(cfg.get("debug", d.get("debug", False))),
+            "local_host": str(cfg.get("local_host") or d.get("local_host") or "192.168.3.24").strip(),
+            "remote_host": str(cfg.get("remote_host") or d.get("remote_host") or "manager.ekonex.it").strip(),
+        }
+
+    def set_smart_links_config(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be an object")
+        cfg = {
+            "enabled": bool(payload.get("enabled", False)),
+            "debug": bool(payload.get("debug", False)),
+            "local_host": str(payload.get("local_host") or "192.168.3.24").strip(),
+            "remote_host": str(payload.get("remote_host") or "manager.ekonex.it").strip(),
+        }
+        raw = self.read_raw()
+        ui = dict(raw.get("ui") or {})
+        ui["smart_links"] = cfg
+        raw["ui"] = ui
+        self.write_raw(raw)
+        return cfg
+
     def upsert_hub_link(self, link: dict[str, Any]) -> dict[str, Any]:
         title = str(link.get("title") or "").strip()
         url = str(link.get("url") or "").strip()
@@ -1765,6 +1806,11 @@ class StateStore:
         icon = str(link.get("icon") or "").strip() or None
         show = bool(link.get("show", True))
         new_tab = bool(link.get("new_tab", True))
+        local_url = str(link.get("local_url") or "").strip()
+        remote_url = str(link.get("remote_url") or "").strip()
+        for key, value in (("local_url", local_url), ("remote_url", remote_url)):
+            if value and value.lower().startswith(("javascript:", "data:")):
+                raise ValueError(f"unsupported {key} scheme")
 
         item: dict[str, Any] = {
             "id": link_id,
@@ -1773,6 +1819,8 @@ class StateStore:
             "icon": icon,
             "show": show,
             "new_tab": new_tab,
+            "local_url": local_url,
+            "remote_url": remote_url,
         }
 
         raw = self.read_raw()
