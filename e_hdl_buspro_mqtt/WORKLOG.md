@@ -1,5 +1,9 @@
 # WORKLOG
 
+## 2026-06-10 (Filter WebView parse-noise warning)
+- Runtime: filtrato `ui_log` per il falso positivo Android/WebView `js_error: Unexpected end of input`, lasciando attivi gli altri warning UI.
+- Version bump: 0.1.437 -> 0.1.438.
+
 ## 2026-06-10 (SunMind smart redirect diagnostics)
 - Proxy: aggiunta iniezione minimale smart redirect/debug anche per `e_SunMind`, mantenendo il resto della pagina in pass-through.
 - Debug: gli errori probe ora riportano il messaggio composto (`fetch + image fallback`) invece del solo nome generico `Error`.

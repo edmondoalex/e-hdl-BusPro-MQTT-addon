@@ -78,7 +78,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.437"
+ADDON_VERSION = "0.1.438"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -5689,6 +5689,8 @@ self.addEventListener('fetch', (event) => {{
         page = str(params.get("page") or "").strip()[:40]
         phase = str(params.get("phase") or "").strip()[:80]
         detail = str(params.get("detail") or "").strip()[:240]
+        if phase == "js_error" and "Unexpected end of input" in detail:
+            return {"ok": True, "logged": False, "filtered": True}
         real_ip, proxy_ip, ua = _request_client_info(request)
         log_fn = _LOGGER.warning if phase in {
             "js_error",
