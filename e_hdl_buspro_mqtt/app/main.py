@@ -78,7 +78,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.438"
+ADDON_VERSION = "0.1.439"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -8871,6 +8871,10 @@ self.addEventListener('fetch', (event) => {{
             return "OFF" if str(st).upper() == "ON" else "ON"
 
         if command == "STOP":
+            try:
+                await hub.broadcast("light_scenario_command", {"id": sid_current, "action": "stop"})
+            except Exception:
+                pass
             _cancel_scenario_tasks(sid_current)
             covers = sc.get("covers") or []
             if isinstance(covers, list):
@@ -8918,6 +8922,10 @@ self.addEventListener('fetch', (event) => {{
             await _set_light_scenario_running(sid_current, False)
             return {"ok": True, "stopped": True}
 
+        try:
+            await hub.broadcast("light_scenario_command", {"id": sid_current, "action": (desired or command or "RUN").lower()})
+        except Exception:
+            pass
         await _set_light_scenario_running(sid_current, True)
 
         combination_targets_raw = sc.get("combination_targets") or []

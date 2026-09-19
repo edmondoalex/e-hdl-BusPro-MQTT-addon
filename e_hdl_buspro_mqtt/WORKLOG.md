@@ -1,5 +1,9 @@
 # WORKLOG
 
+## 2026-09-19 (Scenario command events for e-Face routines)
+- Il connettore pubblica `light_scenario_command` con ID e azione ON/OFF/RUN/STOP all'avvio del comando, distinto dallo stato calcolato dello scenario.
+- Version bump: 0.1.438 -> 0.1.439.
+
 ## 2026-06-10 (Filter WebView parse-noise warning)
 - Runtime: filtrato `ui_log` per il falso positivo Android/WebView `js_error: Unexpected end of input`, lasciando attivi gli altri warning UI.
 - Version bump: 0.1.437 -> 0.1.438.
