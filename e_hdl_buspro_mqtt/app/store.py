@@ -423,8 +423,10 @@ class StateStore:
             raise ValueError("entity_id required (e.g. light.kitchen)")
 
         domain = entity_id.split(".", 1)[0]
-        if domain not in ("light", "switch", "cover", "lock"):
-            raise ValueError("only light/switch/cover/lock supported")
+        eface_only = bool(payload.get("eface_only"))
+        classic_domains = ("light", "switch", "cover", "lock")
+        if domain not in classic_domains and not eface_only:
+            raise ValueError("this entity domain requires 'Solo eFace'")
 
         page = str(payload.get("page") or "").strip().lower() or (
             "covers" if domain == "cover" else ("locks" if domain == "lock" else "lights")
@@ -453,6 +455,7 @@ class StateStore:
             "name": name,
             "group": group,
             "icon": icon,
+            "eface_only": eface_only,
             "invert_cover": bool(payload.get("invert_cover")) if domain == "cover" else False,
             "curtain_mode": bool(payload.get("curtain_mode")) if domain == "cover" else False,
         }

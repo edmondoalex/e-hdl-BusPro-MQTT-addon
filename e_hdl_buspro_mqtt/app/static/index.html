@@ -1491,12 +1491,13 @@
 
           <details class="acc" data-acc="ha_devices">
             <summary>
-              <h2 style="margin:0;font-size:16px">Home Assistant devices (UI utente)</h2>
+              <h2 style="margin:0;font-size:16px">Home Assistant devices (UI utente / eFace)</h2>
             </summary>
             <div class="accBody">
               <div class="muted" style="margin-top:6px">
                 Aggiungi entità di Home Assistant (light/switch/cover/lock) da mostrare nelle pagine utente <code>/lights</code>, <code>/covers</code>, <code>/locks</code>, <code>/extra</code>.
                 Non pubblica nulla su MQTT: controlla tramite API di Home Assistant.
+                Con <b>Solo eFace</b> sono accettati tutti i domini e l'entita' non compare nella UI HDL classica.
               </div>
 
               <form id="haForm" style="margin-top:10px">
@@ -1545,6 +1546,17 @@
                     </label>
                   </div>
                 </div>
+                <div class="row3">
+                  <div>
+                    <label>Destinazione</label>
+                    <label style="margin:0;color:var(--muted);display:flex;gap:10px;align-items:center;min-height:30px">
+                      <input id="ha_eface_only" type="checkbox" style="width:auto" />
+                      <span>Solo eFace (non mostrare nella UI HDL)</span>
+                    </label>
+                  </div>
+                  <div></div>
+                  <div></div>
+                </div>
                 <div class="row3" id="haLockMetricsRow" style="display:none">
                   <div>
                     <label>Lock: entity batteria (opz.)</label>
@@ -1581,7 +1593,7 @@
                 <thead>
                   <tr>
                     <th>entity_id</th>
-                    <th>Pagina</th>
+                    <th>Destinazione</th>
                     <th>Gruppo</th>
                     <th>Nome</th>
                     <th>Icona</th>
@@ -6055,6 +6067,7 @@
         setGroupValue('ha_groupSel', 'ha_groupCustom', isEdit ? String(item.group || '') : '');
         qs('ha_name').value = isEdit ? String(item.name || '') : '';
         qs('ha_icon').value = isEdit ? String(item.icon || '') : '';
+        qs('ha_eface_only').checked = isEdit ? !!item.eface_only : false;
         qs('ha_invert_cover').checked = isEdit ? !!item.invert_cover : false;
         qs('ha_curtain_mode').checked = isEdit ? !!item.curtain_mode : false;
         qs('ha_lock_battery_entity').value = isEdit ? String(item.lock_battery_entity_id || '') : '';
@@ -6098,6 +6111,7 @@
           const id = String(it.id || '').trim();
           const entity_id = String(it.entity_id || '').trim();
           const page = String(it.page || '').trim();
+          const efaceOnly = !!it.eface_only;
           const group = String(it.group || '').trim();
           const name = String(it.name || '').trim();
           const icon = String(it.icon || '').trim();
@@ -6115,7 +6129,7 @@
           const tr = document.createElement('tr');
           tr.innerHTML = `
             <td><code>${escapeHtml(entity_id)}</code></td>
-            <td>${escapeHtml(page)}</td>
+            <td>${efaceOnly ? '<span class="pill">Solo eFace</span>' : escapeHtml(page)}</td>
             <td>${escapeHtml(group)}</td>
             <td>${escapeHtml(name)}</td>
             <td>${icon ? `<span class="pill">${escapeHtml(icon)}</span>` : ''}</td>
@@ -6416,6 +6430,7 @@
           const group = getGroupValue('ha_groupSel', 'ha_groupCustom');
           const name = String(qs('ha_name').value || '').trim();
           const icon = String(qs('ha_icon').value || '').trim();
+          const eface_only = !!qs('ha_eface_only').checked;
           const invert_cover = !!qs('ha_invert_cover').checked;
           const curtain_mode = !!qs('ha_curtain_mode').checked;
           const lock_battery_entity_id = String(qs('ha_lock_battery_entity').value || '').trim();
@@ -6423,7 +6438,7 @@
           const lock_rssi_entity_id = String(qs('ha_lock_rssi_entity').value || '').trim();
           const lock_linkquality_entity_id = String(qs('ha_lock_lqi_entity').value || '').trim();
           const lock_tamper_entity_id = String(qs('ha_lock_tamper_entity').value || '').trim();
-          const payload = { entity_id, page, group, name, icon, invert_cover, curtain_mode, lock_battery_entity_id, lock_battery_low_entity_id, lock_rssi_entity_id, lock_linkquality_entity_id, lock_tamper_entity_id };
+          const payload = { entity_id, page, group, name, icon, eface_only, invert_cover, curtain_mode, lock_battery_entity_id, lock_battery_low_entity_id, lock_rssi_entity_id, lock_linkquality_entity_id, lock_tamper_entity_id };
           if (id) {
             await getJson(`api/ha_devices/${encodeURIComponent(id)}`, {
               method: 'PUT',

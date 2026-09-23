@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-09-23 (Home Assistant entities routed exclusively to eFace)
+- Admin: aggiunto il flag persistente `Solo eFace`; con il flag attivo sono accettati tutti i domini Home Assistant.
+- Runtime: le entita' `Solo eFace` vengono escluse dalla UI HDL classica e incluse nel nuovo endpoint `/api/eface/snapshot` con stato e attributi HA.
+- eFace: aggiunta categoria Sensori per `sensor`, `binary_sensor` e domini informativi, con valore, unita', disponibilita' e icone per device class.
+- Version bump: 0.1.439 -> 0.1.440.
+
 ## 2026-09-19 (Scenario command events for e-Face routines)
 - Il connettore pubblica `light_scenario_command` con ID e azione ON/OFF/RUN/STOP all'avvio del comando, distinto dallo stato calcolato dello scenario.
 - Version bump: 0.1.438 -> 0.1.439.

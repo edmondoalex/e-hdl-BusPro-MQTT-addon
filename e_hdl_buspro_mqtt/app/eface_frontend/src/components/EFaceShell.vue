@@ -77,7 +77,7 @@
             @click="toggleDevice(device)"
           >
             <div class="device-top">
-              <button class="device-icon" type="button" :aria-pressed="isActive(device)" @click.stop="toggleDevice(device)">
+              <button class="device-icon" type="button" :disabled="!device.controllable" :aria-pressed="isActive(device)" @click.stop="toggleDevice(device)">
                 <span class="mask" :style="mask(device.iconName)"></span>
               </button>
               <div class="state">{{ stateLabel(device) }}</div>
@@ -116,6 +116,7 @@
         <div class="system-list">
           <div><span>Luci</span><strong>{{ stats.lights }}</strong></div>
           <div><span>Cover</span><strong>{{ stats.covers }}</strong></div>
+          <div><span>Sensori</span><strong>{{ stats.sensors }}</strong></div>
           <div><span>Extra</span><strong>{{ stats.extra }}</strong></div>
           <div><span>Lock</span><strong>{{ stats.locks }}</strong></div>
         </div>
@@ -147,6 +148,7 @@ const categories = [
   { id: 'lights', label: 'Luci', short: 'Luci', icon: 'lightbulb-group' },
   { id: 'covers', label: 'Cover', short: 'Cover', icon: 'window-shutter' },
   { id: 'locks', label: 'Sicurezza', short: 'Lock', icon: 'lock-smart' },
+  { id: 'sensors', label: 'Sensori', short: 'Sensori', icon: 'chart-line' },
   { id: 'extra', label: 'Extra', short: 'Extra', icon: 'shape' }
 ]
 
@@ -178,6 +180,7 @@ const stats = computed(() => ({
   lights: devices.value.filter(d => d.kind === 'light').length,
   covers: devices.value.filter(d => d.kind === 'cover').length,
   locks: devices.value.filter(d => categoryFor(d) === 'locks').length,
+  sensors: devices.value.filter(d => categoryFor(d) === 'sensors').length,
   extra: devices.value.filter(d => categoryFor(d) === 'extra').length
 }))
 
@@ -185,6 +188,7 @@ const heroSubtitle = computed(() => {
   if (activeCategory.value === 'lights') return `${onCount.value} luci accese in questa stanza`
   if (activeCategory.value === 'covers') return 'Controllo tapparelle, tende e aperture'
   if (activeCategory.value === 'locks') return 'Serrature, cancelli e sicurezza'
+  if (activeCategory.value === 'sensors') return 'Misure, presenza e stati da Home Assistant'
   return 'Comandi rapidi, prese e servizi'
 })
 
@@ -212,7 +216,8 @@ function normalizeDevice(d) {
   const origin = String(d.origin || '').toLowerCase()
   const entityId = String(d.entity_id || '').trim()
   const addr = entityId || `${d.subnet_id}.${d.device_id}.${d.channel}`
-  const kind = type === 'cover' ? 'cover' : (type === 'lock' ? 'lock' : (type === 'switch' ? 'switch' : (type === 'light' ? 'light' : 'extra')))
+  const sensorDomains = ['sensor', 'binary_sensor', 'person', 'device_tracker', 'weather', 'sun']
+  const kind = type === 'cover' ? 'cover' : (type === 'lock' ? 'lock' : (type === 'switch' ? 'switch' : (type === 'light' ? 'light' : (sensorDomains.includes(type) ? 'sensor' : 'extra'))))
   const state = stateFor(kind, d, addr)
   return {
     raw: d,
@@ -227,10 +232,13 @@ function normalizeDevice(d) {
     category: String(d.category || ''),
     iconName: mdiName(d.icon, fallbackIcon(kind, d)),
     dimmable: !!d.dimmable,
+    controllable: ['light', 'switch', 'cover', 'lock'].includes(kind),
     state: state.state,
     brightness: state.brightness,
     position: state.position,
-    meta: entityId || addr
+    attributes: state.attributes || {},
+    available: state.available !== false,
+    meta: state.unit ? `${entityId || addr} · ${state.unit}` : (entityId || addr)
   }
 }
 
@@ -242,8 +250,11 @@ function stateFor(kind, d, addr) {
     const st = ha[d.entity_id] || {}
     return {
       state: String(st.state || '').toUpperCase(),
-      brightness: Number(st.attributes?.brightness || 0),
-      position: st.attributes?.current_position
+      brightness: Number(st.brightness ?? st.attributes?.brightness ?? 0),
+      position: st.position ?? st.attributes?.current_position,
+      attributes: st.attributes || {},
+      available: st.available !== false && !['unavailable', 'unknown'].includes(String(st.state || '').toLowerCase()),
+      unit: String(st.attributes?.unit_of_measurement || '')
     }
   }
   if (kind === 'cover') {
@@ -260,6 +271,7 @@ function stateFor(kind, d, addr) {
 function categoryFor(device) {
   if (device.kind === 'cover') return 'covers'
   if (device.kind === 'light') return 'lights'
+  if (device.kind === 'sensor') return 'sensors'
   const cat = `${device.category} ${device.type} ${device.name}`.toLowerCase()
   if (device.kind === 'lock' || cat.includes('lock') || cat.includes('safe') || cat.includes('cancello') || cat.includes('portone')) return 'locks'
   return 'extra'
@@ -271,9 +283,19 @@ function isActive(device) {
 }
 
 function stateLabel(device) {
+  if (device.kind === 'sensor') {
+    if (!device.available) return 'Non disponibile'
+    const unit = String(device.attributes?.unit_of_measurement || '').trim()
+    const value = String(device.state || '').trim()
+    return unit && value ? `${value} ${unit}` : (value || '—')
+  }
   if (device.kind === 'cover') {
     if (device.position !== null && device.position !== undefined) return `${device.position}%`
     return device.state || 'cover'
+  }
+  if (!device.controllable) {
+    if (!device.available) return 'Non disponibile'
+    return String(device.state || '').trim() || '—'
   }
   if (device.kind === 'light' && device.dimmable && isActive(device)) {
     const pct = Math.round((Number(device.brightness || 0) / 255) * 100)
@@ -293,6 +315,15 @@ function fallbackIcon(kind, device) {
   if (kind === 'cover') return 'window-shutter'
   if (kind === 'lock') return 'lock-smart'
   if (kind === 'switch') return 'power'
+  if (kind === 'sensor') {
+    const dc = String(device.raw?.device_class || device.attributes?.device_class || '').toLowerCase()
+    if (dc === 'temperature') return 'thermometer'
+    if (dc === 'humidity') return 'water-percent'
+    if (dc === 'motion' || dc === 'occupancy') return 'motion-sensor'
+    if (dc === 'door' || dc === 'window' || dc === 'opening') return 'door-open'
+    if (dc === 'battery') return 'battery'
+    return 'chart-line'
+  }
   return 'shape'
 }
 
@@ -319,6 +350,7 @@ function roomCount(room) {
 }
 
 async function toggleDevice(device) {
+  if (!device.controllable) return
   try {
     if (device.kind === 'cover') {
       await coverCmd(device, isActive(device) ? 'CLOSE' : 'OPEN')
@@ -343,6 +375,10 @@ async function sendOnOff(device, state, brightness = null) {
     const domain = device.entityId.split('.', 1)[0]
     if (domain === 'light') return postJson(`api/control/ha/light/${encodeURIComponent(device.entityId)}`, payload)
     if (domain === 'switch') return postJson(`api/control/ha/switch/${encodeURIComponent(device.entityId)}`, payload)
+    if (domain === 'lock') {
+      const command = state === 'ON' ? 'UNLOCK' : 'LOCK'
+      return postJson(`api/control/ha/lock/${encodeURIComponent(device.entityId)}`, { command })
+    }
   }
   if (device.kind === 'light') {
     const [s, d, c] = device.addr.split('.')
@@ -367,7 +403,7 @@ async function refresh() {
   try {
     const [nextMeta, nextSnapshot] = await Promise.all([
       getJson('api/meta').catch(() => ({})),
-      getJson('api/user/snapshot')
+      getJson('api/eface/snapshot')
     ])
     meta.value = nextMeta || {}
     snapshot.value = nextSnapshot || {}

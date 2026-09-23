@@ -78,7 +78,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.439"
+ADDON_VERSION = "0.1.440"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -679,6 +679,23 @@ def create_app() -> FastAPI:
             state = "ON" if s == "on" else "OFF"
         return {"entity_id": eid, "state": state}
 
+    def _map_ha_state_generic(st: dict[str, Any]) -> dict[str, Any]:
+        """Keep the HA state contract needed by generic eFace cards."""
+        eid = str(st.get("entity_id") or "").strip().lower()
+        attrs = st.get("attributes") or {}
+        if not isinstance(attrs, dict):
+            attrs = {}
+        raw_state = st.get("state")
+        state = "" if raw_state is None else str(raw_state)
+        return {
+            "entity_id": eid,
+            "state": state,
+            "available": state.strip().lower() not in ("unavailable", "unknown", ""),
+            "attributes": dict(attrs),
+            "last_changed": st.get("last_changed"),
+            "last_updated": st.get("last_updated"),
+        }
+
     def _map_ha_state_to_cover(st: dict[str, Any]) -> dict[str, Any]:
         eid = str(st.get("entity_id") or "").strip().lower()
         s = _ha_state_str(st.get("state"))
@@ -904,6 +921,8 @@ def create_app() -> FastAPI:
         ha = store.list_ha_devices()
         for it in ha:
             try:
+                if bool(it.get("eface_only")):
+                    continue
                 eid = str(it.get("entity_id") or "").strip().lower()
                 if not eid or "." not in eid:
                     continue
@@ -987,6 +1006,37 @@ def create_app() -> FastAPI:
                     )
             except Exception:
                 continue
+        return devices
+
+    def _list_eface_devices() -> list[dict[str, Any]]:
+        """Return classic user devices plus HA entities explicitly routed to eFace."""
+        devices = _list_user_devices()
+        caps: dict[str, Any] = getattr(api.state, "ha_caps", {}) or {}
+        for it in store.list_ha_devices():
+            if not bool(it.get("eface_only")):
+                continue
+            eid = str(it.get("entity_id") or "").strip().lower()
+            if not eid or "." not in eid:
+                continue
+            domain = str(it.get("domain") or eid.split(".", 1)[0]).strip().lower()
+            cap = caps.get(eid) if isinstance(caps, dict) else None
+            cap = cap if isinstance(cap, dict) else {}
+            devices.append(
+                {
+                    "type": domain,
+                    "domain": domain,
+                    "origin": "ha",
+                    "entity_id": eid,
+                    "page": "eface",
+                    "eface_only": True,
+                    "name": str(it.get("name") or "").strip() or str(cap.get("name") or "").strip() or eid,
+                    "group": str(it.get("group") or "").strip(),
+                    "icon": str(it.get("icon") or "").strip() or str(cap.get("icon") or "").strip(),
+                    "dimmable": bool(cap.get("dimmable")) if domain == "light" else False,
+                    "use_position": bool(cap.get("use_position")) if domain == "cover" else False,
+                    "open_supported": bool(cap.get("open_supported")) if domain == "lock" else False,
+                }
+            )
         return devices
 
     api.state.loop = None
@@ -1121,7 +1171,7 @@ def create_app() -> FastAPI:
             return await call_next(request)
         if path == "/api/user/devices" and request.method.upper() == "GET":
             return await call_next(request)
-        if path == "/api/user/snapshot" and request.method.upper() == "GET":
+        if path in ("/api/user/snapshot", "/api/eface/snapshot") and request.method.upper() == "GET":
             return await call_next(request)
         if path == "/api/ui_log":
             return await call_next(request)
@@ -4744,8 +4794,6 @@ self.addEventListener('fetch', (event) => {{
                         if not eid:
                             continue
                         dom = str(it.get("domain") or "").strip().lower() or (eid.split(".", 1)[0] if "." in eid else "")
-                        if dom not in ("light", "switch", "cover", "lock"):
-                            continue
                         page = str(it.get("page") or "").strip().lower() or ("covers" if dom == "cover" else ("locks" if dom == "lock" else "lights"))
                         eids.append(eid)
                         domains[eid] = dom
@@ -4813,6 +4861,22 @@ self.addEventListener('fetch', (event) => {{
                                 next_caps[eid]["name"] = fn
                                 caps_changed = True
 
+                        attrs = st.get("attributes") or {}
+                        if not isinstance(attrs, dict):
+                            attrs = {}
+                        generic_cap = {
+                            "icon": str(attrs.get("icon") or "").strip(),
+                            "device_class": str(attrs.get("device_class") or "").strip(),
+                            "unit_of_measurement": str(attrs.get("unit_of_measurement") or "").strip(),
+                            "state_class": str(attrs.get("state_class") or "").strip(),
+                            "supported_features": attrs.get("supported_features"),
+                        }
+                        current_cap = dict(next_caps.get(eid) or {})
+                        if any(current_cap.get(k) != v for k, v in generic_cap.items()):
+                            current_cap.update(generic_cap)
+                            next_caps[eid] = current_cap
+                            caps_changed = True
+
                         if dom == "light":
                             dim = _ha_light_is_dimmable(st)
                             prevd = None
@@ -4873,7 +4937,7 @@ self.addEventListener('fetch', (event) => {{
                                     await _publish_light_scenario_states_for_member(eid)
                                 except Exception:
                                     pass
-                        else:
+                        elif dom == "light":
                             mapped = _map_ha_state_to_light(st)
                             prev = last.get(eid)
                             if prev != mapped:
@@ -4883,6 +4947,12 @@ self.addEventListener('fetch', (event) => {{
                                     await _publish_light_scenario_states_for_member(eid)
                                 except Exception:
                                     pass
+                        else:
+                            mapped = _map_ha_state_generic(st)
+                            prev = last.get(eid)
+                            if prev != mapped:
+                                next_states[eid] = mapped
+                                await hub.broadcast("ha_entity_state", mapped)
 
                     api.state.ha_states = next_states
                     api.state.ha_caps = next_caps
@@ -5847,6 +5917,12 @@ self.addEventListener('fetch', (event) => {{
     @api.get("/api/user/snapshot")
     async def api_user_snapshot():
         return _user_snapshot_payload()
+
+    @api.get("/api/eface/snapshot")
+    async def api_eface_snapshot():
+        payload = _user_snapshot_payload()
+        payload["devices"] = _list_eface_devices()
+        return payload
 
     @api.get("/api/ui") 
     async def api_ui(): 
