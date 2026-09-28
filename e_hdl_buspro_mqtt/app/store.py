@@ -2341,6 +2341,23 @@ class StateStore:
             out.append(s)
         return out
 
+    def get_published_rgb_group_ids(self) -> list[str]:
+        raw = self.read_raw()
+        ui = raw.get("ui") or {}
+        ids = ui.get("rgb_groups_published") or []
+        if not isinstance(ids, list):
+            return []
+        return list(dict.fromkeys(str(v or "").strip() for v in ids if str(v or "").strip()))
+
+    def set_published_rgb_group_ids(self, ids: list[str]) -> list[str]:
+        cleaned = list(dict.fromkeys(str(v or "").strip() for v in (ids or []) if str(v or "").strip()))
+        raw = self.read_raw()
+        ui = dict(raw.get("ui") or {})
+        ui["rgb_groups_published"] = cleaned
+        raw["ui"] = ui
+        self.write_raw(raw)
+        return cleaned
+
     def set_published_cover_group_ids(self, ids: list[str]) -> list[str]:
         cleaned: list[str] = []
         seen: set[str] = set()
@@ -2369,6 +2386,19 @@ class StateStore:
             "state": str(state).upper(),
             "brightness": int(brightness) if brightness is not None else None,
         }
+        raw["states"] = states
+        self.write_raw(raw)
+
+    def set_rgb_group_state(self, *, group_id: str, payload: dict[str, Any]) -> None:
+        gid = str(group_id or "").strip()
+        if not gid:
+            return
+        raw = self.read_raw()
+        states = dict(raw.get("states", {}) or {})
+        previous = states.get(f"rgb:{gid}") or {}
+        merged = dict(previous) if isinstance(previous, dict) else {}
+        merged.update(dict(payload or {}))
+        states[f"rgb:{gid}"] = merged
         raw["states"] = states
         self.write_raw(raw)
 

@@ -36,6 +36,7 @@ from .discovery import (
     air_quality_discovery,
     gas_percent_discovery,
     light_discovery,
+    rgb_light_discovery,
     switch_discovery,
     light_scenario_button_discovery,
     light_scenario_switch_discovery,
@@ -78,7 +79,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.440"
+ADDON_VERSION = "0.1.441"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -2579,6 +2580,68 @@ self.addEventListener('fetch', (event) => {{
             except Exception:
                 pass
 
+    def _rgb_groups() -> dict[str, dict[str, Any]]:
+        groups: dict[str, dict[str, Any]] = {}
+        for dev in store.list_devices():
+            if str(dev.get("type") or "light").strip().lower() != "light":
+                continue
+            name = str(dev.get("rgb_group") or "").strip()
+            channel = str(dev.get("rgb_channel") or "").strip().lower()
+            if not name or channel not in ("red", "green", "blue") or not bool(dev.get("dimmable", True)):
+                continue
+            gid = slugify(name)
+            group = groups.setdefault(
+                gid,
+                {
+                    "id": gid,
+                    "name": name,
+                    "category": str(dev.get("category") or "Luci"),
+                    "icon": str(dev.get("icon") or "mdi:led-strip-variant"),
+                    "channels": {},
+                },
+            )
+            group["channels"].setdefault(channel, dev)
+        return {gid: group for gid, group in groups.items() if len(group.get("channels") or {}) >= 2}
+
+    def _rgb_state_payload(group: dict[str, Any]) -> dict[str, Any]:
+        states = store.get_states()
+        values = {"red": 0, "green": 0, "blue": 0}
+        for color, dev in (group.get("channels") or {}).items():
+            addr = f"{int(dev['subnet_id'])}.{int(dev['device_id'])}.{int(dev['channel'])}"
+            st = states.get(f"light:{addr}") or {}
+            if str(st.get("state") or "").strip().upper() == "ON":
+                try:
+                    values[color] = max(0, min(255, int(st.get("brightness") or 0)))
+                except Exception:
+                    values[color] = 0
+        brightness = max(values.values())
+        if brightness > 0:
+            color = {k[0]: max(0, min(255, round(v * 255 / brightness))) for k, v in values.items()}
+            return {"state": "ON", "brightness": brightness, "color": color}
+        previous = states.get(f"rgb:{str(group.get('id') or '').strip()}") or {}
+        payload: dict[str, Any] = {"state": "OFF"}
+        if isinstance(previous, dict):
+            if previous.get("brightness") is not None:
+                payload["brightness"] = previous.get("brightness")
+            if isinstance(previous.get("color"), dict):
+                payload["color"] = dict(previous.get("color") or {})
+        return payload
+
+    def _publish_rgb_state(group: dict[str, Any]) -> None:
+        gid = str(group.get("id") or "").strip()
+        if gid:
+            payload = _rgb_state_payload(group)
+            store.set_rgb_group_state(group_id=gid, payload=payload)
+            mqtt.publish(f"{settings.mqtt.base_topic}/state/rgb/{gid}", payload, retain=True)
+
+    def _publish_rgb_state_for_device(dev: dict[str, Any]) -> None:
+        name = str(dev.get("rgb_group") or "").strip()
+        if not name:
+            return
+        group = _rgb_groups().get(slugify(name))
+        if group:
+            _publish_rgb_state(group)
+
     def _publish_light_state(dev: dict[str, Any], st: LightState) -> None:
         subnet = int(dev["subnet_id"])
         did = int(dev["device_id"])
@@ -2589,6 +2652,51 @@ self.addEventListener('fetch', (event) => {{
             payload["brightness"] = int(st.brightness or 0)
         store.set_light_state(subnet_id=subnet, device_id=did, channel=ch, state=payload["state"], brightness=payload.get("brightness"))
         mqtt.publish(topic, payload, retain=True)
+        _publish_rgb_state_for_device(dev)
+
+    async def _run_rgb_command(gid: str, raw_payload: str) -> None:
+        group = _rgb_groups().get(str(gid or "").strip())
+        gw: BusproGateway | None = api.state.gateway
+        if not group or gw is None:
+            return
+        try:
+            obj = json.loads(str(raw_payload or "{}"))
+        except Exception:
+            obj = {"state": str(raw_payload or "").strip().upper()}
+        if not isinstance(obj, dict):
+            return
+        desired = str(obj.get("state") or "ON").strip().upper()
+        channels = group.get("channels") or {}
+        if desired == "OFF":
+            values = {"red": 0, "green": 0, "blue": 0}
+        else:
+            current = _rgb_state_payload(group)
+            current_color = current.get("color") if isinstance(current.get("color"), dict) else {"r": 255, "g": 255, "b": 255}
+            requested_color = obj.get("color") if isinstance(obj.get("color"), dict) else current_color
+            try:
+                brightness = int(obj.get("brightness", current.get("brightness", 255)))
+            except Exception:
+                brightness = 255
+            brightness = max(0, min(255, brightness))
+            values = {}
+            for color, short in (("red", "r"), ("green", "g"), ("blue", "b")):
+                try:
+                    component = max(0, min(255, int(requested_color.get(short, 0))))
+                except Exception:
+                    component = 0
+                values[color] = round(component * brightness / 255)
+        for color in ("red", "green", "blue"):
+            dev = channels.get(color)
+            if not dev:
+                continue
+            value = int(values.get(color, 0))
+            await gw.set_light(
+                subnet_id=int(dev["subnet_id"]),
+                device_id=int(dev["device_id"]),
+                channel=int(dev["channel"]),
+                on=value > 0,
+                brightness255=value,
+            )
 
     def _publish_cover_state(dev: dict[str, Any], st: CoverState) -> None:
         subnet = int(dev["subnet_id"])
@@ -3936,6 +4044,36 @@ self.addEventListener('fetch', (event) => {{
                     except Exception:
                         pass
 
+        # RGB masters are additional entities: the individual channel lights remain published.
+        rgb_groups = _rgb_groups()
+        previous_rgb_ids = set(store.get_published_rgb_group_ids())
+        current_rgb_ids = set(rgb_groups)
+        for gid in sorted(previous_rgb_ids - current_rgb_ids):
+            topic, _ = rgb_light_discovery(
+                discovery_prefix=settings.mqtt.discovery_prefix,
+                base_topic=settings.mqtt.base_topic,
+                gateway_host=settings.gateway.host,
+                gateway_port=settings.gateway.port,
+                group_name=gid,
+                group_slug=gid,
+            )
+            mqtt.publish(topic, "", retain=True)
+            mqtt.publish(f"{settings.mqtt.base_topic}/state/rgb/{gid}", "", retain=True)
+        for gid, group in rgb_groups.items():
+            topic, payload = rgb_light_discovery(
+                discovery_prefix=settings.mqtt.discovery_prefix,
+                base_topic=settings.mqtt.base_topic,
+                gateway_host=settings.gateway.host,
+                gateway_port=settings.gateway.port,
+                group_name=str(group.get("name") or gid),
+                group_slug=gid,
+                category=str(group.get("category") or "Luci"),
+                icon=str(group.get("icon") or "mdi:led-strip-variant"),
+            )
+            mqtt.publish(topic, payload, retain=True)
+            _publish_rgb_state(group)
+        store.set_published_rgb_group_ids(sorted(current_rgb_ids))
+
         # Cover groups (group blinds) as MQTT cover entities + cleanup removed ones
         groups = store.list_cover_groups()
         current_gids: list[str] = []
@@ -5181,6 +5319,7 @@ self.addEventListener('fetch', (event) => {{
         await _republish_discovery()
         # Subscribe to light command topics
         mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/light/+/+/+")
+        mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/rgb/+")
         mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/light_scenario/+")
         mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/light_scenario_switch/+")
         mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/scenario_ha_trigger/+")
@@ -5210,6 +5349,10 @@ self.addEventListener('fetch', (event) => {{
                 if kind2 == "light_scenario":
                     sid = parts[-1]
                     asyncio.run_coroutine_threadsafe(run_light_scenario(scenario_id=sid), loop)
+                    return
+                if kind2 == "rgb":
+                    gid = parts[-1]
+                    asyncio.run_coroutine_threadsafe(_run_rgb_command(gid, payload), loop)
                     return
                 if kind2 == "light_scenario_switch":
                     sid = parts[-1]
@@ -8719,6 +8862,19 @@ self.addEventListener('fetch', (event) => {{
                     topics.extend([t1, t2])
             except Exception:
                 continue
+
+        # RGB master entities + previously published masters (for cleanup).
+        rgb_ids = set(store.get_published_rgb_group_ids()) | set(_rgb_groups())
+        for gid in rgb_ids:
+            topic, _ = rgb_light_discovery(
+                discovery_prefix=settings.mqtt.discovery_prefix,
+                base_topic=settings.mqtt.base_topic,
+                gateway_host=settings.gateway.host,
+                gateway_port=settings.gateway.port,
+                group_name=gid,
+                group_slug=gid,
+            )
+            topics.append(topic)
 
         # Cover groups + previously published groups (for cleanup)
         gids: set[str] = set()

@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-09-28 (MQTT RGB strip master)
+- MQTT Discovery: i canali dimmer RGB restano esposti singolarmente e viene aggiunta una luce master per ogni gruppo RGB configurato.
+- Il master espone accensione, luminosita' e selettore colore RGB; i comandi vengono convertiti nei valori dei canali BusPro red/green/blue.
+- Lo stato master e' ricavato dagli stati reali dei canali e aggiornato in tempo reale; aggiunta pulizia dei retained discovery per gruppi rimossi o rinominati.
+- Version bump: 0.1.440 -> 0.1.441.
+
 ## 2026-09-23 (Home Assistant entities routed exclusively to eFace)
 - Admin: aggiunto il flag persistente `Solo eFace`; con il flag attivo sono accettati tutti i domini Home Assistant.
 - Runtime: le entita' `Solo eFace` vengono escluse dalla UI HDL classica e incluse nel nuovo endpoint `/api/eface/snapshot` con stato e attributi HA.

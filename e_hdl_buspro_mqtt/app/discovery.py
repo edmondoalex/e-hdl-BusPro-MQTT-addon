@@ -211,6 +211,43 @@ def light_discovery(
     return topic, payload
 
 
+def rgb_light_discovery(
+    *,
+    discovery_prefix: str,
+    base_topic: str,
+    gateway_host: str,
+    gateway_port: int,
+    group_name: str,
+    group_slug: str,
+    category: str = "Luci",
+    icon: str | None = None,
+) -> tuple[str, dict[str, Any]]:
+    """MQTT light representing a group of BusPro red/green/blue channels."""
+    nid = node_id(gateway_host, gateway_port)
+    gid = slugify(group_slug or group_name)
+    payload: dict[str, Any] = {
+        "name": str(group_name or "RGB"),
+        "unique_id": f"{nid}_rgb_{gid}",
+        "schema": "json",
+        "state_topic": f"{base_topic}/state/rgb/{gid}",
+        "command_topic": f"{base_topic}/cmd/rgb/{gid}",
+        "availability_topic": f"{base_topic}/availability",
+        "payload_available": "online",
+        "payload_not_available": "offline",
+        "brightness": True,
+        "brightness_scale": 255,
+        "supported_color_modes": ["rgb"],
+        "device": {
+            "identifiers": [f"buspro:category:{slugify(str(category or 'Luci'))}"],
+            "name": f"BusPro {str(category or 'Luci')}",
+            "manufacturer": "HDL",
+            "model": "BusPro",
+        },
+    }
+    set_icon(payload, icon or "mdi:led-strip-variant")
+    return f"{discovery_prefix}/light/{nid}/rgb_{gid}/config", payload
+
+
 def switch_discovery(
     *,
     discovery_prefix: str,
