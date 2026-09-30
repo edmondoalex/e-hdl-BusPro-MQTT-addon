@@ -178,3 +178,15 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 - Versione pubblicata: `0.1.446`, commit `91b4c8d9babe8b92e7099672119a0acc3c517f68`.
 - Push: completato su `origin/main`, verificato allo stesso hash. Installazione non eseguita.
 - Compatibilità: backend operativo, API, MQTT, Discovery, identificativi e persistenza invariati.
+
+## Aggiornamento UI 0.1.447
+
+- Menu e pagina restano separati: albero laterale fisso e area di lavoro indipendente.
+- Scrollbar visiva del menu nascosta; scorrimento con rotella, touchpad e touch preservato.
+- Palette aggiornata in continuità con eFace: fondo grigio antracite, pannelli neutri quasi neri, accenti ciano e verde; rosso limitato agli stati critici.
+- Tipografia del menu aumentata a 15 px per le voci principali e 14 px per i sotto-rami.
+- Icone principali sostituite con gli identificativi MDI richiesti: `home-analytics`, `application-outline`, `vector-arrange-above`, `home-assistant`, `cookie-cog-outline` e `application-braces`.
+- I compositi generati automaticamente dai loghi bus sono stati esclusi perché alteravano i marchi originali; nessun asset non fedele è incluso nella release.
+- I sei loghi originali forniti dal proprietario sono stati copiati senza ridisegno negli asset locali della sidebar e associati a HDL, KNX, BTicino, Tuya, Modbus e DALI.
+- Versione candidata: `0.1.447`, coerente in `config.json` e `app/main.py`.
+- Compatibilità: nessuna modifica a driver HDL BusPro, API, MQTT, Discovery, route, identificativi o persistenza.
