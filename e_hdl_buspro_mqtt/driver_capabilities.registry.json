@@ -1,0 +1,27 @@
+{
+  "schema_status": "draft-local-not-runtime",
+  "product": "e-Control Hub",
+  "role": "Ekonex Edge Bus Gateway",
+  "api_compatibility": "1.0",
+  "dynamic_loading": false,
+  "drivers": [
+    {
+      "driver_id": "hdl_buspro",
+      "name": "HDL BusPro",
+      "version": "embedded-legacy",
+      "status": "active",
+      "capabilities": ["light", "dimmer", "rgb", "cover", "scenario", "sensor", "diagnostics"],
+      "configuration": "Existing add-on configuration; unchanged in Phase 1",
+      "diagnostics": ["gateway_status", "udp_telegrams", "sniffer", "logs"],
+      "hardware_requirements": ["HDL BusPro IP/UDP gateway"],
+      "dependencies": ["pybuspro", "UDP network access"],
+      "license": "Inherited from the current component; formal driver metadata to be confirmed",
+      "api_compatibility": "1.0"
+    },
+    {"driver_id":"knx","name":"KNX","version":null,"status":"planned","capabilities":[],"configuration":null,"diagnostics":[],"hardware_requirements":[],"dependencies":[],"license":"to-be-defined","api_compatibility":"to-be-defined"},
+    {"driver_id":"bticino","name":"BTicino","version":null,"status":"planned","capabilities":[],"configuration":null,"diagnostics":[],"hardware_requirements":[],"dependencies":[],"license":"to-be-defined","api_compatibility":"to-be-defined"},
+    {"driver_id":"tuya","name":"Tuya","version":null,"status":"planned","capabilities":[],"configuration":null,"diagnostics":[],"hardware_requirements":[],"dependencies":[],"license":"to-be-defined","api_compatibility":"to-be-defined"},
+    {"driver_id":"modbus","name":"Modbus","version":null,"status":"planned","capabilities":[],"configuration":null,"diagnostics":[],"hardware_requirements":[],"dependencies":[],"license":"to-be-defined","api_compatibility":"to-be-defined"},
+    {"driver_id":"dali","name":"DALI","version":null,"status":"planned","capabilities":[],"configuration":null,"diagnostics":[],"hardware_requirements":[],"dependencies":[],"license":"to-be-defined","api_compatibility":"to-be-defined"}
+  ]
+}

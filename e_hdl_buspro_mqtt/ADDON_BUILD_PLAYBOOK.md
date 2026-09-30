@@ -1,4 +1,6 @@
-# Add-on Playbook (BusPro MQTT) – build + bugfix
+# e-Control Hub — Add-on build e bugfix playbook
+
+e-Control Hub è il gateway edge Ekonex multi-bus. In questa fase il driver attivo è HDL BusPro; slug, percorsi e riferimenti tecnici o legacy BusPro descritti nel playbook restano invariati.
 
 Questo file riassume i passaggi fatti e i bug corretti per arrivare ad un add-on Home Assistant con Web UI funzionante sia via porta web sia via Ingress (barra laterale).
 

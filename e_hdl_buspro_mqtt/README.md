@@ -1,4 +1,8 @@
-﻿# e-hdl BusPro MQTT Add-on
+﻿# e-Control Hub
+
+Gateway edge Ekonex multi-bus per Home Assistant (HAOS/Supervised). Il driver attivo in questa versione è **HDL BusPro**. e-Control Hub è il prodotto e il core applicativo; HDL BusPro è il primo driver supportato, non il limite architetturale della piattaforma.
+
+La fase 1 prepara l'architettura per driver futuri senza introdurre caricamento dinamico e senza cambiare gli identificativi tecnici esistenti.
 
 Add-on Home Assistant (HAOS/Supervised) che collega gateway BusPro via UDP e crea entità in Home Assistant via MQTT Discovery.
 

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>e-hdl BusPro MQTT Add-on</title>
+    <title>e-Control Hub</title>
     <style>
       :root{--bg:#0b1220;--card:#111a2e;--muted:#9aa4b2;--text:#eef2ff;--line:#223055;--accent:#6ea8fe;--danger:#ff6b6b}
       body{margin:0;font-family:system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#070b14, #0b1220);color:var(--text)}
@@ -78,7 +78,7 @@
   <body>
     <header>
       <div class="flex">
-        <h1><img class="addonLogo" src="static/logo.png" alt="e-hdl BusPro MQTT" /> e-hdl BusPro MQTT <span class="pill" id="verPill">v?</span></h1>
+        <h1><img class="addonLogo" src="static/logo.png" alt="e-Control Hub" /> e-Control Hub <span class="pill" id="verPill">v?</span></h1>
         <div class="nav" style="margin-left:8px">
           <a href="#" id="navUserHome">Home</a>
           <a href="#" id="navUserHome2">Home2</a>
@@ -97,6 +97,7 @@
         <button class="btn secondary" id="btnRepublish">Ripubblica discovery</button>
         <button class="btn danger" id="btnResetDiscovery" title="Reset retained + ripubblica (conferma)">Reset discovery</button>
       </div>
+      <div class="muted" style="margin-top:6px">Gateway Ekonex multi-bus · Driver attivo: <b>HDL BusPro</b></div>
       <div class="muted" style="margin-top:6px">Crea dispositivi, controllali dalla UI e pubblica discovery/stati su MQTT.</div>
       <div class="muted" style="margin-top:6px">Conferme: <code>SVUOTA</code> (Svuota) · <code>DEDUPE</code> (Rimuovi duplicati) · <code>RESET</code> (Reset discovery)</div>
     </header>

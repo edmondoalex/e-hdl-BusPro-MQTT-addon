@@ -1,8 +1,8 @@
 {
-    "name":  "e-hdl BusPro MQTT",
+    "name":  "e-Control Hub",
     "slug":  "e_hdl_buspro_mqtt",
-    "description":  "BusPro UDP bridge with MQTT Discovery + Web UI.",
-    "version":  "0.1.441",
+    "description":  "Ekonex multi-bus edge gateway. Active driver: HDL BusPro.",
+    "version":  "0.1.442",
     "startup":  "services",
     "boot":  "auto",
     "homeassistant_api":  true,
@@ -111,7 +111,7 @@
     "ingress":  true,
     "ingress_port":  8124,
     "ingress_entry":  "index.html",
-    "panel_title":  "e-Control",
+    "panel_title":  "e-Control Hub",
     "panel_icon":  "mdi:lan-connect"
 }
 
