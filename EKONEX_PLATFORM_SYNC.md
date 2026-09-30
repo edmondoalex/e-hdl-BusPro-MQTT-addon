@@ -214,3 +214,12 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 - Sostituiti i pallini generici dei sotto-rami con icone MDI semantiche per dispositivi, scenari, esposizione UI, organizzazione e funzioni HDL.
 - Aggiunti 17 SVG MDI al bundle locale per mantenere la navigazione completa anche offline.
 - Versione aggiornata coerentemente a `0.1.450`; nessuna modifica a driver, MQTT, Discovery, API, route o persistenza.
+
+## Predisposizione integrazione Ksenia 0.1.451
+
+- Aggiunta Ksenia tra Bus e integrazioni con logo locale fornito dal proprietario.
+- Stato dichiarato: integrazione tramite add-on predisposta, non ancora collegata al runtime e-Control Hub.
+- Responsabilità prevista: l'add-on Ksenia continua a elaborare l'allarme; uscite, cover, porte e altre capability non-allarme saranno esposte in futuro tramite e-Control Hub.
+- Home, Info, Manutenzione e conteggio multi-bus sono predisposti per la chiave opzionale `ksenia` senza renderla obbligatoria.
+- L'interfaccia dati tra add-on Ksenia ed e-Control Hub richiede una futura CHANGE trasversale; nessun contratto condiviso è stato modificato unilateralmente.
+- Versione aggiornata coerentemente a `0.1.451`; driver HDL, MQTT, Discovery, API e persistenza invariati.

@@ -88,6 +88,7 @@
           <div class="statusCard"><b>Non configurato</b><span>Tuya · pianificato</span></div>
           <div class="statusCard"><b>Non configurato</b><span>Modbus Bus · pianificato</span></div>
           <div class="statusCard"><b>Non configurato</b><span>DALI Bus · pianificato</span></div>
+          <div class="statusCard"><b>Non collegato</b><span>Ksenia · add-on predisposto</span></div>
         </div>
         <div class="deviceStats">
           <a class="stat" href="./#devices/all"><strong id="countAll">—</strong><span>Totale globale*</span></a><a class="stat" href="./#devices/devices"><strong id="countLights">—</strong><span>Luci e dimmer HDL</span></a><a class="stat" href="./#devices/covers"><strong id="countCovers">—</strong><span>Cover HDL</span></a><a class="stat" href="./#devices/sensors"><strong id="countSensors">—</strong><span>Sensori e ingressi HDL</span></a><button class="stat" type="button" data-state-list="with"><strong id="countOnline">—</strong><span>Con stato ricevuto</span></button><button class="stat" type="button" data-state-list="without"><strong id="countOffline">—</strong><span>Senza stato ricevuto</span></button>
@@ -174,7 +175,7 @@
         const devices=snapshot.devices, type=d=>String(d.type||d.domain||'').toLowerCase();
         const rawBusCounts=(snapshot.devices_by_bus&&typeof snapshot.devices_by_bus==='object')?snapshot.devices_by_bus:((snapshot.bus_devices&&typeof snapshot.bus_devices==='object')?snapshot.bus_devices:{});
         const countOf=(key,fallback=0)=>{const value=rawBusCounts[key];return Array.isArray(value)?value.length:(Number.isFinite(Number(value))?Number(value):fallback);};
-        const busCounts={hdl_buspro:countOf('hdl_buspro',devices.length),knx:countOf('knx'),bticino:countOf('bticino'),tuya:countOf('tuya'),modbus:countOf('modbus'),dali:countOf('dali')};
+        const busCounts={hdl_buspro:countOf('hdl_buspro',devices.length),knx:countOf('knx'),bticino:countOf('bticino'),tuya:countOf('tuya'),modbus:countOf('modbus'),dali:countOf('dali'),ksenia:countOf('ksenia')};
         const globalTotal=Object.values(busCounts).reduce((sum,n)=>sum+n,0);
         [['busCountHdl',busCounts.hdl_buspro+' dispositivi'],['busCountKnx',busCounts.knx+' dispositivi · Pianificato'],['busCountBticino',busCounts.bticino+' dispositivi · Pianificato'],['busCountTuya',busCounts.tuya+' dispositivi · Pianificato'],['busCountModbus',busCounts.modbus+' dispositivi · Pianificato'],['busCountDali',busCounts.dali+' dispositivi · Pianificato']].forEach(([id,value])=>{const el=document.getElementById(id);if(el)el.textContent=value;});
         const lights=devices.filter(d=>['light','switch'].includes(type(d))).length;

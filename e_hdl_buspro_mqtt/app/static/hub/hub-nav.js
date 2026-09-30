@@ -12,7 +12,7 @@
     document.body.classList.add('hub-shell-ready');
     const side=document.createElement('nav');side.className='hub-sidebar';side.setAttribute('aria-label','Navigazione e-Control Hub');
     const tree=(title,icon,content,open)=>'<details class="hub-tree" '+(open?'open':'')+'><summary>'+navIcon(icon)+title+'</summary><div class="hub-tree-items">'+content+'</div></details>';
-    const planned=[['KNX','knx.png'],['BTicino','bticino.png'],['Tuya','tuya.png'],['Modbus','modbus.png'],['DALI','dali.png']].map(([n,file])=>'<div class="hub-driver-head hub-planned" aria-disabled="true">'+busBrand(n,file)+'<span class="hub-badge">PIANIFICATO</span></div>').join('');
+    const planned=[['KNX','knx.png','PIANIFICATO'],['BTicino','bticino.png','PIANIFICATO'],['Tuya','tuya.png','PIANIFICATO'],['Modbus','modbus.png','PIANIFICATO'],['DALI','dali.png','PIANIFICATO'],['Ksenia','ksenia.png','ADD-ON']].map(([n,file,status])=>'<div class="hub-driver-head hub-planned" aria-disabled="true">'+busBrand(n,file)+'<span class="hub-badge">'+status+'</span></div>').join('');
     const adminLink=(label,view,icon)=>'<a class="hub-nav-link" href="'+adminUrl(view)+'">'+navIcon(icon||'•')+'<span>'+label+'</span></a>';
     side.innerHTML='<a class="hub-brand" href="'+url('home')+'"><img src="'+url('static/logo.png')+'" alt=""><span><strong>e-Control Hub</strong><span>Amministrazione multi-bus</span></span></a>'+
       '<div class="hub-nav-title">Amministrazione</div>'+link('Home','home','mdi:home-analytics','home')+
