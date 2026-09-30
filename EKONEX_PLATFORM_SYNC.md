@@ -107,6 +107,37 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 
 ## Handoff corrente
 
+### Esito CHANGE-2026-009 consumer Ksenia Smart Home — 2026-09-30
+
+- Stato: implementazione locale completata e verificata; commit locale dedicato autorizzato, nessun push/installazione/deploy.
+- Versione candidata: `0.1.454`.
+- Ruolo: consumer MQTT e UI capability-based del contratto Ksenia Smart Home `1.0` prodotto dalla candidata Ksenia `5.2.105` (`3ed1112`).
+- Runtime: client MQTT dedicato; bootstrap esclusivamente su manifest, catalogo e command result dichiarati; availability e state topic sottoscritti soltanto se presenti nel catalogo validato.
+- Comandi: pubblicazione esclusivamente sui `command_topic`/`command_topics` catalogati, envelope con `command_id` e `correlation_id`, successo soltanto su ACK `confirmed`; `accepted` non produce falso successo.
+- Sicurezza: famiglie ammesse esclusivamente `outputs`, `scenarios`, `domus`, `thermostats`; partizioni, zone, arm/disarm, bypass, account/PIN, panel/reset, SIA-IP e topic non catalogati sono rifiutati hard-fail.
+- UI: pagina `/ksenia` con Panoramica, Uscite e luci, Cover e varchi, Sensori ambientali, Termostati, Scenari Smart Home e Diagnostica; ramo disponibile nella sidebar e nell’Admin.
+- Home globale: snapshot espone conteggio Ksenia separato; le risorse Ksenia non vengono importate tramite Home Assistant né inserite nel relativo registry.
+- Compatibilità HDL: invariati driver, discovery, topic, route e persistenza HDL; e-Control Hub resta operativo con Ksenia assente, offline o incompatibile.
+- Test: 11 test consumer e 7 test producer superati; Python compile, JSON/versione, route, JavaScript, HTML inline e `git diff --check` superati.
+- ACL: supportate credenziali/client ID MQTT Ksenia dedicati; se il broker non configura ACL per-topic resta la protezione applicativa hard-fail, da verificare nello staging reale.
+- Rischi residui: test con broker/ACL reali, retained reali, upgrade, backup/restore e comandi su centrale richiedono il gate di staging coordinato.
+- Commit locale: commit dedicato CHANGE-2026-009; hash definitivo registrato nel work order condiviso dopo la creazione.
+- Prossimo gate: revisione coordinatore dei commit producer e consumer; vietati push, installazione e deploy fino a nuova autorizzazione.
+
+### Proposta integrazione Ksenia Smart Home — 2026-09-30
+
+- Attività: analisi documentale e del codice dell’add-on Ksenia Lares, senza modifiche runtime.
+- Documento prodotto: `PROPOSTA_INTEGRAZIONE_KSENIA_SMARTHOME.md`.
+- Esito: integrazione tecnicamente fattibile; raccomandato contratto MQTT locale, additivo e versionato, con Ksenia produttore autorevole ed e-Control Hub consumer/normalizzatore.
+- Perimetro iniziale raccomandato: availability, inventario e stati di uscite, ROLL/cover, Domus, termostati selezionati e scenari Smart Home, esclusivamente in sola lettura.
+- Esclusioni: partizioni, arm/disarm, bypass zone, account, PIN, SIA-IP, reset centrale e altri comandi sicurezza.
+- Vincolo: la modifica è trasversale e richiede una nuova `CHANGE-2026-NNN` e work order distinti prima di qualsiasi implementazione.
+- Compatibilità: nessuna modifica a API, MQTT, Discovery, identificativi, persistenza o runtime dei due add-on.
+- Test runtime: non applicabili in questa fase documentale.
+- Prossimo passo: revisione del coordinatore e decisione sui punti elencati nella proposta.
+
+## Handoff precedente
+
 - CHANGE: `CHANGE-2026-006`, Fase 1 in revisione.
 - Esito coordinatore: implementazione locale approvata.
 - Staging completato esclusivamente sui 20 file autorizzati.

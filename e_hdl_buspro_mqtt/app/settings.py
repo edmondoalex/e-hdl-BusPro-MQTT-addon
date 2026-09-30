@@ -29,6 +29,9 @@ class MqttConfig:
     base_topic: str
     discovery_prefix: str
     client_id: str
+    ksenia_username: str
+    ksenia_password: str
+    ksenia_client_id: str
 
 
 @dataclass(frozen=True)
@@ -115,14 +118,20 @@ def load_settings(options: dict[str, Any]) -> Settings:
     )
 
     mqtt_raw = options.get("mqtt") or {}
+    mqtt_username = str(mqtt_raw.get("username") or "")
+    mqtt_password = str(mqtt_raw.get("password") or "")
+    mqtt_client_id = str(mqtt_raw.get("client_id") or "buspro-addon")
     mqtt = MqttConfig(
         host=str(mqtt_raw.get("host") or "core-mosquitto"),
         port=int(mqtt_raw.get("port") or 1883),
-        username=str(mqtt_raw.get("username") or ""),
-        password=str(mqtt_raw.get("password") or ""),
+        username=mqtt_username,
+        password=mqtt_password,
         base_topic=str(mqtt_raw.get("base_topic") or "buspro").rstrip("/"),
         discovery_prefix=str(mqtt_raw.get("discovery_prefix") or "homeassistant").rstrip("/"),
-        client_id=str(mqtt_raw.get("client_id") or "buspro-addon"),
+        client_id=mqtt_client_id,
+        ksenia_username=str(mqtt_raw.get("ksenia_username") or mqtt_username),
+        ksenia_password=str(mqtt_raw.get("ksenia_password") or mqtt_password),
+        ksenia_client_id=str(mqtt_raw.get("ksenia_client_id") or f"{mqtt_client_id}-ksenia-smarthome"),
     )
 
     poll_interval_s = max(0.0, _read_float("poll_interval_s", 180.0))

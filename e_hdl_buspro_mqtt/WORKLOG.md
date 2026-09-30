@@ -1684,3 +1684,11 @@
 - Normalizzazione store: trigger type `sveglia` ora accettato e persistito.
 - Version bump: 0.1.331 -> 0.1.332.
 
+# 2026-09-30 — CHANGE-2026-009 consumer Ksenia Smart Home
+
+- Aggiunto consumer MQTT dedicato del contratto Ksenia Smart Home 1.0.
+- Manifest, catalogo, availability, stati e command result vengono validati; nessun topic operativo viene ricostruito dal consumer.
+- Comandi capability-based con envelope correlato e successo soltanto dopo ACK `confirmed`.
+- Nuova pagina `/ksenia`, ramo di navigazione dedicato e conteggi Ksenia disponibili nello snapshot globale.
+- Sicurezza Ksenia esclusa con controlli hard-fail; assenza/offline/incompatibilità non bloccano HDL BusPro.
+- Version bump: 0.1.453 -> 0.1.454.

@@ -10,6 +10,14 @@ Add-on Home Assistant (HAOS/Supervised) che collega gateway BusPro via UDP e cre
 - Web UI su `/` per gestire dispositivi light (nome + subnet/device/channel + dimmable).
 - Pubblicazione MQTT Discovery (retain) ad avvio e ad ogni modifica della lista dispositivi.
 
+## Integrazione Ksenia Smart Home
+
+La pagina `/ksenia` consuma direttamente il contratto MQTT Ksenia Smart Home 1.0. Il consumer usa un client MQTT dedicato, valida manifest e catalogo, sottoscrive soltanto i topic dichiarati dal producer e pubblica comandi correlati esclusivamente sui topic catalogati. Un comando risulta riuscito solo dopo ACK `confirmed`.
+
+Per applicare ACL broker dedicate si possono valorizzare `mqtt.ksenia_username`, `mqtt.ksenia_password` e `mqtt.ksenia_client_id`. Se non configurate, il consumer usa le credenziali MQTT generali mantenendo comunque allowlist applicativa hard-fail.
+
+Sono accettate soltanto le famiglie Ksenia `outputs`, `scenarios`, `domus` e `thermostats` presenti nella whitelist del producer. Partizioni, allarme, bypass, account/PIN, panel/reset, SIA-IP e accesso diretto alla centrale sono esclusi e bloccati dal consumer.
+
 ## Sicurezza UI
 Configura `auth.mode` in `config.json` / opzioni add-on:
 - `none`: nessuna protezione

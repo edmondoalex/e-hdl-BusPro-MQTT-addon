@@ -117,3 +117,10 @@ class MqttClient:
             connected = self._connected
         if connected:
             self._client.subscribe(topic, qos=qos)
+
+    def unsubscribe(self, topic: str) -> None:
+        with self._lock:
+            self._subscriptions.pop(topic, None)
+            connected = self._connected
+        if connected:
+            self._client.unsubscribe(topic)

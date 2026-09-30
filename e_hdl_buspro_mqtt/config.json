@@ -2,7 +2,7 @@
     "name":  "e-Control Hub",
     "slug":  "e_hdl_buspro_mqtt",
     "description":  "Ekonex multi-bus edge gateway. Active driver: HDL BusPro.",
-    "version":  "0.1.453",
+    "version":  "0.1.454",
     "startup":  "services",
     "boot":  "auto",
     "homeassistant_api":  true,
@@ -52,7 +52,10 @@
                                  "password":  "",
                                  "base_topic":  "buspro",
                                  "discovery_prefix":  "homeassistant",
-                                 "client_id":  "buspro-addon"
+                                 "client_id":  "buspro-addon",
+                                 "ksenia_username":  "",
+                                 "ksenia_password":  "",
+                                 "ksenia_client_id":  "buspro-addon-ksenia-smarthome"
                              }
                 },
     "schema":  {
@@ -89,7 +92,10 @@
                                 "password":  "password?",
                                 "base_topic":  "str",
                                 "discovery_prefix":  "str",
-                                "client_id":  "str"
+                                "client_id":  "str",
+                                "ksenia_username":  "str?",
+                                "ksenia_password":  "password?",
+                                "ksenia_client_id":  "str?"
                             }
                },
     "webui":  "http://[HOST]:[PORT:8124]",

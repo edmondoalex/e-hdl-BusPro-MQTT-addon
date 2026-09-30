@@ -45,6 +45,7 @@ from .discovery import (
     temperature_discovery,
 )
 from .icons import ensure_mdi_icons, parse_mdi_icon, placeholder_svg
+from .ksenia_consumer import ContractError, KseniaSmartHomeConsumer
 from .mqtt_client import MqttClient
 from .realtime import RealtimeHub
 from .settings import AUTH_BASIC, AUTH_NONE, AUTH_TOKEN, AuthConfig, load_settings, read_options
@@ -79,7 +80,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.453"
+ADDON_VERSION = "0.1.454"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -444,6 +445,15 @@ def create_app() -> FastAPI:
         client_id=settings.mqtt.client_id,
     )
     api.state.mqtt = mqtt
+    ksenia_mqtt = MqttClient(
+        host=settings.mqtt.host,
+        port=settings.mqtt.port,
+        username=settings.mqtt.ksenia_username,
+        password=settings.mqtt.ksenia_password,
+        client_id=settings.mqtt.ksenia_client_id,
+    )
+    ksenia = KseniaSmartHomeConsumer(ksenia_mqtt)
+    api.state.ksenia = ksenia
 
     # Home Assistant (Core) integration via Supervisor token (no user token required)
     def _ha_enabled() -> bool:
@@ -4913,6 +4923,10 @@ self.addEventListener('fetch', (event) => {{
 
         mqtt.set_connect_handler(_on_mqtt_connect)
         mqtt.connect()
+        # Dedicated MQTT identity/connection for the Ksenia Smart Home contract.
+        # It subscribes only to the two contract bootstrap topics, command results,
+        # and the exact availability/state topics declared by the producer catalog.
+        ksenia.start()
 
         async def _ha_poll_loop() -> None:
             if not _ha_enabled():
@@ -5469,6 +5483,7 @@ self.addEventListener('fetch', (event) => {{
             mqtt.publish(f"{settings.mqtt.base_topic}/availability", "offline", retain=True)
         finally:
             mqtt.disconnect()
+            ksenia.stop()
 
         poll = getattr(api.state, "poll_task", None)
         if poll is not None:
@@ -5836,6 +5851,10 @@ self.addEventListener('fetch', (event) => {{
     async def user_extra():
         return _user_html("extra.html")
 
+    @api.get("/ksenia", response_class=HTMLResponse)
+    async def user_ksenia():
+        return _user_html("ksenia.html")
+
     @api.get("/e-guard", response_class=HTMLResponse)
     async def user_guard():
         if not guard_enabled:
@@ -6059,7 +6078,32 @@ self.addEventListener('fetch', (event) => {{
 
     @api.get("/api/user/snapshot")
     async def api_user_snapshot():
-        return _user_snapshot_payload()
+        payload = _user_snapshot_payload()
+        ksenia_snapshot = ksenia.snapshot()
+        payload["ksenia"] = ksenia_snapshot
+        payload["devices_by_bus"] = {
+            "hdl_buspro": len(payload.get("devices") or []),
+            "ksenia": len(ksenia_snapshot.get("devices") or []),
+            "knx": 0, "bticino": 0, "tuya": 0, "modbus": 0, "dali": 0,
+        }
+        return payload
+
+    @api.get("/api/integrations/ksenia")
+    async def api_ksenia_snapshot():
+        return ksenia.snapshot()
+
+    @api.post("/api/integrations/ksenia/command/{device_id}")
+    async def api_ksenia_command(device_id: str, payload: dict[str, Any]):
+        try:
+            return await asyncio.to_thread(
+                ksenia.execute,
+                device_id,
+                str(payload.get("action") or ""),
+                payload.get("value"),
+                timeout_s=payload.get("timeout_s"),
+            )
+        except ContractError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
 
     @api.get("/api/eface/snapshot")
     async def api_eface_snapshot():
