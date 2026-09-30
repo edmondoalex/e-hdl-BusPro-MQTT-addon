@@ -45,6 +45,7 @@
       .nav a{display:inline-block;text-decoration:none;color:var(--text);border:1px solid var(--line);padding:6px 10px;border-radius:999px;font-weight:560;font-size:13px}
       .nav a.active{border-color:rgba(255,41,69,.55);background:rgba(255,41,69,.13)}
       header .nav,header>.muted{display:none}
+      body.hub-shell-ready header h1{display:none}body.hub-shell-ready header{padding:12px 24px}body.hub-shell-ready header>.flex{min-height:42px}
       .tabs{display:flex;gap:8px;flex-wrap:wrap}
       .tabs button{background:transparent;border:1px solid var(--line);color:var(--text);padding:8px 10px;border-radius:999px;cursor:pointer;font-weight:560}
       .tabs button.active{border-color:rgba(110,168,254,.7);background:rgba(110,168,254,.14)}
@@ -91,7 +92,7 @@
       #adminView>aside.card{position:sticky;top:132px;align-self:start;max-height:calc(100vh - 156px);overflow:auto}
       @media(max-width:1079px){.adminGroupNav,#adminView>aside.card{position:static;max-height:none}.nav{overflow:auto;max-width:100%}header{position:relative}.row,.row3{grid-template-columns:1fr}}
       @media(max-width:700px){main{padding:12px}.adminMetrics{grid-template-columns:1fr 1fr}.adminGroupTabs{grid-template-columns:1fr 1fr}.addonLogo{width:54px;height:54px}header{padding:12px}.adminHero{padding:17px}}
-      #adminView.adminWorkspace{grid-template-columns:250px minmax(0,1fr);align-items:start}
+      #adminView.adminWorkspace{grid-template-columns:minmax(0,1fr);align-items:start}
       .adminNavRail{position:sticky;top:132px;max-height:calc(100vh - 156px);overflow:auto;padding:14px;border:1px solid rgba(255,255,255,.09);border-radius:20px;background:linear-gradient(160deg,rgba(18,25,37,.97),rgba(8,12,19,.97));box-shadow:0 20px 55px rgba(0,0,0,.22)}
       .adminNavBrand{padding:8px 8px 15px;border-bottom:1px solid rgba(255,255,255,.07)}.adminNavBrand b{display:block;font-size:15px}.adminNavBrand span{display:block;margin-top:4px;color:var(--muted);font-size:11px}
       .adminNavRail button{display:flex;align-items:center;gap:10px;width:100%;margin-top:5px;padding:11px 12px;border:1px solid transparent;border-radius:11px;background:transparent;color:var(--text);font-weight:650;text-align:left;cursor:pointer}
@@ -103,8 +104,11 @@
       .adminFutureGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:14px}.adminFutureCard{padding:14px;border:1px solid rgba(255,255,255,.08);border-radius:13px;background:rgba(5,8,13,.35)}.adminFutureCard b{display:block}.adminFutureCard span{display:block;margin-top:5px;color:var(--muted);font-size:11px}
       .adminMovedPanel{margin-top:12px;padding:14px;border:1px solid rgba(255,255,255,.08);border-radius:14px;background:rgba(7,11,18,.48)}
       #adminView>aside.card{display:none!important}
+      #adminView>.adminNavRail{display:none!important}.adminContent.card{width:100%;box-sizing:border-box}
       @media(max-width:900px){#adminView.adminWorkspace{grid-template-columns:1fr}.adminNavRail{position:static;display:flex;max-height:none;overflow-x:auto;gap:5px;border-radius:14px}.adminNavBrand{min-width:165px;border:0;border-right:1px solid rgba(255,255,255,.07)}.adminNavRail button{width:auto;min-width:max-content}.adminContent.card{min-height:0}}
     </style>
+    <link rel="stylesheet" href="static/hub/hub.css" />
+    <script defer src="static/hub/hub-nav.js"></script>
   </head>
   <body>
     <header>
@@ -1974,7 +1978,8 @@
           const commandBar=document.createElement('div');commandBar.className='flex adminMovedPanel';commandBar.innerHTML='<b>Discovery MQTT HDL</b><span class="spacer"></span>';const republish=document.getElementById('btnRepublish'),reset=document.getElementById('btnResetDiscovery');if(republish)commandBar.appendChild(republish);if(reset)commandBar.appendChild(reset);page('maintenance').prepend(commandBar);
           function openPage(id,scroll){const btn=button(id);if(!btn)return;pageNodes.forEach(p=>p.hidden=p.dataset.page!==id);rail.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b===btn));if(history.replaceState)history.replaceState(null,'','#'+id);if(scroll)host.scrollIntoView({behavior:'smooth',block:'start'});}
           rail.addEventListener('click',e=>{const btn=e.target.closest('button[data-page]');if(btn)openPage(btn.dataset.page,true);});
-          const requested=String(location.hash||'').slice(1);if(page(requested))openPage(requested,false);
+          function openRequested(){const requested=String(location.hash||'').slice(1);if(page(requested))openPage(requested,false);}
+          openRequested();window.addEventListener('hashchange',openRequested);
           if(err)host.prepend(err);
         }
         if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
