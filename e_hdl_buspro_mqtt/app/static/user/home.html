@@ -29,7 +29,7 @@
         background-position:center center;
         background-repeat:no-repeat;
       }
-      main{max-width:820px;margin:0 auto;padding:18px 16px 26px;min-height:100vh;display:flex;flex-direction:column;justify-content:center;gap:18px}
+      main{max-width:1100px;margin:0 auto;padding:32px 20px;min-height:100vh;display:flex;flex-direction:column;justify-content:flex-start;gap:18px}
       .logoWrap{display:flex;justify-content:center}
       .logo{
         width:min(340px, 62vw);
@@ -66,16 +66,38 @@
       .label{font-size:18px;line-height:1.2;font-weight:520;opacity:.92}
       .sub{margin-top:4px;font-size:12px;color:rgba(255,255,255,.55);opacity:.9}
       .err{color:var(--danger);font-size:13px;text-align:center}
+      .homeTitle{text-align:center;margin:0;font-size:clamp(26px,4vw,42px)}
+      .sectionTitle{margin:12px 0 0;font-size:18px}.busGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+      .busCard{border:1px solid var(--line);border-radius:16px;padding:14px;background:rgba(0,0,0,.18)}.busCard strong{display:block}.busCard span{display:block;margin-top:5px;font-size:12px;color:var(--muted)}
+      .busCard.active{border-color:rgba(68,211,138,.32)}.busStatus{font-size:10px!important;text-transform:uppercase;letter-spacing:.08em;color:#7ceab0!important}.busCard.planned{opacity:.62}
     </style>
+    <link rel="stylesheet" href="static/hub/hub.css" />
+    <script defer src="static/hub/hub-nav.js"></script>
   </head>
   <body>
     <main>
       <div class="logoWrap">
         <img class="logo" src="static/logo.png" alt="Logo" />
       </div>
+      <h1 class="homeTitle">Panoramica globale</h1>
       <div class="muted">Panoramica di tutti i dispositivi e di tutti i bus</div>
       <div id="err" class="err"></div>
+      <h2 class="sectionTitle">Funzioni globali</h2>
+      <div class="grid">
+        <a class="tile" href="scenarios"><div class="ico" style="-webkit-mask-image:url('api/icons/mdi/creation.svg');mask-image:url('api/icons/mdi/creation.svg')"></div><div><div class="label">Scenari</div><div class="sub">Azioni e automazioni multi-bus</div></div></a>
+        <a class="tile" href="locks"><div class="ico" style="-webkit-mask-image:url('api/icons/mdi/lock-smart.svg');mask-image:url('api/icons/mdi/lock-smart.svg')"></div><div><div class="label">Serrature</div><div class="sub">Dispositivi trasversali</div></div></a>
+      </div>
+      <h2 class="sectionTitle">HDL BusPro · Driver attivo</h2>
       <div id="grid" class="grid" aria-label="home links"></div>
+      <h2 class="sectionTitle">Bus e integrazioni</h2>
+      <div class="busGrid" aria-label="Stato driver">
+        <div class="busCard active"><strong>HDL BusPro</strong><span class="busStatus">Attivo</span><span>Luci, cover, sensori, ingressi e diagnostica</span></div>
+        <div class="busCard planned"><strong>KNX</strong><span>Pianificato · non configurato</span></div>
+        <div class="busCard planned"><strong>BTicino</strong><span>Pianificato · non configurato</span></div>
+        <div class="busCard planned"><strong>Tuya</strong><span>Pianificato · non configurato</span></div>
+        <div class="busCard planned"><strong>Modbus</strong><span>Pianificato · non configurato</span></div>
+        <div class="busCard planned"><strong>DALI</strong><span>Pianificato · non configurato</span></div>
+      </div>
     </main>
     <script>
       function absUrl(path) { return new URL(path, window.location.href).toString(); }
@@ -152,15 +174,6 @@
             subtitle: 'Tapparelle / curtain',
             href: absUrl('covers'),
             icon: iconUrl(iconCovers, 'window-shutter'),
-            targetBlank: false
-          }));
-        }
-        if (show.locks !== false) {
-          grid.appendChild(makeTile({
-            title: 'Lock',
-            subtitle: 'Serrature',
-            href: absUrl('locks'),
-            icon: iconUrl(iconLocks, 'lock-smart'),
             targetBlank: false
           }));
         }
