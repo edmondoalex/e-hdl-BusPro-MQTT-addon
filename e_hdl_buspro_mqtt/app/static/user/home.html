@@ -25,7 +25,7 @@
         position:fixed;
         inset:0;
         z-index:-2;
-        background: radial-gradient(1200px 800px at 50% 50%, rgba(26,34,48,.65) 0%, var(--bg0) 52%, #000 100%);
+        background:radial-gradient(1100px 700px at 55% 20%,rgba(58,83,120,.24),transparent 68%),linear-gradient(180deg,#0c121b,#080c12);
         background-position:center center;
         background-repeat:no-repeat;
       }
@@ -64,9 +64,11 @@
       .sectionTitle{margin:12px 0 0;font-size:18px}.busGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
       .busCard{border:1px solid var(--line);border-radius:16px;padding:14px;background:rgba(0,0,0,.18)}.busCard strong{display:block}.busCard span{display:block;margin-top:5px;font-size:12px;color:var(--muted)}
       .busCard.active{border-color:rgba(68,211,138,.32)}.busStatus{font-size:10px!important;text-transform:uppercase;letter-spacing:.08em;color:#7ceab0!important}.busCard.planned{opacity:.62}
-      .controlCenter{position:relative;overflow:hidden;padding:22px;border:1px solid rgba(255,255,255,.10);border-radius:22px;background:linear-gradient(120deg,rgba(255,37,65,.12),rgba(26,35,52,.92) 42%,rgba(7,11,18,.96));box-shadow:0 22px 70px rgba(0,0,0,.28)}
-      .controlCenter::after{content:'';position:absolute;width:260px;height:260px;right:-80px;top:-150px;border-radius:50%;background:#ff2745;filter:blur(80px);opacity:.15}.controlEyebrow{color:#ff7385;font-size:10px;font-weight:800;letter-spacing:.15em;text-transform:uppercase}.controlIntro{color:var(--muted);font-size:13px;margin-top:6px}.statusGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:20px}.statusCard{padding:13px;border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(4,7,12,.48)}.statusCard b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.statusCard span{display:block;margin-top:5px;color:var(--muted);font-size:10px;letter-spacing:.08em;text-transform:uppercase}.statusCard.ok b{color:#63e6a8}.statusCard.warn b{color:#ffbd68}
-      .deviceStats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:9px;margin-top:10px}.stat{padding:14px;border:1px solid var(--line);border-radius:14px;background:rgba(0,0,0,.18)}.stat strong{display:block;font-size:24px}.stat span{font-size:11px;color:var(--muted)}
+      .controlCenter{position:relative;overflow:hidden;padding:22px;border:1px solid rgba(148,163,184,.18);border-radius:18px;background:linear-gradient(135deg,#172131,#101722 62%,#0d141e);box-shadow:0 18px 50px rgba(0,0,0,.20)}
+      .controlCenter::after{content:'';position:absolute;width:260px;height:260px;right:-80px;top:-150px;border-radius:50%;background:#3b82f6;filter:blur(90px);opacity:.10}.controlEyebrow{color:#7fb1ff;font-size:10px;font-weight:800;letter-spacing:.15em;text-transform:uppercase}.controlIntro{color:var(--muted);font-size:13px;margin-top:6px}.statusGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:20px}.statusCard{padding:13px;border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(7,12,19,.46)}.statusCard b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.statusCard span{display:block;margin-top:5px;color:var(--muted);font-size:10px;letter-spacing:.08em;text-transform:uppercase}.statusCard.ok b{color:#5ee0bd}.statusCard.warn b{color:#f1bd68}
+      .deviceStats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:9px;margin-top:10px}.stat{padding:14px;border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(7,12,19,.38);color:var(--text);text-decoration:none;cursor:pointer;transition:transform .15s ease,border-color .15s ease,background .15s ease}.stat:hover,.stat:focus-visible{transform:translateY(-2px);border-color:rgba(79,140,255,.46);background:rgba(79,140,255,.08);outline:none}.stat strong{display:block;font-size:24px}.stat span{font-size:11px;color:var(--muted)}
+      .deviceModalBack{display:none;position:fixed;inset:0;z-index:150;background:rgba(3,7,12,.72);padding:24px;align-items:center;justify-content:center}.deviceModalBack.open{display:flex}.deviceModal{width:min(920px,100%);max-height:min(82vh,850px);overflow:auto;border:1px solid rgba(148,163,184,.22);border-radius:18px;background:#111a26;box-shadow:0 28px 90px rgba(0,0,0,.45);padding:18px}.deviceModalTop{display:flex;align-items:center;gap:12px;position:sticky;top:-18px;background:#111a26;padding:18px 0 12px;z-index:2}.deviceModalTop h2{margin:0}.modalClose{margin-left:auto;border:1px solid rgba(148,163,184,.24);border-radius:10px;background:#182333;color:var(--text);padding:8px 12px;cursor:pointer}.deviceRows{display:grid;gap:7px}.deviceRow{display:grid;grid-template-columns:minmax(180px,1.5fr) minmax(110px,.7fr) minmax(110px,.7fr) minmax(140px,1fr);gap:10px;padding:11px 12px;border:1px solid rgba(148,163,184,.13);border-radius:10px;background:#0d151f}.deviceRow span{color:var(--muted);font-size:12px}.deviceRow b{font-size:13px}.emptyList{padding:24px;text-align:center;color:var(--muted)}
+      @media(max-width:650px){.deviceModalBack{padding:10px}.deviceRow{grid-template-columns:1fr 1fr}.deviceRow b{grid-column:1/-1}}
       @media(max-width:700px){main{padding:18px 14px}.statusGrid{grid-template-columns:1fr 1fr}.logo{width:56px;height:56px}.controlCenter{padding:17px}}
     </style>
     <link rel="stylesheet" href="static/hub/hub.css" />
@@ -83,8 +85,9 @@
           <div class="statusCard" id="homeBusCard"><b id="homeBus">Verifica…</b><span>Bus UDP</span></div>
         </div>
         <div class="deviceStats">
-          <div class="stat"><strong id="countAll">—</strong><span>Dispositivi HDL</span></div><div class="stat"><strong id="countLights">—</strong><span>Luci e dimmer</span></div><div class="stat"><strong id="countCovers">—</strong><span>Cover</span></div><div class="stat"><strong id="countSensors">—</strong><span>Sensori e ingressi</span></div><div class="stat"><strong id="countOnline">—</strong><span>Online / con stato</span></div><div class="stat"><strong id="countOffline">—</strong><span>Offline / senza stato</span></div>
+          <a class="stat" href="./#devices/all"><strong id="countAll">—</strong><span>Totale globale*</span></a><a class="stat" href="./#devices/devices"><strong id="countLights">—</strong><span>Luci e dimmer HDL</span></a><a class="stat" href="./#devices/covers"><strong id="countCovers">—</strong><span>Cover HDL</span></a><a class="stat" href="./#devices/sensors"><strong id="countSensors">—</strong><span>Sensori e ingressi HDL</span></a><button class="stat" type="button" data-state-list="with"><strong id="countOnline">—</strong><span>Con stato ricevuto</span></button><button class="stat" type="button" data-state-list="without"><strong id="countOffline">—</strong><span>Senza stato ricevuto</span></button>
         </div>
+        <div class="controlIntro" style="margin-top:10px">* Oggi il totale globale coincide con HDL BusPro, unico driver attivo. “Senza stato ricevuto” indica dispositivi configurati senza uno stato presente nel runtime: non significa necessariamente offline.</div>
       </section>
       <div id="err" class="err"></div>
       <h2 class="sectionTitle">Funzioni globali</h2>
@@ -96,14 +99,15 @@
       <div id="grid" class="grid" aria-label="home links"></div>
       <h2 class="sectionTitle">Bus e integrazioni</h2>
       <div class="busGrid" aria-label="Stato driver">
-        <div class="busCard active"><strong>HDL BusPro</strong><span class="busStatus">Attivo</span><span>Luci, cover, sensori, ingressi e diagnostica</span></div>
-        <div class="busCard planned"><strong>KNX</strong><span>Pianificato · non configurato</span></div>
-        <div class="busCard planned"><strong>BTicino</strong><span>Pianificato · non configurato</span></div>
-        <div class="busCard planned"><strong>Tuya</strong><span>Pianificato · non configurato</span></div>
-        <div class="busCard planned"><strong>Modbus</strong><span>Pianificato · non configurato</span></div>
-        <div class="busCard planned"><strong>DALI</strong><span>Pianificato · non configurato</span></div>
+        <div class="busCard active"><strong>HDL BusPro</strong><span class="busStatus">Attivo</span><span id="busCountHdl">— dispositivi</span><span>Luci, cover, sensori, ingressi e diagnostica</span></div>
+        <div class="busCard planned"><strong>KNX</strong><span id="busCountKnx">0 dispositivi · Pianificato</span></div>
+        <div class="busCard planned"><strong>BTicino</strong><span id="busCountBticino">0 dispositivi · Pianificato</span></div>
+        <div class="busCard planned"><strong>Tuya</strong><span id="busCountTuya">0 dispositivi · Pianificato</span></div>
+        <div class="busCard planned"><strong>Modbus</strong><span id="busCountModbus">0 dispositivi · Pianificato</span></div>
+        <div class="busCard planned"><strong>DALI</strong><span id="busCountDali">0 dispositivi · Pianificato</span></div>
       </div>
     </main>
+    <div class="deviceModalBack" id="deviceModalBack" role="dialog" aria-modal="true" aria-labelledby="deviceModalTitle"><div class="deviceModal"><div class="deviceModalTop"><div><h2 id="deviceModalTitle">Dispositivi</h2><div class="sub" id="deviceModalSub"></div></div><button class="modalClose" id="deviceModalClose" type="button">Chiudi</button></div><div class="deviceRows" id="deviceModalRows"></div></div></div>
     <script>
       function absUrl(path) { return new URL(path, window.location.href).toString(); }
       async function getJson(path, opts) {
@@ -147,6 +151,21 @@
         const card=document.getElementById(cardId), el=document.getElementById(valueId);if(!card||!el)return;
         el.textContent=value;card.classList.toggle('ok',!!ok);card.classList.toggle('warn',!ok);
       }
+      let dashboardDeviceLists={with:[],without:[]};
+      function deviceAddress(d){const s=d.subnet_id??d.subnet,dv=d.device_id??d.device,c=d.channel??d.sensor_id??d.input_id;if(s===undefined||dv===undefined||c===undefined)return String(d.entity_id||'—');return `${s}.${dv}.${c}`;}
+      function deviceHasState(d,snapshot){
+        const t=String(d.type||d.domain||'').toLowerCase(),addr=deviceAddress(d);
+        if(d.entity_id&&snapshot.ha_states&&Object.prototype.hasOwnProperty.call(snapshot.ha_states,d.entity_id))return true;
+        const mapByType={light:'states',switch:'states',cover:'cover_states',temp:'temp_states',temperature:'temp_states',humidity:'humidity_states',illuminance:'illuminance_states',air:'air_quality_states',air_quality:'air_quality_states',dry_contact:'dry_contact_states',pir:'pir_states',ultrasonic:'ultrasonic_states'};
+        const preferred=mapByType[t];if(preferred&&Object.prototype.hasOwnProperty.call(snapshot[preferred]||{},addr))return true;
+        return ['states','cover_states','temp_states','humidity_states','illuminance_states','air_quality_states','gas_percent_states','dry_contact_states','pir_states','ultrasonic_states'].some(k=>Object.prototype.hasOwnProperty.call(snapshot[k]||{},addr));
+      }
+      function showDeviceList(kind){
+        const modal=document.getElementById('deviceModalBack'),rows=document.getElementById('deviceModalRows'),title=document.getElementById('deviceModalTitle'),sub=document.getElementById('deviceModalSub'),items=dashboardDeviceLists[kind]||[];
+        title.textContent=kind==='with'?'Dispositivi con stato ricevuto':'Dispositivi senza stato ricevuto';sub.textContent=`${items.length} dispositivi · elenco calcolato sullo snapshot corrente`;rows.innerHTML='';
+        if(!items.length){rows.innerHTML='<div class="emptyList">Nessun dispositivo in questo elenco.</div>';}else items.forEach(d=>{const row=document.createElement('div');row.className='deviceRow';const name=document.createElement('b');name.textContent=String(d.name||d.entity_id||'Senza nome');const type=document.createElement('span');type.textContent='Tipo: '+String(d.type||d.domain||'—');const addr=document.createElement('span');addr.textContent='Indirizzo: '+deviceAddress(d);const group=document.createElement('span');group.textContent='Gruppo: '+String(d.group||'—');row.append(name,type,addr,group);rows.appendChild(row);});
+        modal.classList.add('open');
+      }
       async function updateDashboard() {
         const results=await Promise.allSettled([getJson('api/user/snapshot'),getJson('api/mqtt/status'),getJson('api/buspro/status')]);
         const snapshot=results[0].status==='fulfilled'?results[0].value:null;
@@ -157,13 +176,17 @@
         setStatus('homeBusCard','homeBus',bus?(bus.transport_ready?'Online':'Offline'):'Non disponibile',!!(bus&&bus.transport_ready));
         if(!snapshot||!Array.isArray(snapshot.devices))return;
         const devices=snapshot.devices, type=d=>String(d.type||d.domain||'').toLowerCase();
+        const rawBusCounts=(snapshot.devices_by_bus&&typeof snapshot.devices_by_bus==='object')?snapshot.devices_by_bus:((snapshot.bus_devices&&typeof snapshot.bus_devices==='object')?snapshot.bus_devices:{});
+        const countOf=(key,fallback=0)=>{const value=rawBusCounts[key];return Array.isArray(value)?value.length:(Number.isFinite(Number(value))?Number(value):fallback);};
+        const busCounts={hdl_buspro:countOf('hdl_buspro',devices.length),knx:countOf('knx'),bticino:countOf('bticino'),tuya:countOf('tuya'),modbus:countOf('modbus'),dali:countOf('dali')};
+        const globalTotal=Object.values(busCounts).reduce((sum,n)=>sum+n,0);
+        [['busCountHdl',busCounts.hdl_buspro+' dispositivi'],['busCountKnx',busCounts.knx+' dispositivi · Pianificato'],['busCountBticino',busCounts.bticino+' dispositivi · Pianificato'],['busCountTuya',busCounts.tuya+' dispositivi · Pianificato'],['busCountModbus',busCounts.modbus+' dispositivi · Pianificato'],['busCountDali',busCounts.dali+' dispositivi · Pianificato']].forEach(([id,value])=>{const el=document.getElementById(id);if(el)el.textContent=value;});
         const lights=devices.filter(d=>['light','switch'].includes(type(d))).length;
         const covers=devices.filter(d=>type(d)==='cover').length;
         const sensors=Math.max(0,devices.length-lights-covers);
-        const stateMaps=['states','cover_states','temp_states','humidity_states','illuminance_states','air_quality_states','dry_contact_states','pir_states','ultrasonic_states'];
-        const addresses=new Set();stateMaps.forEach(k=>Object.keys(snapshot[k]||{}).forEach(a=>addresses.add(a)));
-        const online=Math.min(devices.length,addresses.size),offline=Math.max(0,devices.length-online);
-        [['countAll',devices.length],['countLights',lights],['countCovers',covers],['countSensors',sensors],['countOnline',online],['countOffline',offline]].forEach(([id,n])=>{const el=document.getElementById(id);if(el)el.textContent=String(n);});
+        dashboardDeviceLists={with:devices.filter(d=>deviceHasState(d,snapshot)),without:devices.filter(d=>!deviceHasState(d,snapshot))};
+        const online=dashboardDeviceLists.with.length,offline=dashboardDeviceLists.without.length;
+        [['countAll',globalTotal],['countLights',lights],['countCovers',covers],['countSensors',sensors],['countOnline',online],['countOffline',offline]].forEach(([id,n])=>{const el=document.getElementById(id);if(el)el.textContent=String(n);});
       }
 
       async function init() {
@@ -172,6 +195,8 @@
         grid.innerHTML = '';
         err.textContent = '';
         updateDashboard().catch(()=>{});
+        document.querySelectorAll('[data-state-list]').forEach(btn=>btn.addEventListener('click',()=>showDeviceList(btn.dataset.stateList)));
+        const modal=document.getElementById('deviceModalBack');document.getElementById('deviceModalClose').addEventListener('click',()=>modal.classList.remove('open'));modal.addEventListener('click',e=>{if(e.target===modal)modal.classList.remove('open');});document.addEventListener('keydown',e=>{if(e.key==='Escape')modal.classList.remove('open');});
 
         let meta = null;
         try {
