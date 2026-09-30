@@ -190,3 +190,11 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 - I sei loghi originali forniti dal proprietario sono stati copiati senza ridisegno negli asset locali della sidebar e associati a HDL, KNX, BTicino, Tuya, Modbus e DALI.
 - Versione candidata: `0.1.447`, coerente in `config.json` e `app/main.py`.
 - Compatibilità: nessuna modifica a driver HDL BusPro, API, MQTT, Discovery, route, identificativi o persistenza.
+
+## Correzione icone menu 0.1.448
+
+- Causa individuata: l'endpoint MDI restituiva la lampadina placeholder quando le nuove icone non erano presenti nella cache runtime.
+- Aggiunti al bundle offline gli SVG MDI effettivi per `home-analytics`, `application-outline`, `vector-arrange-above`, `home-assistant`, `cookie-cog-outline` e `application-braces`.
+- Il menu continua a usare l'endpoint esistente, che ora trova gli asset locali corretti anche senza Internet.
+- Versione aggiornata coerentemente a `0.1.448` in `config.json` e `app/main.py`.
+- Nessuna modifica a driver HDL BusPro, MQTT, Discovery, API, route, identificativi o persistenza.
