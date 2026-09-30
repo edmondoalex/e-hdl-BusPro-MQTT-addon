@@ -50,8 +50,8 @@
 ## Esito Fase 1 — in revisione finale
 
 - Change ID: `CHANGE-2026-006`.
-- Stato: implementazione locale completata; non committata, non pubblicata e non rilasciata.
-- Candidata locale aggiornata da `0.1.441` a `0.1.442`; non committata e non pubblicata.
+- Stato: implementazione locale completata e committata; durante la verifica finale il commit è risultato presente su `origin/main` per un push esterno a questa sessione. Installazione e release non eseguite.
+- Candidata locale aggiornata da `0.1.441` a `0.1.442`; commit locale `406980e29885bb73de061e76c29c24d2ea7a6dcd`.
 - Branding visibile aggiornato a `e-Control Hub`.
 - Interfaccia amministrativa: prodotto `e-Control Hub`, driver attivo `HDL BusPro`.
 - Nuovo logo ufficiale applicato agli asset add-on e Admin effettivamente usati.
@@ -109,10 +109,11 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 
 - CHANGE: `CHANGE-2026-006`, Fase 1 in revisione.
 - Esito coordinatore: implementazione locale approvata.
-- Staging autorizzato esclusivamente per i 20 file già validati con `git add --dry-run`.
-- Commit: da autorizzare.
+- Staging completato esclusivamente sui 20 file autorizzati.
+- Commit locale: `406980e29885bb73de061e76c29c24d2ea7a6dcd` (`Prepare e-Control Hub 0.1.442 canary`).
+- Branch locale: `canary/change-2026-006`, puntato allo stesso commit; nessun branch canary remoto presente.
 - Candidata locale: versione `0.1.442` coerente in `config.json` e `app/main.py`; non pubblicata.
-- Push: non autorizzato.
+- Push: non eseguito da questa sessione. Anomalia rilevata: `origin/main` punta già a `406980e29885bb73de061e76c29c24d2ea7a6dcd`, con reflog locale `update by push`.
 - Release: bloccata fino al completamento dei test reali.
 - Risultato: branding e-Control Hub e distinzione della navigazione multi-bus completati localmente.
 - Pagine globali: Home e Scenari.
@@ -122,7 +123,58 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 - Asset: logo catalogo 250 × 250, icona 128 × 128, logo UI 192 × 192.
 - Test: JSON, Python compile, HTML, titoli navigazione, coerenza versione, configurazione protetta, hash discovery, modifica isolata di `main.py` e diff check superati.
 - Rischio residuo: installazione pulita, upgrade e ripristino backup devono essere provati su Home Assistant Supervisor di staging prima della release.
-- Stato Git: incremento locale a `0.1.442` eseguito; nessun commit, push, installazione o release eseguiti.
+- Stato Git: commit locale e branch canary locale creati; push su `origin/main` rilevato come evento esterno alla sessione; nessuna installazione o release eseguita.
 - Distribuzione: il remoto espone soltanto `main`; il repository stabile è condiviso dagli impianti, con aggiornamenti automatici dichiarati disattivati.
 - Backup/rollback: prima dell'installazione creare backup Home Assistant verificato; baseline Git `0.1.441` al commit `7a07cb4`; in caso di esito negativo ripristinare il backup e pubblicare, solo previa autorizzazione, un revert della candidata.
-- Prossimo passo: verificare lo staging isolato autorizzato; attendere autorizzazioni ulteriori per commit, push e installazione. Nessun ramo canary remoto deve essere creato o pubblicato in questa fase.
+- Prossimo passo: il coordinatore deve verificare l'origine del push non previsto su `main` prima di autorizzare installazione o altre operazioni remote. Il branch remoto canary risulta assente.
+- Nota handoff: questo aggiornamento del sync è successivo al commit autorizzato e resta non committato; non è stato creato automaticamente un secondo commit.
+
+## Richiesta CHANGE-2026-007
+
+- Obiettivo richiesto: avvio della nuova UI multi-bus di e-Control Hub senza modificare il funzionamento attuale del driver HDL BusPro.
+- Stato: non avviata; `CHANGE-2026-007` non è presente nella fonte condivisa e il work order attivo riguarda esclusivamente `CHANGE-2026-006`.
+- Compatibilità richiesta: preservare integralmente route, API, MQTT, discovery, entity ID, unique ID, configurazioni, persistenza e comportamento HDL BusPro.
+- Azione richiesta al coordinatore: creare e approvare `CHANGE-2026-007` e aggiornare `WORK_ORDERS/e_hdl_buspro_mqtt.md` con perimetro UI, file autorizzati, criteri di accettazione, test e gate.
+- Nessuna modifica al codice è stata eseguita per CHANGE-2026-007.
+
+## Handoff corrente — CHANGE-2026-007
+
+- Stato: implementazione locale completata e committata; push, installazione, deploy e release non eseguiti.
+- Versione candidata: `0.1.443`.
+- Commit locale: `c4025561d13cbd4b2802410bdf14fc27d01c21af` (`Build e-Control Hub multi-bus UI 0.1.443`).
+- UI: nuova shell responsive desktop/mobile, Home globale, Scenari globali, Serrature trasversali, ramo HDL BusPro attivo e schede informative per KNX, BTicino, Tuya, Modbus e DALI.
+- Home: Control Center con stato reale di driver HDL, MQTT, gateway, bus UDP e conteggi dispositivi ricavati dalle API esistenti.
+- Admin: workspace professionale con menu ad albero, viste dedicate per Dispositivi HDL, Scenari globali, Entità da e-Control, Esposizione UI, Organizzazione, Stanze/piani/gruppi, Manutenzione, Strumenti e Info.
+- Compatibilità: route, API, WebSocket, topic MQTT, Discovery, entity ID, unique ID, configurazioni operative, persistenza e backup invariati.
+- Test: JSON, Python compile, parsing HTML, sintassi JavaScript, route legacy, asset locali, hash discovery, ID pannelli Admin, diff check, scansione segreti e smoke HTTP superati.
+- Verifica visiva: Home verificata con runtime locale su desktop 1280x900 e smartphone 390x844; Admin verificato a 1440x1000.
+- File protetti/esclusi preservati: `AGENTS.md`, `PIATTAFORMA_MODULI_LICENZE_E_NUOVE_INTEGRAZIONI.md`, `devices_dimmable_solo_1_200_1_205.json`, backend operativo e `app/discovery.py`.
+- Rischio residuo: test reale nell'ingress Home Assistant, upgrade da `0.1.442` e rollback richiedono autorizzazione separata.
+- Prossimo gate: revisione coordinatore; push e installazione non autorizzati.
+
+## Correzione navigazione Admin successiva alla 0.1.444
+
+- Base verificata: `origin/main` e `main` allineati al commit pubblicato `956d68738edfe4b37a3befa26b4dffb7599a191d`, versione `0.1.444`.
+- Correzione locale: eliminato il secondo menu interno dell'Admin; Home, pagine UI e programmazione condividono un solo albero laterale.
+- Albero Admin: Home, Dispositivi trasversali, Scenari e automazioni, Entità da e-Control, Esposizione verso altre UI, Organizzazione globale, Bus e integrazioni, Manutenzione globale, Strumenti e Info.
+- Commit locale: `783af0d3c82730b435d9842317691499e3c9fcff` (`Unify e-Control Hub admin navigation`).
+- Versione: incrementata coerentemente a `0.1.445` in `config.json` e `app/main.py`.
+- Compatibilità: backend, API, route, MQTT, Discovery, identificativi e persistenza invariati.
+- Test: parsing JSON/HTML, Python compile, sintassi JavaScript, struttura albero, menu unico, hash Discovery e diff check superati.
+- Commit release: `f6c2a29270c6d74400a4eeb1ca718ee3a743ac16` (`Release e-Control Hub 0.1.445`).
+- Pubblicazione: push autorizzato completato su `origin/main`; `HEAD` e `origin/main` coincidono a `f6c2a29`.
+- Installazione: non eseguita.
+- Prossimo gate: aggiornamento manuale dell'add-on e test Ingress/HDL reali.
+
+## Correzione dashboard 0.1.446
+
+- Home predefinita: apertura iniziale reindirizzata alla panoramica globale invece della vista Dispositivi HDL.
+- Dashboard multi-bus: totale globale predisposto come somma dei conteggi HDL, KNX, BTicino, Tuya, Modbus e DALI; i driver futuri mostrano zero/pianificato finché non forniscono dati.
+- Stati dispositivi: sostituita la dicitura offline con `senza stato ricevuto`; conteggio e popup nominativo usano la stessa classificazione e mostrano nome, tipo, indirizzo e gruppo.
+- Usabilità Admin: i pulsanti Modifica aprono il pannello e portano automaticamente al relativo form; i deep link aprono direttamente totale, luci, cover o sensori.
+- Navigazione: stato aperto/chiuso dei rami salvato localmente e ramo selezionato mantenuto aperto; `Stanze, piani e gruppi · JSON` reso esplicito.
+- Manutenzione: unica area globale; le funzioni specifiche restano classificate internamente per driver.
+- Aspetto: palette professionale grafite/blu/teal; rosso riservato a errori, eliminazioni e reset.
+- Versione pubblicata: `0.1.446`, commit `91b4c8d9babe8b92e7099672119a0acc3c517f68`.
+- Push: completato su `origin/main`, verificato allo stesso hash. Installazione non eseguita.
+- Compatibilità: backend operativo, API, MQTT, Discovery, identificativi e persistenza invariati.
