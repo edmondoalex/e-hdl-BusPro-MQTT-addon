@@ -236,3 +236,10 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 - Versione mostrata dinamicamente nell'intestazione della sidebar tramite `/api/meta`.
 - La versione è visualizzata sotto il nome `e-Control Hub`, separata dal titolo commerciale.
 - Etichetta Ksenia corretta in `Integrazione Smart Home`: comprende uscite, cover e porte; l'area allarme è esplicitamente esclusa dalla classificazione e-Control Hub.
+
+## Correzione collegamenti menu 0.1.453
+
+- Home Assistant trasformato da ramo espandibile a singola riga cliccabile con stato `ATTIVO`, poiché conduce a una sola pagina.
+- Tutti i collegamenti verso le pagine Admin ora usano la route esplicita `index.html#<pagina>`; eliminato il calcolo tramite directory relativa che nell'Ingress poteva perdere l'hash e aprire la Home.
+- Confermata la pagina `Entità da Home Assistant` sotto Bus e integrazioni.
+- Versione aggiornata coerentemente a `0.1.453`; backend operativo, HDL BusPro, MQTT, Discovery e persistenza invariati.

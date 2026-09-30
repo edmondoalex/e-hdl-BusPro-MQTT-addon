@@ -28,4 +28,5 @@ body.hub-shell-ready::before{background:#4a5358!important;background-image:none!
 .hub-badge{background:rgba(78,224,164,.10);color:var(--hub-green);border-color:rgba(78,224,164,.24)}
 .hub-mdi{height:24px;background:currentColor;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;-webkit-mask-size:21px 21px;mask-size:21px 21px}
 .hub-nav-icon,.hub-bus-mark img{pointer-events:none}
+.hub-integration-link{text-decoration:none}.hub-integration-name{flex:1;min-width:0}.hub-integration-link .hub-nav-icon{color:#55d6e8}
 .hub-bus-name{display:flex;align-items:center;gap:9px;min-width:0}.hub-bus-mark{display:grid;place-items:center;width:30px;height:26px;flex:0 0 30px;padding:2px;border-radius:6px;background:#f7f7f5;box-sizing:border-box;overflow:hidden}.hub-bus-mark img{display:block;width:100%;height:100%;object-fit:contain}.hub-tree>summary>.hub-bus-name{flex:1}
