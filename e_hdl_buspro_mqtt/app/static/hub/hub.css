@@ -5,6 +5,7 @@ body.hub-shell-ready::before{background:#4a5358!important;background-image:none!
 .hub-sidebar::-webkit-scrollbar{display:none;width:0;height:0}
 .hub-brand{display:flex;align-items:center;gap:10px;padding:4px 8px 18px;text-decoration:none;color:inherit}
 .hub-brand img{width:42px;height:42px;border-radius:10px;object-fit:contain}.hub-brand strong{display:block;font-size:15px}.hub-brand span{display:block;margin-top:2px;font-size:11px;color:var(--hub-muted)}
+.hub-brand .hub-version{display:block;width:max-content;margin-top:4px;padding:2px 5px;border:1px solid var(--hub-line);border-radius:999px;color:var(--hub-muted);font-size:9px;font-weight:650}
 .hub-nav-title{margin:16px 9px 7px;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--hub-muted)}
 .hub-nav-link,.hub-driver-head{display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;padding:10px;border:1px solid transparent;border-radius:10px;color:#eaf0ff;background:transparent;text-decoration:none;font:600 13px/1.2 system-ui;cursor:pointer;text-align:left}
 .hub-nav-link:hover,.hub-nav-link:focus-visible,.hub-driver-head:hover{background:rgba(148,163,184,.08);outline:none}.hub-nav-link.active{background:rgba(79,140,255,.14);border-color:rgba(79,140,255,.32)}
@@ -26,4 +27,5 @@ body.hub-shell-ready::before{background:#4a5358!important;background-image:none!
 .hub-nav-link.active{background:rgba(85,214,232,.12);border-color:rgba(85,214,232,.34)}
 .hub-badge{background:rgba(78,224,164,.10);color:var(--hub-green);border-color:rgba(78,224,164,.24)}
 .hub-mdi{height:24px;background:currentColor;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;-webkit-mask-size:21px 21px;mask-size:21px 21px}
+.hub-nav-icon,.hub-bus-mark img{pointer-events:none}
 .hub-bus-name{display:flex;align-items:center;gap:9px;min-width:0}.hub-bus-mark{display:grid;place-items:center;width:30px;height:26px;flex:0 0 30px;padding:2px;border-radius:6px;background:#f7f7f5;box-sizing:border-box;overflow:hidden}.hub-bus-mark img{display:block;width:100%;height:100%;object-fit:contain}.hub-tree>summary>.hub-bus-name{flex:1}

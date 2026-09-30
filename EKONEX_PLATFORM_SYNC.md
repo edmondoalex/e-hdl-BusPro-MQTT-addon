@@ -223,3 +223,16 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 - Home, Info, Manutenzione e conteggio multi-bus sono predisposti per la chiave opzionale `ksenia` senza renderla obbligatoria.
 - L'interfaccia dati tra add-on Ksenia ed e-Control Hub richiede una futura CHANGE trasversale; nessun contratto condiviso è stato modificato unilateralmente.
 - Versione aggiornata coerentemente a `0.1.451`; driver HDL, MQTT, Discovery, API e persistenza invariati.
+
+## Home Assistant e navigazione 0.1.452
+
+- Home Assistant aggiunto a `Bus e integrazioni` come integrazione attiva.
+- La pagina `Entità da e-Control` è stata riclassificata come `Entità da Home Assistant` e spostata sotto il ramo Home Assistant.
+- Testi corretti: le entità arrivano da Home Assistant e vengono controllate tramite API Home Assistant; non sono pubblicate su MQTT da questa funzione.
+- Home e Info mostrano il conteggio degli stati/entità Home Assistant presenti nello snapshot.
+- Navigazione resa uniforme: icone e loghi non intercettano il puntatore e tutti i link dell'albero usano un unico gestore esplicito.
+- Aggiunto `application-import` al bundle MDI offline.
+- Versione aggiornata coerentemente a `0.1.452`; nessuna modifica a driver HDL, MQTT Discovery, endpoint o persistenza.
+- Versione mostrata dinamicamente nell'intestazione della sidebar tramite `/api/meta`.
+- La versione è visualizzata sotto il nome `e-Control Hub`, separata dal titolo commerciale.
+- Etichetta Ksenia corretta in `Integrazione Smart Home`: comprende uscite, cover e porte; l'area allarme è esplicitamente esclusa dalla classificazione e-Control Hub.
