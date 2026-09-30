@@ -208,3 +208,9 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 - Spostata la panoramica `Bus e integrazioni` dalla Home alla pagina Info, mantenendo conteggi HDL e predisposizione dei driver futuri.
 - Aggiunte nella testata operativa della Home le schede predisposte per KNX Bus, BTicino Bus, Tuya, Modbus Bus e DALI Bus, marcate chiaramente come pianificate e non configurate.
 - Versione aggiornata coerentemente a `0.1.449`; runtime HDL BusPro e contratti tecnici invariati.
+
+## Icone complete sotto-rami 0.1.450
+
+- Sostituiti i pallini generici dei sotto-rami con icone MDI semantiche per dispositivi, scenari, esposizione UI, organizzazione e funzioni HDL.
+- Aggiunti 17 SVG MDI al bundle locale per mantenere la navigazione completa anche offline.
+- Versione aggiornata coerentemente a `0.1.450`; nessuna modifica a driver, MQTT, Discovery, API, route o persistenza.
