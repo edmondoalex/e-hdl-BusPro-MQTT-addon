@@ -83,6 +83,11 @@
           <div class="statusCard" id="homeMqttCard"><b id="homeMqtt">Verifica…</b><span>MQTT</span></div>
           <div class="statusCard" id="homeGatewayCard"><b id="homeGateway">Verifica…</b><span>Gateway</span></div>
           <div class="statusCard" id="homeBusCard"><b id="homeBus">Verifica…</b><span>Bus UDP</span></div>
+          <div class="statusCard"><b>Non configurato</b><span>KNX Bus · pianificato</span></div>
+          <div class="statusCard"><b>Non configurato</b><span>BTicino Bus · pianificato</span></div>
+          <div class="statusCard"><b>Non configurato</b><span>Tuya · pianificato</span></div>
+          <div class="statusCard"><b>Non configurato</b><span>Modbus Bus · pianificato</span></div>
+          <div class="statusCard"><b>Non configurato</b><span>DALI Bus · pianificato</span></div>
         </div>
         <div class="deviceStats">
           <a class="stat" href="./#devices/all"><strong id="countAll">—</strong><span>Totale globale*</span></a><a class="stat" href="./#devices/devices"><strong id="countLights">—</strong><span>Luci e dimmer HDL</span></a><a class="stat" href="./#devices/covers"><strong id="countCovers">—</strong><span>Cover HDL</span></a><a class="stat" href="./#devices/sensors"><strong id="countSensors">—</strong><span>Sensori e ingressi HDL</span></a><button class="stat" type="button" data-state-list="with"><strong id="countOnline">—</strong><span>Con stato ricevuto</span></button><button class="stat" type="button" data-state-list="without"><strong id="countOffline">—</strong><span>Senza stato ricevuto</span></button>
@@ -97,15 +102,6 @@
       </div>
       <h2 class="sectionTitle">HDL BusPro · Driver attivo</h2>
       <div id="grid" class="grid" aria-label="home links"></div>
-      <h2 class="sectionTitle">Bus e integrazioni</h2>
-      <div class="busGrid" aria-label="Stato driver">
-        <div class="busCard active"><strong>HDL BusPro</strong><span class="busStatus">Attivo</span><span id="busCountHdl">— dispositivi</span><span>Luci, cover, sensori, ingressi e diagnostica</span></div>
-        <div class="busCard planned"><strong>KNX</strong><span id="busCountKnx">0 dispositivi · Pianificato</span></div>
-        <div class="busCard planned"><strong>BTicino</strong><span id="busCountBticino">0 dispositivi · Pianificato</span></div>
-        <div class="busCard planned"><strong>Tuya</strong><span id="busCountTuya">0 dispositivi · Pianificato</span></div>
-        <div class="busCard planned"><strong>Modbus</strong><span id="busCountModbus">0 dispositivi · Pianificato</span></div>
-        <div class="busCard planned"><strong>DALI</strong><span id="busCountDali">0 dispositivi · Pianificato</span></div>
-      </div>
     </main>
     <div class="deviceModalBack" id="deviceModalBack" role="dialog" aria-modal="true" aria-labelledby="deviceModalTitle"><div class="deviceModal"><div class="deviceModalTop"><div><h2 id="deviceModalTitle">Dispositivi</h2><div class="sub" id="deviceModalSub"></div></div><button class="modalClose" id="deviceModalClose" type="button">Chiudi</button></div><div class="deviceRows" id="deviceModalRows"></div></div></div>
     <script>

@@ -3,7 +3,7 @@
   function url(path){return new URL(path,window.location.href).toString();}
   function current(){const p=location.pathname.replace(/\/$/,'');return p.split('/').pop()||'home';}
   function mdi(name){const asset=url('api/icons/mdi/'+name+'.svg');return '<span class="hub-nav-icon hub-mdi" style="-webkit-mask-image:url(\''+asset+'\');mask-image:url(\''+asset+'\')" aria-hidden="true"></span>';}
-  function navIcon(icon){return icon&&icon.startsWith('mdi:')?mdi(icon.slice(4)):'<span class="hub-nav-icon">'+(icon||'•')+'</span>';}
+  function navIcon(icon){if(icon==='')return '';return icon&&icon.startsWith('mdi:')?mdi(icon.slice(4)):'<span class="hub-nav-icon">'+(icon||'•')+'</span>';}
   function busBrand(label,file){return '<span class="hub-bus-name"><span class="hub-bus-mark"><img src="'+url('static/hub/brands/'+file)+'" alt=""></span><span>'+label+'</span></span>';}
   function link(label,path,icon,key,extra){return '<a class="hub-nav-link '+(current()===key?'active ':'')+(extra||'')+'" href="'+url(path)+'">'+navIcon(icon)+'<span>'+label+'</span></a>';}
   function adminUrl(view){return new URL('.',window.location.href).toString()+'#'+view;}
@@ -22,7 +22,7 @@
       tree('Esposizione verso altre UI','mdi:cookie-cog-outline',adminLink('Configurazione esposizione','exposure')+link('Home2','home2','•','home2')+link('e-Face','e-face','•','e-face')+link('Luci','lights','•','lights')+link('Cover','covers','•','covers')+link('Extra','extra','•','extra'),false)+
       tree('Organizzazione globale','mdi:application-braces',adminLink('Azioni Home','organization')+adminLink('Stanze, piani e gruppi · JSON','rooms'),false)+
       '<div class="hub-nav-title">Bus e integrazioni</div>'+tree(busBrand('HDL BusPro','hdl.png'),'',adminLink('Panoramica e dispositivi','devices')+link('Luci e dimmer','lights','•','lights')+link('Cover','covers','•','covers')+link('Extra e sensori','extra','•','extra')+adminLink('Diagnostica HDL','tools'),true)+planned+
-      '<div class="hub-nav-title">Sistema</div>'+adminLink('Manutenzione globale','maintenance')+adminLink('Strumenti','tools')+adminLink('Info','info');
+      '<div class="hub-nav-title">Sistema</div>'+adminLink('Manutenzione globale','maintenance','mdi:pin-outline')+adminLink('Strumenti','tools','mdi:tools')+adminLink('Info','info','mdi:information-variant');
     const bar=document.createElement('div');bar.className='hub-mobilebar';bar.innerHTML='<button class="hub-menu-btn" type="button" aria-label="Apri menu" aria-expanded="false">☰</button><span class="hub-mobile-title">e-Control Hub</span>';
     const overlay=document.createElement('div');overlay.className='hub-overlay';
     document.body.prepend(overlay);document.body.prepend(side);document.body.prepend(bar);

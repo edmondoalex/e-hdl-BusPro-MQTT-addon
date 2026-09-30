@@ -198,3 +198,13 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 - Il menu continua a usare l'endpoint esistente, che ora trova gli asset locali corretti anche senza Internet.
 - Versione aggiornata coerentemente a `0.1.448` in `config.json` e `app/main.py`.
 - Nessuna modifica a driver HDL BusPro, MQTT, Discovery, API, route, identificativi o persistenza.
+
+## Completamento icone sistema 0.1.449
+
+- Assegnate le icone richieste alle voci di sistema: Manutenzione globale `pin-outline`, Strumenti `tools`, Info `information-variant`.
+- Inseriti i tre SVG MDI nel bundle offline per impedire il fallback placeholder.
+- Rimosso il pallino predefinito davanti al ramo HDL, allineando logo e testo alla stessa colonna degli altri bus.
+- Corretta la regola CSS che nascondeva involontariamente le icone MDI nei titoli dei rami ad albero; tutte le icone richieste risultano ora visibili.
+- Spostata la panoramica `Bus e integrazioni` dalla Home alla pagina Info, mantenendo conteggi HDL e predisposizione dei driver futuri.
+- Aggiunte nella testata operativa della Home le schede predisposte per KNX Bus, BTicino Bus, Tuya, Modbus Bus e DALI Bus, marcate chiaramente come pianificate e non configurate.
+- Versione aggiornata coerentemente a `0.1.449`; runtime HDL BusPro e contratti tecnici invariati.
