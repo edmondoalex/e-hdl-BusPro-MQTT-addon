@@ -206,6 +206,9 @@ class OrganizationTests(unittest.TestCase):
         self.assertNotIn("Altre integrazioni", nav)
         self.assertNotIn("adminLink('Entità Home Assistant'", nav)
         self.assertEqual(1, nav.count("integrationLink('Home Assistant'"))
+        self.assertEqual(1, nav.count("'info','mdi:home-analytics'"))
+        self.assertIn("adminLink('Diagnostica HDL','hdl_diagnostics'", nav)
+        self.assertNotIn("adminLink('Diagnostica HDL','tools'", nav)
         for bus in ("HDL BusPro", "Ksenia Smart Home", "Home Assistant", "KNX", "BTicino", "Tuya", "Modbus", "DALI"):
             self.assertIn(bus, nav)
         self.assertIn("--hub-bg:#101619", css)

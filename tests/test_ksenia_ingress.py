@@ -15,6 +15,12 @@ class KseniaIngressTests(unittest.TestCase):
         self.assertIn('href="static/hub/hub.css?v=0.1.466"', source)
         self.assertIn('src="static/hub/hub-nav.js?v=0.1.466"', source)
 
+    def test_ksenia_page_is_allowed_on_user_port(self):
+        main = (PAGE.parents[2] / "main.py").read_text(encoding="utf-8")
+        self.assertIn('"/locks", "/ksenia")', main)
+        self.assertIn('path == "/api/integrations/ksenia" and request.method.upper() == "GET"', main)
+        self.assertIn('path.startswith("/api/integrations/ksenia/command/") and request.method.upper() == "POST"', main)
+
     def test_non_json_response_has_readable_error(self):
         source = PAGE.read_text(encoding="utf-8")
         self.assertIn("async function readJson", source)

@@ -1203,7 +1203,7 @@ def create_app() -> FastAPI:
             return await call_next(request)
 
         # User pages
-        if path in ("/", "/home", "/home2", "/home_plus", "/e-face", "/lights", "/covers", "/extra", "/scenarios", "/locks"):
+        if path in ("/", "/home", "/home2", "/home_plus", "/e-face", "/lights", "/covers", "/extra", "/scenarios", "/locks", "/ksenia"):
             return await call_next(request) 
         if guard_enabled and path == "/e-guard":
             return await call_next(request)
@@ -1212,6 +1212,10 @@ def create_app() -> FastAPI:
         if path.startswith("/api/control/"):
             return await call_next(request)
         if path.startswith("/api/user/smart-home/") and path.endswith("/command") and request.method.upper() == "POST":
+            return await call_next(request)
+        if path == "/api/integrations/ksenia" and request.method.upper() == "GET":
+            return await call_next(request)
+        if path.startswith("/api/integrations/ksenia/command/") and request.method.upper() == "POST":
             return await call_next(request)
         if path.startswith("/api/user/light_scenarios"):
             return await call_next(request)
