@@ -3,100 +3,56 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const slug = value => String(value || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const apiUrl = path => new URL(path, window.location.href).toString();
-  async function json(path, options) {
-    const response = await fetch(apiUrl(path), options);
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
-    return data;
-  }
-  function option(rows, selected, empty) {
-    return `<option value="">${esc(empty)}</option>` + rows.map(row => `<option value="${esc(row.id)}"${row.id === selected ? ' selected' : ''}>${esc(row.name)}</option>`).join('');
-  }
-  const presentationCategories = ['lights','extra','covers','comfort','sensors','security','scenarios'];
-  function categoryOptions(selected) {
-    const active = new Set(selected || []);
-    return presentationCategories.map(value => `<option value="${value}"${active.has(value) ? ' selected' : ''}>${value}</option>`).join('');
-  }
-  function multiOptions(rows, selected) {
-    const active = new Set(selected || []);
-    return rows.map(row => `<option value="${esc(row.id)}"${active.has(row.id) ? ' selected' : ''}>${esc(row.name)}</option>`).join('');
-  }
+  const categories = ['lights','extra','covers','comfort','sensors','security','scenarios'];
+  const labels = {lights:'Luci',extra:'Extra',covers:'Oscuranti',comfort:'Comfort',sensors:'Sensori',security:'Sicurezza',scenarios:'Scenari'};
+  async function json(path, options) { const response=await fetch(apiUrl(path),options), data=await response.json().catch(()=>({})); if(!response.ok)throw new Error(data.detail||`HTTP ${response.status}`); return data; }
+  const option = (rows,selected,empty) => `<option value="">${esc(empty)}</option>`+rows.map(row=>`<option value="${esc(row.id)}"${row.id===selected?' selected':''}>${esc(row.name)}</option>`).join('');
+  const multiOptions = (rows,selected) => { const active=new Set(selected||[]); return rows.map(row=>`<option value="${esc(row.id)}"${active.has(row.id)?' selected':''}>${esc(row.name)}</option>`).join(''); };
+  const categoryChecks = selected => { const active=new Set(selected||[]); return categories.map(value=>`<label class="orgChip"><input data-category="${value}" type="checkbox"${active.has(value)?' checked':''}><span>${labels[value]}</span></label>`).join(''); };
+
   function start() {
-    const page = document.querySelector('.adminPage[data-page="rooms"]');
-    if (!page || document.getElementById('globalOrganization')) return;
-    const panel = document.createElement('section');
-    panel.id = 'globalOrganization';
-    panel.className = 'adminMovedPanel';
-    panel.innerHTML = `
-      <style>
-        #globalOrganization .orgToolbar{display:grid;grid-template-columns:repeat(3,minmax(190px,1fr));gap:12px;margin:14px 0}
-        #globalOrganization .orgBox{padding:12px;border:1px solid var(--border);border-radius:12px;background:rgba(0,0,0,.12)}
-        #globalOrganization .orgBox input,#globalOrganization select{width:100%;margin-top:7px}
-        #globalOrganization .orgTable{width:100%;border-collapse:collapse;margin-top:12px}
-        #globalOrganization .orgTable th,#globalOrganization .orgTable td{padding:9px 7px;border-bottom:1px solid var(--border);text-align:left;vertical-align:middle}
-        #globalOrganization .orgTable select,#globalOrganization .orgTable input{min-width:130px}
-        #globalOrganization .orgSource{font-size:11px;text-transform:uppercase;color:var(--muted)}
-        #globalOrganization .orgOrphan{opacity:.55}
-        @media(max-width:850px){#globalOrganization .orgToolbar{grid-template-columns:1fr}.orgTable{display:block;overflow-x:auto}}
-      </style>
-      <h2>Organizzazione globale multi-bus</h2>
-      <p class="muted">Piani, stanze, gruppi, categorie/pagine, ordine, visibilità e icone condivisi da HDL BusPro, Ksenia e driver futuri. Le associazioni usano identificativi stabili e restano conservate quando un dispositivo è offline.</p>
-      <div class="orgToolbar">
-        <div class="orgBox"><b>Nuovo piano</b><input id="orgFloorName" placeholder="Es. Piano terra"><button class="btn secondary small" id="orgAddFloor">Aggiungi</button></div>
-        <div class="orgBox"><b>Nuova stanza</b><input id="orgRoomName" placeholder="Es. Cucina"><select id="orgRoomFloor"></select><button class="btn secondary small" id="orgAddRoom">Aggiungi</button></div>
-        <div class="orgBox"><b>Nuovo gruppo</b><input id="orgGroupName" placeholder="Es. Illuminazione esterna"><button class="btn secondary small" id="orgAddGroup">Aggiungi</button></div>
-      </div>
-      <div class="flex"><button class="btn secondary" id="orgReload">Aggiorna cataloghi</button><span id="orgMessage" class="muted"></span></div>
-      <div id="orgDevices"></div>`;
+    const page=document.querySelector('.adminPage[data-page="rooms"]');
+    if(!page||document.getElementById('globalOrganization'))return;
+    const panel=document.createElement('section'); panel.id='globalOrganization'; panel.className='adminMovedPanel';
+    panel.innerHTML=`<style>
+      #globalOrganization .orgToolbar{display:grid;grid-template-columns:repeat(3,minmax(190px,1fr));gap:12px;margin:14px 0}
+      #globalOrganization .orgBox{padding:12px;border:1px solid var(--border);border-radius:12px;background:rgba(0,0,0,.12)}
+      #globalOrganization .orgBox input,#globalOrganization select{width:100%;margin-top:7px}
+      #globalOrganization .orgHelp{margin:12px 0;padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:rgba(45,157,255,.08);line-height:1.55}
+      #globalOrganization .orgFilters{display:grid;grid-template-columns:minmax(240px,2fr) repeat(2,minmax(160px,1fr));gap:10px;margin:14px 0}
+      #globalOrganization .orgFilters input,#globalOrganization .orgFilters select{margin:0;min-height:44px}
+      #globalOrganization .orgDeviceList{display:grid;gap:12px;margin-top:12px}.orgDeviceCard{padding:14px;border:1px solid var(--border);border-radius:14px;background:rgba(0,0,0,.14)}
+      #globalOrganization .orgDeviceCard[hidden]{display:none}.orgDeviceHead{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}
+      #globalOrganization .orgDeviceGrid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:12px}.orgField{display:grid;gap:5px;align-content:start}.orgField>span{font-size:12px;color:var(--muted);font-weight:700}.orgWide{grid-column:span 2}
+      #globalOrganization .orgCategories,#globalOrganization .orgPresentation{display:flex;flex-wrap:wrap;gap:7px}.orgChip{display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid var(--border);border-radius:999px;background:rgba(255,255,255,.03);cursor:pointer}
+      #globalOrganization .orgChip input{width:auto;min-width:0;margin:0}.orgChip:has(input:checked){border-color:#38bdf8;background:rgba(56,189,248,.14)}
+      #globalOrganization .orgSource{font-size:11px;text-transform:uppercase;color:var(--muted)}#globalOrganization .orgOrphan{opacity:.55}
+      @media(max-width:1100px){#globalOrganization .orgDeviceGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:850px){#globalOrganization .orgToolbar,#globalOrganization .orgFilters,#globalOrganization .orgDeviceGrid{grid-template-columns:1fr}#globalOrganization .orgWide{grid-column:auto}}
+    </style>
+    <h2>Organizzazione globale multi-bus</h2><p class="muted">Organizza in un solo punto i dispositivi HDL, Ksenia e dei futuri bus. Le modifiche restano persistenti dopo riavvii e aggiornamenti.</p>
+    <div class="orgHelp"><b>Come funziona:</b> scegli in quali pagine mostrare il dispositivo. <b>Posizione</b> stabilisce l'ordine nella pagina (0 = prima). <b>Visibile</b> lo mostra nell'interfaccia, <b>Preferito</b> lo evidenzia e <b>Scorciatoia</b> lo rende disponibile nelle azioni rapide.</div>
+    <div class="orgToolbar"><div class="orgBox"><b>Nuovo piano</b><input id="orgFloorName" placeholder="Es. Piano terra"><button class="btn secondary small" id="orgAddFloor">Aggiungi</button></div><div class="orgBox"><b>Nuova stanza</b><input id="orgRoomName" placeholder="Es. Cucina"><select id="orgRoomFloor"></select><button class="btn secondary small" id="orgAddRoom">Aggiungi</button></div><div class="orgBox"><b>Nuovo gruppo</b><input id="orgGroupName" placeholder="Es. Illuminazione esterna"><button class="btn secondary small" id="orgAddGroup">Aggiungi</button></div></div>
+    <div class="flex"><button class="btn secondary" id="orgReload">Aggiorna cataloghi</button><span id="orgMessage" class="muted"></span></div>
+    <div class="orgFilters"><input id="orgSearch" type="search" placeholder="Cerca dispositivo, stanza, piano o tipo..."><select id="orgSourceFilter"><option value="">Tutti i bus</option></select><select id="orgCategoryFilter"><option value="">Tutte le pagine</option>${categories.map(value=>`<option value="${value}">${labels[value]}</option>`).join('')}</select></div><div id="orgDevices"></div>`;
     page.prepend(panel);
-    let model = null;
-    const message = text => { document.getElementById('orgMessage').textContent = text; };
-    async function load() {
-      message('Caricamento…');
-      try { model = await json('api/organization'); render(); message(''); }
-      catch (error) { message(error.message); }
+    let model=null; const message=text=>{document.getElementById('orgMessage').textContent=text;};
+    async function load(){message('Caricamento...');try{model=await json('api/organization');render();message('');}catch(error){message(error.message);}}
+    function filterRows(){const query=document.getElementById('orgSearch').value.trim().toLowerCase(),source=document.getElementById('orgSourceFilter').value,category=document.getElementById('orgCategoryFilter').value;document.querySelectorAll('[data-device-row]').forEach(row=>{row.hidden=!!((query&&!row.dataset.search.includes(query))||(source&&row.dataset.source!==source)||(category&&!row.dataset.categories.split(',').includes(category)));});}
+    function render(){
+      const floors=model.floors||[],rooms=model.rooms||[],groups=model.groups||[],devices=model.devices||{}; document.getElementById('orgRoomFloor').innerHTML=option(floors,'','Seleziona piano');
+      const sourceFilter=document.getElementById('orgSourceFilter'),selectedSource=sourceFilter.value,sources=[...new Set(Object.keys(devices).map(key=>key.split(':')[0]))].sort(); sourceFilter.innerHTML='<option value="">Tutti i bus</option>'+sources.map(source=>`<option value="${esc(source)}"${source===selectedSource?' selected':''}>${esc(source.toUpperCase())}</option>`).join('');
+      const cards=Object.entries(devices).sort((a,b)=>String(a[1].name).localeCompare(String(b[1].name),'it')).map(([key,device])=>{
+        const [source,...idParts]=key.split(':'),roomsForFloor=rooms.filter(room=>!device.floor_id||room.floor_id===device.floor_id),floorName=floors.find(x=>x.id===device.floor_id)?.name||'',roomName=rooms.find(x=>x.id===device.room_id)?.name||'',search=esc(`${device.name||device.device_id} ${source} ${device.device_class} ${floorName} ${roomName}`.toLowerCase());
+        return `<article class="orgDeviceCard ${device.orphaned?'orgOrphan':''}" data-device-row data-source="${esc(source)}" data-id="${esc(idParts.join(':'))}" data-search="${search}" data-categories="${esc((device.categories||[]).join(','))}"><header class="orgDeviceHead"><div><b>${esc(device.name||device.device_id)}</b><div class="orgSource">${esc(source)} · ${esc(device.device_class)}${device.orphaned?' · non presente':''}</div></div><button class="btn secondary small" data-save>Salva</button></header><div class="orgDeviceGrid">
+        <label class="orgField"><span>Piano</span><select data-field="floor_id">${option(floors,device.floor_id,'Nessun piano')}</select></label><label class="orgField"><span>Stanza</span><select data-field="room_id">${option(roomsForFloor,device.room_id,'Nessuna stanza')}</select></label><label class="orgField"><span>Gruppi (facoltativi)</span><select data-field="group_ids" multiple size="3">${multiOptions(groups,device.group_ids)}</select></label><label class="orgField"><span>Posizione nella pagina</span><input data-field="order" type="number" min="0" value="${esc(Object.values(device.orders||{})[0]||0)}"><small class="muted">0 = prima posizione</small></label>
+        <div class="orgField orgWide"><span>Pagine in cui compare</span><div class="orgCategories">${categoryChecks(device.categories)}</div></div><div class="orgField"><span>Presentazione</span><div class="orgPresentation"><label class="orgChip"><input data-field="visible" type="checkbox"${device.visible!==false?' checked':''}><span>Visibile</span></label><label class="orgChip"><input data-field="favorite" type="checkbox"${device.favorite?' checked':''}><span>Preferito</span></label><label class="orgChip"><input data-field="shortcut" type="checkbox"${device.shortcut?' checked':''}><span>Scorciatoia</span></label></div></div><label class="orgField"><span>Icona (facoltativa)</span><input data-field="icon_override" value="${esc(device.icon_override||'')}" placeholder="${esc(device.icon_auto||'mdi:devices')}"></label></div></article>`;
+      }).join(''); document.getElementById('orgDevices').innerHTML=`<div class="orgDeviceList">${cards||'<p class="muted">Nessun dispositivo disponibile</p>'}</div>`;filterRows();
     }
-    function render() {
-      const floors = model.floors || [], rooms = model.rooms || [], groups = model.groups || [];
-      document.getElementById('orgRoomFloor').innerHTML = option(floors, '', 'Seleziona piano');
-      const rows = Object.entries(model.devices || {}).sort((a,b) => String(a[1].name).localeCompare(String(b[1].name))).map(([key, device]) => {
-        const [source, ...idParts] = key.split(':');
-        const roomsForFloor = rooms.filter(room => !device.floor_id || room.floor_id === device.floor_id);
-        return `<tr class="${device.orphaned ? 'orgOrphan' : ''}" data-source="${esc(source)}" data-id="${esc(idParts.join(':'))}">
-          <td><b>${esc(device.name || device.device_id)}</b><div class="orgSource">${esc(source)} · ${esc(device.device_class)}${device.orphaned ? ' · non presente' : ''}</div></td>
-          <td><select data-field="floor_id">${option(floors, device.floor_id, 'Nessun piano')}</select></td>
-          <td><select data-field="room_id">${option(roomsForFloor, device.room_id, 'Nessuna stanza')}</select></td>
-          <td><select data-field="group_ids" multiple size="3">${multiOptions(groups, device.group_ids)}</select></td>
-          <td><select data-field="categories" multiple size="3">${categoryOptions(device.categories)}</select></td>
-          <td><input data-field="order" type="number" min="0" value="${esc(Object.values(device.orders || {})[0] || 0)}"></td>
-          <td><label><input data-field="visible" type="checkbox"${device.visible !== false ? ' checked' : ''}> Visibile</label><br><label><input data-field="favorite" type="checkbox"${device.favorite ? ' checked' : ''}> Preferito</label><br><label><input data-field="shortcut" type="checkbox"${device.shortcut ? ' checked' : ''}> Scorciatoia</label></td>
-          <td><input data-field="icon_override" value="${esc(device.icon_override || '')}" placeholder="${esc(device.icon_auto || 'mdi:devices')}"></td>
-          <td><button class="btn secondary small" data-save>Salva</button></td></tr>`;
-      }).join('');
-      document.getElementById('orgDevices').innerHTML = `<table class="orgTable"><thead><tr><th>Dispositivo</th><th>Piano</th><th>Stanza</th><th>Gruppo</th><th>Categorie / pagine</th><th>Ordine</th><th>Presentazione</th><th>Icona MDI</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="9">Nessun dispositivo disponibile</td></tr>'}</tbody></table>`;
-    }
-    async function saveStructure() {
-      model = await json('api/organization/structure', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({floors:model.floors, rooms:model.rooms, groups:model.groups})});
-      render();
-    }
-    document.getElementById('orgAddFloor').onclick = async () => { const input=document.getElementById('orgFloorName'), name=input.value.trim(); if(!name)return; model.floors.push({id:`floor-${slug(name)}`,name}); await saveStructure(); input.value=''; };
-    document.getElementById('orgAddRoom').onclick = async () => { const input=document.getElementById('orgRoomName'), name=input.value.trim(), floor_id=document.getElementById('orgRoomFloor').value; if(!name||!floor_id)return message('Seleziona il piano'); model.rooms.push({id:`room-${slug(name)}`,name,floor_id}); await saveStructure(); input.value=''; };
-    document.getElementById('orgAddGroup').onclick = async () => { const input=document.getElementById('orgGroupName'), name=input.value.trim(); if(!name)return; model.groups.push({id:`group-${slug(name)}`,name}); await saveStructure(); input.value=''; };
-    document.getElementById('orgReload').onclick = load;
-    panel.addEventListener('change', event => { if(event.target.dataset.field !== 'floor_id')return; const row=event.target.closest('tr'), room=row.querySelector('[data-field="room_id"]'), rooms=(model.rooms||[]).filter(x=>!event.target.value||x.floor_id===event.target.value); room.innerHTML=option(rooms,'','Nessuna stanza'); });
-    panel.addEventListener('click', async event => {
-      const button=event.target.closest('[data-save]'); if(!button)return;
-      const row=button.closest('tr'), get=field=>row.querySelector(`[data-field="${field}"]`).value;
-      try {
-        const categories = Array.from(row.querySelector('[data-field="categories"]').selectedOptions).map(x => x.value);
-        if (!categories.length) throw new Error('Seleziona almeno una categoria');
-        const order = Number(get('order')) || 0, orders = Object.fromEntries(categories.map(category => [category, order]));
-        const group_ids = Array.from(row.querySelector('[data-field="group_ids"]').selectedOptions).map(x => x.value);
-        await json('api/organization/device',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:row.dataset.source,device_id:row.dataset.id,floor_id:get('floor_id'),room_id:get('room_id'),group_ids,categories,orders,visible:row.querySelector('[data-field="visible"]').checked,favorite:row.querySelector('[data-field="favorite"]').checked,shortcut:row.querySelector('[data-field="shortcut"]').checked,icon_override:get('icon_override').trim()})});
-        message('Associazione salvata'); setTimeout(()=>message(''),1500); await load();
-      } catch(error){message(error.message);}
-    });
-    load();
+    async function saveStructure(){model=await json('api/organization/structure',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({floors:model.floors,rooms:model.rooms,groups:model.groups})});render();}
+    document.getElementById('orgAddFloor').onclick=async()=>{const input=document.getElementById('orgFloorName'),name=input.value.trim();if(!name)return;model.floors.push({id:`floor-${slug(name)}`,name});await saveStructure();input.value='';}; document.getElementById('orgAddRoom').onclick=async()=>{const input=document.getElementById('orgRoomName'),name=input.value.trim(),floor_id=document.getElementById('orgRoomFloor').value;if(!name||!floor_id)return message('Seleziona il piano');model.rooms.push({id:`room-${slug(name)}`,name,floor_id});await saveStructure();input.value='';}; document.getElementById('orgAddGroup').onclick=async()=>{const input=document.getElementById('orgGroupName'),name=input.value.trim();if(!name)return;model.groups.push({id:`group-${slug(name)}`,name});await saveStructure();input.value='';};
+    document.getElementById('orgReload').onclick=load;document.getElementById('orgSearch').addEventListener('input',filterRows);document.getElementById('orgSourceFilter').addEventListener('change',filterRows);document.getElementById('orgCategoryFilter').addEventListener('change',filterRows);
+    panel.addEventListener('change',event=>{if(event.target.dataset.field!=='floor_id')return;const row=event.target.closest('[data-device-row]'),room=row.querySelector('[data-field="room_id"]'),available=(model.rooms||[]).filter(x=>!event.target.value||x.floor_id===event.target.value);room.innerHTML=option(available,'','Nessuna stanza');});
+    panel.addEventListener('click',async event=>{const button=event.target.closest('[data-save]');if(!button)return;const row=button.closest('[data-device-row]'),get=field=>row.querySelector(`[data-field="${field}"]`).value;try{const selected=Array.from(row.querySelectorAll('[data-category]:checked')).map(x=>x.dataset.category);if(!selected.length)throw new Error('Seleziona almeno una pagina');const order=Number(get('order'))||0,orders=Object.fromEntries(selected.map(category=>[category,order])),group_ids=Array.from(row.querySelector('[data-field="group_ids"]').selectedOptions).map(x=>x.value);await json('api/organization/device',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:row.dataset.source,device_id:row.dataset.id,floor_id:get('floor_id'),room_id:get('room_id'),group_ids,categories:selected,orders,visible:row.querySelector('[data-field="visible"]').checked,favorite:row.querySelector('[data-field="favorite"]').checked,shortcut:row.querySelector('[data-field="shortcut"]').checked,icon_override:get('icon_override').trim()})});message('Dispositivo salvato');setTimeout(()=>message(''),1500);await load();}catch(error){message(error.message);}}); load();
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();

@@ -124,6 +124,18 @@ class SmartHomeProducerTests(unittest.TestCase):
         self.assertEqual(["on", "off"], item["capabilities"])
         self.assertEqual({"state":"ON"}, item["state"])
 
+    def test_organization_ui_is_searchable_and_uses_clear_labels(self):
+        source = (Path(__file__).parents[1] / "e_hdl_buspro_mqtt" / "app" / "static" / "hub" / "organization.js").read_text(encoding="utf-8")
+        self.assertIn('id="orgSearch"', source)
+        self.assertIn('id="orgSourceFilter"', source)
+        self.assertIn('id="orgCategoryFilter"', source)
+        self.assertIn("Posizione nella pagina", source)
+        self.assertIn("0 = prima posizione", source)
+        self.assertIn("Pagine in cui compare", source)
+        self.assertIn("Preferito", source)
+        self.assertIn("Scorciatoia", source)
+        self.assertNotIn('<table class="orgTable">', source)
+
     def test_command_validation_denies_read_only_unavailable_and_capability(self):
         base = {"orphaned":False,"read_only":False,"available":True,"capabilities":["on"]}
         self.assertEqual("on", validate_command_request(base, "ON"))
