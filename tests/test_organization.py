@@ -216,13 +216,13 @@ class OrganizationTests(unittest.TestCase):
         self.assertIn("Gestione scenari multi-bus", index)
         self.assertIn("Strumenti avanzati · JSON scenario", index)
         self.assertNotIn("Scenari: configurazione JSON", index)
-        self.assertIn("organization.js?v=0.1.466", index)
+        self.assertIn("organization.js?v=0.1.467", index)
         self.assertLess(index.index("Ksenia Smart Home</b>"), index.index("Home Assistant</b>"))
         for page in (root / "e_hdl_buspro_mqtt" / "app" / "static" / "user").glob("*.html"):
             source = page.read_text(encoding="utf-8")
             if "static/hub/hub-nav.js" in source:
-                self.assertIn("hub-nav.js?v=0.1.466", source, page.name)
-                self.assertIn("hub.css?v=0.1.466", source, page.name)
+                self.assertIn("hub-nav.js?v=0.1.467", source, page.name)
+                self.assertIn("hub.css?v=0.1.467", source, page.name)
 
 
 if __name__ == "__main__":
