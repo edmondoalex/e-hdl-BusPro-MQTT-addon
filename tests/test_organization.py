@@ -1,6 +1,8 @@
 import json
 import os
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -92,6 +94,46 @@ class OrganizationTests(unittest.TestCase):
     def test_migration_collision_is_reported(self):
         with self.assertRaises(ValueError):
             self.store.migrate_hdl([], ["# TERRA", "SALA", "# PRIMO", "SALA"])
+
+    def test_identical_sync_does_not_rewrite_persistent_file(self):
+        devices = [{"source":"hdl","device_id":"1.2.3","name":"Luce","device_class":"light"}]
+        self.store.sync_devices(devices)
+        before = os.stat(self.path).st_mtime_ns
+        time.sleep(0.01)
+        self.store.sync_devices(devices)
+        self.assertEqual(before, os.stat(self.path).st_mtime_ns)
+
+    def test_concurrent_assignments_do_not_lose_updates(self):
+        self.store.sync_devices([
+            {"source":"hdl","device_id":"1.2.3","name":"Uno","device_class":"light"},
+            {"source":"ksenia","device_id":"ksn_1","name":"Due","device_class":"switch"},
+        ])
+        self.store.replace_structure({"groups":[{"id":"group-a","name":"A"},{"id":"group-b","name":"B"}]})
+        barrier = threading.Barrier(3)
+        errors = []
+        def assign(source, device_id, group_id):
+            try:
+                barrier.wait()
+                self.store.assign({"source":source,"device_id":device_id,"group_ids":[group_id]})
+            except Exception as exc:
+                errors.append(exc)
+        threads = [
+            threading.Thread(target=assign, args=("hdl","1.2.3","group-a")),
+            threading.Thread(target=assign, args=("ksenia","ksn_1","group-b")),
+        ]
+        for thread in threads: thread.start()
+        barrier.wait()
+        for thread in threads: thread.join()
+        self.assertEqual([], errors)
+        data = self.store.load()
+        self.assertEqual(["group-a"], data["devices"]["hdl:1.2.3"]["group_ids"])
+        self.assertEqual(["group-b"], data["devices"]["ksenia:ksn_1"]["group_ids"])
+
+    def test_slug_collisions_and_invalid_device_metadata_are_rejected(self):
+        with self.assertRaises(ValueError):
+            self.store.migrate_hdl([], ["# Piano A", "# Piano-A"])
+        with self.assertRaises(ValueError):
+            self.store.sync_devices([{"source":"hdl","device_id":"1","name":"bad\u0001name","device_class":"light"}])
 
     def test_admin_ui_is_responsive_and_uses_organization_api(self):
         root = Path(__file__).resolve().parents[1]

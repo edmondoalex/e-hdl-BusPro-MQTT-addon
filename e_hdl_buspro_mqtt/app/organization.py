@@ -56,6 +56,13 @@ def _clean_name(value: Any, field: str) -> str:
     return out
 
 
+def _clean_optional_text(value: Any, field: str, limit: int) -> str:
+    out = " ".join(str(value or "").strip().split())
+    if len(out) > limit or any(ord(c) < 32 for c in out):
+        raise ValueError(f"invalid {field}")
+    return out
+
+
 def _icon(value: Any, *, optional: bool = True) -> str:
     out = str(value or "").strip().lower()
     if not out and optional:
@@ -121,6 +128,13 @@ class OrganizationStore:
         with self._lock:
             folder = os.path.dirname(self.path) or "."
             os.makedirs(folder, exist_ok=True)
+            try:
+                with open(self.path, "r", encoding="utf-8") as handle:
+                    current = self.validate(json.load(handle))
+                if current == cleaned:
+                    return deepcopy(cleaned)
+            except (OSError, json.JSONDecodeError, ValueError, TypeError):
+                pass
             if backup and os.path.isfile(self.path):
                 shutil.copy2(self.path, self.path + ".bak")
             fd, tmp = tempfile.mkstemp(prefix=".organization-", suffix=".json", dir=folder)
@@ -186,8 +200,8 @@ class OrganizationStore:
             item = {
                 "source": source,
                 "device_id": device_id,
-                "name": str(raw.get("name") or "")[:160],
-                "device_class": str(raw.get("device_class") or "")[:80],
+                "name": _clean_optional_text(raw.get("name"), "device.name", 160),
+                "device_class": _clean_optional_text(raw.get("device_class"), "device.device_class", 80).lower(),
                 "floor_id": floor_id,
                 "room_id": room_id,
                 "group_ids": group_ids,
@@ -199,32 +213,37 @@ class OrganizationStore:
         return out
 
     def sync_devices(self, devices: list[dict[str, Any]]) -> dict[str, Any]:
-        data = self.load()
-        seen = set()
-        for device in devices:
-            key = canonical_key(device.get("source"), device.get("device_id"))
-            seen.add(key)
-            current = deepcopy(data["devices"].get(key) or {})
-            device_class = str(device.get("device_class") or "").strip().lower()
-            current.update({
-                "source": str(device.get("source")).lower(),
-                "device_id": str(device.get("device_id")),
-                "name": str(device.get("name") or device.get("device_id") or ""),
-                "device_class": device_class,
-                "icon_auto": default_icon(device_class),
-                "orphaned": False,
-            })
-            current.setdefault("floor_id", "")
-            current.setdefault("room_id", "")
-            current.setdefault("group_ids", [])
-            current.setdefault("icon_override", "")
-            data["devices"][key] = current
-        for key, current in data["devices"].items():
-            if key not in seen:
-                current["orphaned"] = True
-        return self.save(data, backup=False)
+        with self._lock:
+            data = self.load()
+            seen = set()
+            for device in devices:
+                key = canonical_key(device.get("source"), device.get("device_id"))
+                seen.add(key)
+                current = deepcopy(data["devices"].get(key) or {})
+                device_class = _clean_optional_text(device.get("device_class"), "device.device_class", 80).lower()
+                current.update({
+                    "source": str(device.get("source")).lower(),
+                    "device_id": str(device.get("device_id")),
+                    "name": _clean_optional_text(device.get("name") or device.get("device_id"), "device.name", 160),
+                    "device_class": device_class,
+                    "icon_auto": default_icon(device_class),
+                    "orphaned": False,
+                })
+                current.setdefault("floor_id", "")
+                current.setdefault("room_id", "")
+                current.setdefault("group_ids", [])
+                current.setdefault("icon_override", "")
+                data["devices"][key] = current
+            for key, current in data["devices"].items():
+                if key not in seen:
+                    current["orphaned"] = True
+            return self.save(data, backup=False)
 
     def migrate_hdl(self, hdl_devices: list[dict[str, Any]], group_order: list[str]) -> dict[str, Any]:
+        with self._lock:
+            return self._migrate_hdl_locked(hdl_devices, group_order)
+
+    def _migrate_hdl_locked(self, hdl_devices: list[dict[str, Any]], group_order: list[str]) -> dict[str, Any]:
         data = self.load()
         if bool((data.get("migration") or {}).get("hdl_v1")):
             return data
@@ -240,7 +259,10 @@ class OrganizationStore:
                 if name:
                     fid = "floor-" + re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
                     fid = fid or "floor-main"
-                    if fid not in {x["id"] for x in data["floors"]}:
+                    existing_floor = next((x for x in data["floors"] if x["id"] == fid), None)
+                    if existing_floor and existing_floor.get("name") != name:
+                        raise ValueError(f"floor migration collision: {name}")
+                    if not existing_floor:
                         data["floors"].append({"id": fid, "name": name})
                     floor_by_name[name.casefold()] = fid
                     current_floor = fid
@@ -252,18 +274,16 @@ class OrganizationStore:
                     data["floors"].append({"id": current_floor, "name": "Edificio"})
             rid = "room-" + re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
             existing_room = next((x for x in data["rooms"] if x["id"] == rid), None)
-            if existing_room and existing_room.get("floor_id") != current_floor:
+            if existing_room and (existing_room.get("floor_id") != current_floor or existing_room.get("name") != name):
                 raise ValueError(f"room migration collision: {name}")
             if not existing_room:
                 data["rooms"].append({"id": rid, "name": name, "floor_id": current_floor})
             room_by_name[name.casefold()] = rid
-        normalized = []
         for dev in hdl_devices:
             addr = str(dev.get("addr") or f"{dev.get('subnet_id')}.{dev.get('device_id')}.{dev.get('channel')}")
             group = str(dev.get("group") or "").strip()
             rid = room_by_name.get(group.casefold(), "")
             floor_id = next((r["floor_id"] for r in data["rooms"] if r["id"] == rid), "")
-            normalized.append({"source": "hdl", "device_id": addr, "name": dev.get("name") or addr, "device_class": dev.get("type") or ("dimmer" if dev.get("dimmable") else "light")})
             key = canonical_key("hdl", addr)
             existing = data["devices"].get(key) or {}
             device_class = str(dev.get("type") or ("dimmer" if dev.get("dimmable") else "light"))
@@ -279,30 +299,31 @@ class OrganizationStore:
             })
             data["devices"][key] = existing
         data["migration"] = {**(data.get("migration") or {}), "hdl_v1": True, "migrated_at": int(time.time())}
-        self.save(data)
-        return self.sync_devices(normalized)
+        return self.save(data)
 
     def replace_structure(self, payload: dict[str, Any]) -> dict[str, Any]:
-        data = self.load()
-        for key in ("floors", "rooms", "groups"):
-            if key in payload:
-                data[key] = payload[key]
-        return self.save(data)
+        with self._lock:
+            data = self.load()
+            for key in ("floors", "rooms", "groups"):
+                if key in payload:
+                    data[key] = payload[key]
+            return self.save(data)
 
     def validate_backup(self, data: dict[str, Any]) -> dict[str, Any]:
         return self.validate(data)
 
     def assign(self, payload: dict[str, Any]) -> dict[str, Any]:
-        data = self.load()
-        key = canonical_key(payload.get("source"), payload.get("device_id"))
-        if key not in data["devices"]:
-            raise ValueError("unknown device")
-        item = data["devices"][key]
-        for field in ("floor_id", "room_id", "group_ids", "icon_override"):
-            if field in payload:
-                item[field] = payload[field]
-        self.save(data)
-        return deepcopy(self.load()["devices"][key])
+        with self._lock:
+            data = self.load()
+            key = canonical_key(payload.get("source"), payload.get("device_id"))
+            if key not in data["devices"]:
+                raise ValueError("unknown device")
+            item = data["devices"][key]
+            for field in ("floor_id", "room_id", "group_ids", "icon_override"):
+                if field in payload:
+                    item[field] = payload[field]
+            saved = self.save(data)
+            return deepcopy(saved["devices"][key])
 
     def snapshot(self) -> dict[str, Any]:
         data = self.load()
