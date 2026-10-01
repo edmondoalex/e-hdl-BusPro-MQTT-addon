@@ -21,6 +21,8 @@ ALLOWED_CLASSES = {
     "illuminance_sensor", "thermostat",
 }
 ALLOWED_RESULTS = {"accepted", "confirmed", "failed", "timeout", "unavailable"}
+TERMINAL_RESULTS = {"confirmed", "failed", "timeout", "unavailable"}
+CONFIRMATION_SOURCES = {"native_response", "state_observation"}
 FORBIDDEN_MARKERS = {
     "partition", "arm", "disarm", "alarm", "bypass", "account", "user", "pin",
     "panel", "reset", "sia", "tamper", "security",
@@ -195,7 +197,7 @@ def _render(value: Any, variables: dict[str, Any]) -> Any:
 
 
 class KseniaSmartHomeConsumer:
-    def __init__(self, mqtt: MqttTransport, *, stale_after_s: float = 120.0, command_timeout_s: float = 12.0):
+    def __init__(self, mqtt: MqttTransport, *, stale_after_s: float = 120.0, command_timeout_s: float = 25.0):
         self._mqtt = mqtt
         self._stale_after_s = max(5.0, float(stale_after_s))
         self._command_timeout_s = max(1.0, float(command_timeout_s))
@@ -281,20 +283,34 @@ class KseniaSmartHomeConsumer:
     def _handle_result(self, topic: str, data: Any) -> None:
         if not isinstance(data, dict):
             return
-        command_id = str(data.get("command_id") or topic[len(RESULT_PREFIX):]).strip()
+        topic_command_id = topic[len(RESULT_PREFIX):].strip()
+        command_id = str(data.get("command_id") or "").strip()
+        correlation_id = str(data.get("correlation_id") or "").strip()
         status = str(data.get("status") or "").strip().lower()
-        if not command_id or status not in ALLOWED_RESULTS:
+        timestamp = data.get("timestamp")
+        confirmation_source = str(data.get("confirmation_source") or "").strip()
+        if (
+            not _version_ok(data.get("schema_version"))
+            or not command_id
+            or command_id != topic_command_id
+            or not correlation_id
+            or status not in ALLOWED_RESULTS
+            or not isinstance(timestamp, int)
+            or timestamp < 0
+            or (confirmation_source and confirmation_source not in CONFIRMATION_SOURCES)
+            or (status == "confirmed" and confirmation_source not in CONFIRMATION_SOURCES)
+        ):
             return
         with self._lock:
             pending = self._pending.get(command_id)
             if not pending:
                 return
-            if data.get("correlation_id") and str(data.get("correlation_id")) != pending.correlation_id:
+            if correlation_id != pending.correlation_id or pending.status in TERMINAL_RESULTS:
                 return
             pending.status = status
             pending.error = str(data.get("error") or data.get("error_code") or "")
             pending.result = deepcopy(data)
-            if status in {"confirmed", "failed", "timeout", "unavailable"}:
+            if status in TERMINAL_RESULTS:
                 pending.event.set()
 
     def _command_payload(self, device: dict[str, Any], action: str, value: Any, command_id: str, correlation_id: str) -> tuple[str, Any]:

@@ -42,10 +42,14 @@ class FakeMqtt:
         self.published.append((topic, payload, retain, qos))
         if self.auto_result and isinstance(payload, dict):
             data = {
+                "schema_version": "1.0",
                 "command_id": payload["command_id"],
                 "correlation_id": payload["correlation_id"],
                 "status": self.auto_result,
+                "timestamp": 1790784000,
             }
+            if self.auto_result == "confirmed":
+                data["confirmation_source"] = "native_response"
             threading.Timer(0.01, lambda: self.handler(RESULT_PREFIX + payload["command_id"], json.dumps(data), False)).start()
 
 
@@ -143,6 +147,49 @@ class ConsumerTests(unittest.TestCase):
         result = self.consumer.execute("ksn_00000000000000000000000000000036", "off", timeout_s=0.02)
         self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "timeout")
+
+    def test_confirmed_requires_valid_native_confirmation_metadata(self):
+        self.seed()
+        published = threading.Event()
+
+        def publish_without_source(topic, payload, retain=False, qos=0):
+            self.mqtt.published.append((topic, payload, retain, qos))
+            data = {
+                "schema_version": "1.0",
+                "command_id": payload["command_id"],
+                "correlation_id": payload["correlation_id"],
+                "status": "confirmed",
+                "timestamp": 1790784000,
+            }
+            self.consumer.handle_message(RESULT_PREFIX + payload["command_id"], json.dumps(data), False)
+            published.set()
+
+        self.mqtt.publish = publish_without_source
+        result = self.consumer.execute("ksn_00000000000000000000000000000036", "on", timeout_s=0.02)
+        self.assertTrue(published.is_set())
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["status"], "timeout")
+
+    def test_first_terminal_result_is_immutable(self):
+        self.seed()
+
+        def publish_two_terminals(topic, payload, retain=False, qos=0):
+            self.mqtt.published.append((topic, payload, retain, qos))
+            base = {
+                "schema_version": "1.0",
+                "command_id": payload["command_id"],
+                "correlation_id": payload["correlation_id"],
+                "timestamp": 1790784000,
+            }
+            failed = dict(base, status="failed", error="native_command_rejected")
+            confirmed = dict(base, status="confirmed", confirmation_source="native_response")
+            self.consumer.handle_message(RESULT_PREFIX + payload["command_id"], json.dumps(failed), False)
+            self.consumer.handle_message(RESULT_PREFIX + payload["command_id"], json.dumps(confirmed), False)
+
+        self.mqtt.publish = publish_two_terminals
+        result = self.consumer.execute("ksn_00000000000000000000000000000036", "on", timeout_s=1)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["status"], "failed")
 
     def test_thermostat_uses_exact_producer_command_topic(self):
         self.consumer.handle_message(MANIFEST_TOPIC, json.dumps(manifest()), True)

@@ -1692,3 +1692,11 @@
 - Nuova pagina `/ksenia`, ramo di navigazione dedicato e conteggi Ksenia disponibili nello snapshot globale.
 - Sicurezza Ksenia esclusa con controlli hard-fail; assenza/offline/incompatibilità non bloccano HDL BusPro.
 - Version bump: 0.1.453 -> 0.1.454.
+
+# 2026-10-01 — Riallineamento CHANGE-2026-009 a Ksenia 5.2.106
+
+- Validazione `command_result` allineata allo schema producer aggiornato: versione, identificativi correlati, timestamp e `confirmation_source` obbligatoria per `confirmed`.
+- Il primo risultato terminale e' immutabile; esiti terminali tardivi o duplicati vengono ignorati.
+- Timeout consumer predefinito portato a 25 secondi, oltre il termine producer di 20 secondi, per ricevere l'unico esito terminale autorevole.
+- Fixture e test consumer riallineati al commit producer `67135e1`; confermati 13 test consumer e 14 test producer.
+- Version bump: 0.1.454 -> 0.1.455.

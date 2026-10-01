@@ -12,7 +12,7 @@ Add-on Home Assistant (HAOS/Supervised) che collega gateway BusPro via UDP e cre
 
 ## Integrazione Ksenia Smart Home
 
-La pagina `/ksenia` consuma direttamente il contratto MQTT Ksenia Smart Home 1.0. Il consumer usa un client MQTT dedicato, valida manifest e catalogo, sottoscrive soltanto i topic dichiarati dal producer e pubblica comandi correlati esclusivamente sui topic catalogati. Un comando risulta riuscito solo dopo ACK `confirmed`.
+La pagina `/ksenia` consuma direttamente il contratto MQTT Ksenia Smart Home 1.0. Il consumer usa un client MQTT dedicato, valida manifest e catalogo, sottoscrive soltanto i topic dichiarati dal producer e pubblica comandi correlati esclusivamente sui topic catalogati. Un comando risulta riuscito solo dopo un ACK `confirmed` valido, correlato e dotato di `confirmation_source`; l'attesa consumer supera il timeout terminale di 20 secondi del producer Ksenia 5.2.106.
 
 Per applicare ACL broker dedicate si possono valorizzare `mqtt.ksenia_username`, `mqtt.ksenia_password` e `mqtt.ksenia_client_id`. Se non configurate, il consumer usa le credenziali MQTT generali mantenendo comunque allowlist applicativa hard-fail.
 
