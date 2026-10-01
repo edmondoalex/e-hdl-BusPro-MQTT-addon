@@ -1700,3 +1700,9 @@
 - Timeout consumer predefinito portato a 25 secondi, oltre il termine producer di 20 secondi, per ricevere l'unico esito terminale autorevole.
 - Fixture e test consumer riallineati al commit producer `67135e1`; confermati 13 test consumer e 14 test producer.
 - Version bump: 0.1.454 -> 0.1.455.
+
+# 2026-10-01 — Correzione pagina Ksenia sotto Ingress
+
+- Corretti gli URL relativi di API e asset per conservarli nel prefisso Ingress dell'add-on.
+- Aggiunta gestione esplicita delle risposte HTTP non JSON.
+- Version bump: 0.1.455 -> 0.1.456.
