@@ -3,6 +3,8 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from .organization import hdl_presentation_class
+
 
 SCHEMA_VERSION = "1.0"
 SECURITY_MARKERS = {"partition", "zone", "alarm", "arm", "disarm", "bypass", "pin", "panel", "sia", "tamper", "security"}
@@ -68,14 +70,7 @@ def _hdl_kind(device: dict[str, Any]) -> str:
 
 
 def _hdl_class(device: dict[str, Any]) -> str:
-    kind = _hdl_kind(device)
-    if kind == "light":
-        return "dimmer" if bool(device.get("dimmable")) else "light"
-    return {
-        "temp": "temperature_sensor", "temperature": "temperature_sensor", "humidity": "humidity_sensor",
-        "illuminance": "illuminance_sensor", "air": "environment_sensor",
-        "pir": "presence", "ultrasonic": "presence", "dry_contact": "dry_contact",
-    }.get(kind, kind or "device")
+    return hdl_presentation_class(device)
 
 
 def _hdl_capabilities(device: dict[str, Any]) -> tuple[list[str], bool]:

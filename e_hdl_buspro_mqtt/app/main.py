@@ -46,7 +46,7 @@ from .discovery import (
 )
 from .icons import ensure_mdi_icons, parse_mdi_icon, placeholder_svg
 from .ksenia_consumer import ContractError, KseniaSmartHomeConsumer
-from .organization import OrganizationStore
+from .organization import OrganizationStore, hdl_presentation_class
 from .smart_home import build_smart_home, validate_command_request
 from .mqtt_client import MqttClient
 from .realtime import RealtimeHub
@@ -82,7 +82,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.460"
+ADDON_VERSION = "0.1.461"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -473,7 +473,7 @@ def create_app() -> FastAPI:
             addr = str(dev.get("addr") or f"{dev.get('subnet_id')}.{dev.get('device_id')}.{dev.get('channel')}")
             rows.append({
                 "source": "hdl", "device_id": addr, "name": dev.get("name") or addr,
-                "device_class": dev.get("type") or ("dimmer" if dev.get("dimmable") else "light"),
+                "device_class": hdl_presentation_class(dev),
             })
         for dev in ksenia.snapshot().get("devices") or []:
             rows.append({
@@ -495,6 +495,7 @@ def create_app() -> FastAPI:
 
     def _sync_organization() -> dict[str, Any]:
         organization.migrate_hdl(store.list_devices(), store.get_group_order())
+        organization.migrate_hdl_presentation_v2(store.list_devices())
         return organization.sync_devices(_organization_devices())
 
     # Home Assistant (Core) integration via Supervisor token (no user token required)

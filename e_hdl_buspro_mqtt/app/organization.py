@@ -39,6 +39,9 @@ ICON_DEFAULTS = {
     "pir": "mdi:motion-sensor",
     "ultrasonic": "mdi:motion-sensor",
     "dry_contact": "mdi:electric-switch",
+    "fan": "mdi:fan",
+    "sensor": "mdi:gauge",
+    "binary_sensor": "mdi:checkbox-marked-circle-outline",
 }
 
 PRESENTATION_CATEGORIES = {"lights", "extra", "covers", "comfort", "sensors", "security", "scenarios"}
@@ -49,7 +52,49 @@ CATEGORY_DEFAULTS = {
     "temperature_sensor": ["sensors"], "humidity_sensor": ["sensors"],
     "illuminance_sensor": ["sensors"], "environment_sensor": ["sensors"],
     "presence": ["sensors"], "dry_contact": ["sensors"], "scenario": ["scenarios"],
+    "fan": ["extra"], "sensor": ["sensors"], "binary_sensor": ["sensors"],
 }
+
+
+def hdl_presentation_class(device: dict[str, Any]) -> str:
+    """Map the legacy UI category to presentation without changing HDL transport."""
+    category = " ".join(str(device.get("category") or "").strip().casefold().split())
+    if category in {"luci", "light", "light (luci)"}:
+        return "dimmer" if bool(device.get("dimmable")) else "light"
+    if category in {"switch", "altro", "altro (custom)", "custom"}:
+        return "switch"
+    if category == "fan":
+        return "fan"
+    if category in {"curtain", "cover"}:
+        return "cover"
+    if category in {"sensor", "sensori", "sensor (sensori)"}:
+        return "sensor"
+    if category in {"binary sensor", "binary_sensor"}:
+        return "binary_sensor"
+    if category == "temperature":
+        return "temperature_sensor"
+    if category == "humidity":
+        return "humidity_sensor"
+    if category == "illuminance":
+        return "illuminance_sensor"
+    if category == "air":
+        return "environment_sensor"
+    if category in {"presence", "motion"}:
+        return "presence"
+    if category in {"dry contact", "dry_contact"}:
+        return "dry_contact"
+    if category == "climate":
+        return "thermostat"
+    if category == "scene":
+        return "scenario"
+    kind = str(device.get("type") or "").strip().lower()
+    if kind == "light":
+        return "dimmer" if bool(device.get("dimmable")) else "light"
+    return {
+        "temp": "temperature_sensor", "temperature": "temperature_sensor",
+        "humidity": "humidity_sensor", "illuminance": "illuminance_sensor",
+        "air": "environment_sensor", "pir": "presence", "ultrasonic": "presence",
+    }.get(kind, kind or "light")
 
 
 def _clean_id(value: Any, field: str) -> str:
@@ -280,6 +325,31 @@ class OrganizationStore:
                 if key not in seen:
                     current["orphaned"] = True
             return self.save(data, backup=False)
+
+    def migrate_hdl_presentation_v2(self, hdl_devices: list[dict[str, Any]]) -> dict[str, Any]:
+        """Repair auto-derived categories while preserving manual multi-category choices."""
+        with self._lock:
+            data = self.load()
+            if bool((data.get("migration") or {}).get("hdl_presentation_v2")):
+                return data
+            for device in hdl_devices:
+                addr = str(device.get("addr") or f"{device.get('subnet_id')}.{device.get('device_id')}.{device.get('channel')}")
+                record = data["devices"].get(canonical_key("hdl", addr))
+                if not record:
+                    continue
+                old_class = str(record.get("device_class") or "")
+                new_class = hdl_presentation_class(device)
+                if record.get("categories") == default_categories(old_class):
+                    record["categories"] = default_categories(new_class)
+                if record.get("icon_auto") == default_icon(old_class):
+                    record["icon_auto"] = default_icon(new_class)
+                record["device_class"] = new_class
+            data["migration"] = {
+                **(data.get("migration") or {}),
+                "hdl_presentation_v2": True,
+                "hdl_presentation_v2_at": int(time.time()),
+            }
+            return self.save(data)
 
     def migrate_hdl(self, hdl_devices: list[dict[str, Any]], group_order: list[str]) -> dict[str, Any]:
         with self._lock:

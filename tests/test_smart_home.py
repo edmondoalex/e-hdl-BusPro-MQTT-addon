@@ -111,6 +111,19 @@ class SmartHomeProducerTests(unittest.TestCase):
         self.assertEqual(("switch", ["extra"], {"state":"OFF"}, False),
                          (switch["device_class"], switch["categories"], switch["state"], switch["stale"]))
 
+    def test_legacy_ui_category_controls_presentation_not_transport(self):
+        payload = build_smart_home(
+            hdl_devices=[{"name":"Vortice","addr":"1.153.1","type":"light","category":"Fan"}],
+            ksenia_snapshot={"availability":"offline","devices":[]},
+            organization={"schema_version":1,"floors":[],"rooms":[],"groups":[],"devices":{}},
+            states={"states":{"1.153.1":{"state":"ON"}}}, hdl_available=True,
+        )
+        item = payload["devices"][0]
+        self.assertEqual("fan", item["device_class"])
+        self.assertEqual(["extra"], item["categories"])
+        self.assertEqual(["on", "off"], item["capabilities"])
+        self.assertEqual({"state":"ON"}, item["state"])
+
     def test_command_validation_denies_read_only_unavailable_and_capability(self):
         base = {"orphaned":False,"read_only":False,"available":True,"capabilities":["on"]}
         self.assertEqual("on", validate_command_request(base, "ON"))

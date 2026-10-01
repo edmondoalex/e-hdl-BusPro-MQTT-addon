@@ -31,6 +31,19 @@ class OrganizationTests(unittest.TestCase):
         self.assertIn("hdl:1.10.1", second["devices"])
         self.assertEqual("room-cucina", second["devices"]["hdl:1.10.1"]["room_id"])
 
+    def test_presentation_v2_repairs_defaults_but_preserves_manual_categories(self):
+        devices = [
+            {"name":"Ventola","addr":"1.10.1","type":"light","category":"Fan"},
+            {"name":"Caldaia","addr":"1.10.2","type":"light","category":"Switch"},
+        ]
+        self.store.migrate_hdl(devices, [])
+        self.store.assign({"source":"hdl","device_id":"1.10.2","categories":["lights", "extra"]})
+        migrated = self.store.migrate_hdl_presentation_v2(devices)
+        self.assertEqual("fan", migrated["devices"]["hdl:1.10.1"]["device_class"])
+        self.assertEqual(["extra"], migrated["devices"]["hdl:1.10.1"]["categories"])
+        self.assertEqual(["lights", "extra"], migrated["devices"]["hdl:1.10.2"]["categories"])
+        self.assertEqual(migrated, self.store.migrate_hdl_presentation_v2(devices))
+
     def test_same_native_id_is_unambiguous_across_sources(self):
         data = self.store.sync_devices([
             {"source": "hdl", "device_id": "1", "name": "HDL", "device_class": "switch"},
