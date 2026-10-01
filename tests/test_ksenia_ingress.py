@@ -12,8 +12,8 @@ class KseniaIngressTests(unittest.TestCase):
         self.assertNotIn("../api/integrations/ksenia", source)
         self.assertNotIn('../static/hub/', source)
         self.assertIn("fetch('api/integrations/ksenia'", source)
-        self.assertIn('href="static/hub/hub.css?v=0.1.467"', source)
-        self.assertIn('src="static/hub/hub-nav.js?v=0.1.467"', source)
+        self.assertIn('href="static/hub/hub.css?v=0.1.468"', source)
+        self.assertIn('src="static/hub/hub-nav.js?v=0.1.468"', source)
 
     def test_ksenia_page_is_allowed_on_user_port(self):
         main = (PAGE.parents[2] / "main.py").read_text(encoding="utf-8")
@@ -25,6 +25,12 @@ class KseniaIngressTests(unittest.TestCase):
         source = PAGE.read_text(encoding="utf-8")
         self.assertIn("async function readJson", source)
         self.assertIn("Risposta non valida dal server", source)
+
+    def test_device_cards_present_human_readable_state(self):
+        source = PAGE.read_text(encoding="utf-8")
+        self.assertIn("function stateInfo", source)
+        self.assertIn("const actionLabels=", source)
+        self.assertNotIn("JSON.stringify(v,null,2)", source)
 
 
 if __name__ == "__main__":
