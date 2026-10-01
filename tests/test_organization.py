@@ -193,6 +193,18 @@ class OrganizationTests(unittest.TestCase):
         self.assertIn('id="orgSearch"', script)
         self.assertIn("multiple size=\"3\"", script)
 
+    def test_installer_navigation_separates_admin_from_user_previews(self):
+        root = Path(__file__).resolve().parents[1]
+        nav = (root / "e_hdl_buspro_mqtt" / "app" / "static" / "hub" / "hub-nav.js").read_text(encoding="utf-8")
+        css = (root / "e_hdl_buspro_mqtt" / "app" / "static" / "hub" / "hub.css").read_text(encoding="utf-8")
+        self.assertIn("tree('Programmazione'", nav)
+        self.assertIn("adminLink('Scenari e automazioni','scenarios'", nav)
+        self.assertIn("tree('Anteprima interfacce utente'", nav)
+        self.assertIn("Configurazione impianto", nav)
+        self.assertNotIn("Scenari multi-bus", nav)
+        self.assertIn("--hub-bg:#101619", css)
+        self.assertIn("--hub-surface:#171e22", css)
+
 
 if __name__ == "__main__":
     unittest.main()
