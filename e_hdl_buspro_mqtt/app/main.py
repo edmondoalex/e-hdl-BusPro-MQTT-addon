@@ -82,7 +82,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.458"
+ADDON_VERSION = "0.1.459"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -462,6 +462,10 @@ def create_app() -> FastAPI:
     )
     ksenia = KseniaSmartHomeConsumer(ksenia_mqtt)
     api.state.ksenia = ksenia
+    # Driver adapters register catalog providers and command handlers here.  The
+    # Smart Home contract and endpoint never need source-specific routing changes.
+    api.state.smart_home_sources = {}
+    api.state.smart_home_command_handlers = {}
 
     def _organization_devices() -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
@@ -476,6 +480,17 @@ def create_app() -> FastAPI:
                 "source": "ksenia", "device_id": dev.get("device_id"),
                 "name": dev.get("name") or dev.get("device_id"), "device_class": dev.get("device_class"),
             })
+        for source, provider in api.state.smart_home_sources.items():
+            try:
+                source_devices = provider() or []
+            except Exception:
+                logger.exception("Smart Home catalog provider failed: %s", source)
+                continue
+            for dev in source_devices:
+                rows.append({
+                    "source": source, "device_id": dev.get("device_id"),
+                    "name": dev.get("name") or dev.get("device_id"), "device_class": dev.get("device_class"),
+                })
         return rows
 
     def _sync_organization() -> dict[str, Any]:
@@ -6110,12 +6125,20 @@ self.addEventListener('fetch', (event) => {{
         organized = _sync_organization()
         gw: BusproGateway | None = api.state.gateway
         hdl_available = bool(gw is not None and gw.started and gw.transport_ready())
+        additional_sources: dict[str, list[dict[str, Any]]] = {}
+        for source, provider in api.state.smart_home_sources.items():
+            try:
+                additional_sources[source] = provider() or []
+            except Exception:
+                logger.exception("Smart Home catalog provider failed: %s", source)
+                additional_sources[source] = []
         return build_smart_home(
             hdl_devices=store.list_devices(),
             ksenia_snapshot=ksenia.snapshot(),
             organization=organized,
             states=legacy,
             hdl_available=hdl_available,
+            additional_sources=additional_sources,
         )
 
     @api.get("/api/user/snapshot")
@@ -6147,6 +6170,11 @@ self.addEventListener('fetch', (event) => {{
                 "room_name": rooms.get(record.get("room_id"), ""),
                 "group_ids": record.get("group_ids") or [],
                 "group_names": [groups[x] for x in record.get("group_ids") or [] if x in groups],
+                "categories": record.get("categories") or [],
+                "orders": record.get("orders") or {},
+                "visible": bool(record.get("visible", True)),
+                "favorite": bool(record.get("favorite", False)),
+                "shortcut": bool(record.get("shortcut", False)),
                 "icon": record.get("icon_override") or record.get("icon_auto") or "mdi:devices",
             }
         return snapshot
@@ -9738,8 +9766,6 @@ self.addEventListener('fetch', (event) => {{
         requested_id = str(device_id or "").strip()
         action = str(payload.get("action") or "").strip().lower()
         value = payload.get("value")
-        if source not in {"hdl", "ksenia"}:
-            raise HTTPException(status_code=404, detail="unknown Smart Home source")
         catalog = _smart_home_payload()
         item = next((x for x in catalog.get("devices") or [] if x.get("source") == source and x.get("device_id") == requested_id), None)
         try:
@@ -9748,12 +9774,16 @@ self.addEventListener('fetch', (event) => {{
             detail = str(exc)
             status = 404 if "not catalogued" in detail and "device" in detail else 503 if "unavailable" in detail else 409 if "orphaned" in detail else 400
             raise HTTPException(status_code=status, detail=detail)
-        if source == "ksenia":
-            try:
-                return await asyncio.to_thread(ksenia.execute, requested_id, action, value)
-            except ContractError as exc:
-                raise HTTPException(status_code=400, detail=str(exc))
+        handler = api.state.smart_home_command_handlers.get(source)
+        if handler is None:
+            raise HTTPException(status_code=404, detail="unknown Smart Home source")
+        try:
+            return await handler(item, action, value)
+        except ContractError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
 
+    async def _smart_home_hdl_command(item: dict[str, Any], action: str, value: Any):
+        requested_id = str(item.get("device_id") or "")
         native = next((d for d in store.list_devices() if str(d.get("addr") or f"{d.get('subnet_id')}.{d.get('device_id')}.{d.get('channel')}") == requested_id), None)
         if not native:
             raise HTTPException(status_code=404, detail="HDL device not found")
@@ -9786,6 +9816,14 @@ self.addEventListener('fetch', (event) => {{
                     raise HTTPException(status_code=400, detail="position must be 0..100")
                 return await control_cover(subnet_id, hdl_device_id, channel, {"command": "SET_POSITION", "position": position})
         raise HTTPException(status_code=400, detail="unsupported Smart Home command")
+
+    async def _smart_home_ksenia_command(item: dict[str, Any], action: str, value: Any):
+        return await asyncio.to_thread(ksenia.execute, str(item.get("device_id") or ""), action, value)
+
+    api.state.smart_home_command_handlers.update({
+        "hdl": _smart_home_hdl_command,
+        "ksenia": _smart_home_ksenia_command,
+    })
 
     @api.post("/api/control/ha/light/{entity_id}")
     async def control_ha_light(entity_id: str, payload: dict[str, Any]):

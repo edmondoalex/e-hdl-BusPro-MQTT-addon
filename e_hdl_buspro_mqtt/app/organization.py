@@ -41,6 +41,16 @@ ICON_DEFAULTS = {
     "dry_contact": "mdi:electric-switch",
 }
 
+PRESENTATION_CATEGORIES = {"lights", "extra", "covers", "comfort", "sensors", "security", "scenarios"}
+CATEGORY_DEFAULTS = {
+    "light": ["lights"], "dimmer": ["lights"], "switch": ["extra"],
+    "cover": ["covers"], "shutter": ["covers"], "awning": ["covers"],
+    "gate": ["covers"], "garage_door": ["covers"], "thermostat": ["comfort"],
+    "temperature_sensor": ["sensors"], "humidity_sensor": ["sensors"],
+    "illuminance_sensor": ["sensors"], "environment_sensor": ["sensors"],
+    "presence": ["sensors"], "dry_contact": ["sensors"], "scenario": ["scenarios"],
+}
+
 
 def _clean_id(value: Any, field: str) -> str:
     out = str(value or "").strip()
@@ -81,6 +91,10 @@ def canonical_key(source: Any, device_id: Any) -> str:
 
 def default_icon(device_class: Any) -> str:
     return ICON_DEFAULTS.get(str(device_class or "").strip().lower(), "mdi:devices")
+
+
+def default_categories(device_class: Any) -> list[str]:
+    return list(CATEGORY_DEFAULTS.get(str(device_class or "").strip().lower(), ["extra"]))
 
 
 class OrganizationStore:
@@ -191,6 +205,24 @@ class OrganizationStore:
             floor_id = str(raw.get("floor_id") or "").strip()
             room_id = str(raw.get("room_id") or "").strip()
             group_ids = list(dict.fromkeys(str(v).strip() for v in (raw.get("group_ids") or []) if str(v).strip()))
+            categories = list(dict.fromkeys(str(v).strip().lower() for v in (raw.get("categories") or default_categories(raw.get("device_class"))) if str(v).strip()))
+            if not categories or any(v not in PRESENTATION_CATEGORIES for v in categories):
+                raise ValueError("device has invalid categories")
+            raw_orders = raw.get("orders") or {}
+            if not isinstance(raw_orders, dict):
+                raise ValueError("device.orders must be an object")
+            orders: dict[str, int] = {}
+            for category, value in raw_orders.items():
+                clean_category = str(category).strip().lower()
+                if clean_category not in PRESENTATION_CATEGORIES:
+                    raise ValueError("device has invalid order category")
+                try:
+                    clean_value = int(value)
+                except (TypeError, ValueError):
+                    raise ValueError("device order must be an integer")
+                if clean_value < 0:
+                    raise ValueError("device order must be positive")
+                orders[clean_category] = clean_value
             if floor_id and floor_id not in known["floors"]:
                 raise ValueError("device references unknown floor")
             if room_id and room_id not in known["rooms"]:
@@ -205,6 +237,11 @@ class OrganizationStore:
                 "floor_id": floor_id,
                 "room_id": room_id,
                 "group_ids": group_ids,
+                "categories": categories,
+                "orders": orders,
+                "visible": bool(raw.get("visible", True)),
+                "favorite": bool(raw.get("favorite", False)),
+                "shortcut": bool(raw.get("shortcut", False)),
                 "icon_auto": _icon(raw.get("icon_auto") or default_icon(raw.get("device_class")), optional=False),
                 "icon_override": _icon(raw.get("icon_override")),
                 "orphaned": bool(raw.get("orphaned", False)),
@@ -233,6 +270,11 @@ class OrganizationStore:
                 current.setdefault("room_id", "")
                 current.setdefault("group_ids", [])
                 current.setdefault("icon_override", "")
+                current.setdefault("categories", default_categories(device_class))
+                current.setdefault("orders", {})
+                current.setdefault("visible", True)
+                current.setdefault("favorite", False)
+                current.setdefault("shortcut", False)
                 data["devices"][key] = current
             for key, current in data["devices"].items():
                 if key not in seen:
@@ -295,6 +337,9 @@ class OrganizationStore:
                 "device_class": device_class, "floor_id": existing.get("floor_id") or floor_id,
                 "room_id": existing.get("room_id") or rid, "group_ids": existing.get("group_ids") or [],
                 "icon_auto": default_icon(device_class), "icon_override": existing.get("icon_override") or legacy_icon,
+                "categories": existing.get("categories") or default_categories(device_class),
+                "orders": existing.get("orders") or {}, "visible": existing.get("visible", True),
+                "favorite": existing.get("favorite", False), "shortcut": existing.get("shortcut", False),
                 "orphaned": False,
             })
             data["devices"][key] = existing
@@ -319,7 +364,7 @@ class OrganizationStore:
             if key not in data["devices"]:
                 raise ValueError("unknown device")
             item = data["devices"][key]
-            for field in ("floor_id", "room_id", "group_ids", "icon_override"):
+            for field in ("floor_id", "room_id", "group_ids", "icon_override", "categories", "orders", "visible", "favorite", "shortcut"):
                 if field in payload:
                     item[field] = payload[field]
             saved = self.save(data)

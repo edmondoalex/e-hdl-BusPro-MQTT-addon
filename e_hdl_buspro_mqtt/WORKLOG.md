@@ -1,5 +1,12 @@
 # WORKLOG
 
+## 2026-10-01 (Smart Home globale driver-neutral)
+- L'Hub è la fonte autorevole per categorie/pagine multiple, piano, stanza, gruppi, ordine, visibilità, preferiti, scorciatoie e icone di HDL, Ksenia e driver futuri.
+- Il contratto `smart_home` pubblica capability e descrittori uniformi per comandi, realtime, scenari e routine senza dettagli di trasporto.
+- Provider e dispatcher comandi sono registrabili per source; aggiungere un driver non richiede modifiche alla route centrale.
+- UI organizzazione estesa per categorie multiple, gruppi multipli e preferenze di presentazione persistenti e incluse nel backup.
+- Version bump: 0.1.458 -> 0.1.459.
+
 ## 2026-09-28 (MQTT RGB strip master)
 - MQTT Discovery: i canali dimmer RGB restano esposti singolarmente e viene aggiunta una luce master per ogni gruppo RGB configurato.
 - Il master espone accensione, luminosita' e selettore colore RGB; i comandi vengono convertiti nei valori dei canali BusPro red/green/blue.

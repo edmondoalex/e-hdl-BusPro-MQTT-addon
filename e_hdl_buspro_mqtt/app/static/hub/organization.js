@@ -12,6 +12,15 @@
   function option(rows, selected, empty) {
     return `<option value="">${esc(empty)}</option>` + rows.map(row => `<option value="${esc(row.id)}"${row.id === selected ? ' selected' : ''}>${esc(row.name)}</option>`).join('');
   }
+  const presentationCategories = ['lights','extra','covers','comfort','sensors','security','scenarios'];
+  function categoryOptions(selected) {
+    const active = new Set(selected || []);
+    return presentationCategories.map(value => `<option value="${value}"${active.has(value) ? ' selected' : ''}>${value}</option>`).join('');
+  }
+  function multiOptions(rows, selected) {
+    const active = new Set(selected || []);
+    return rows.map(row => `<option value="${esc(row.id)}"${active.has(row.id) ? ' selected' : ''}>${esc(row.name)}</option>`).join('');
+  }
   function start() {
     const page = document.querySelector('.adminPage[data-page="rooms"]');
     if (!page || document.getElementById('globalOrganization')) return;
@@ -31,7 +40,7 @@
         @media(max-width:850px){#globalOrganization .orgToolbar{grid-template-columns:1fr}.orgTable{display:block;overflow-x:auto}}
       </style>
       <h2>Organizzazione globale multi-bus</h2>
-      <p class="muted">Piani, stanze, gruppi e icone condivisi da HDL BusPro, Ksenia e driver futuri. Le associazioni usano identificativi stabili e restano conservate quando un dispositivo è offline.</p>
+      <p class="muted">Piani, stanze, gruppi, categorie/pagine, ordine, visibilità e icone condivisi da HDL BusPro, Ksenia e driver futuri. Le associazioni usano identificativi stabili e restano conservate quando un dispositivo è offline.</p>
       <div class="orgToolbar">
         <div class="orgBox"><b>Nuovo piano</b><input id="orgFloorName" placeholder="Es. Piano terra"><button class="btn secondary small" id="orgAddFloor">Aggiungi</button></div>
         <div class="orgBox"><b>Nuova stanza</b><input id="orgRoomName" placeholder="Es. Cucina"><select id="orgRoomFloor"></select><button class="btn secondary small" id="orgAddRoom">Aggiungi</button></div>
@@ -57,11 +66,14 @@
           <td><b>${esc(device.name || device.device_id)}</b><div class="orgSource">${esc(source)} · ${esc(device.device_class)}${device.orphaned ? ' · non presente' : ''}</div></td>
           <td><select data-field="floor_id">${option(floors, device.floor_id, 'Nessun piano')}</select></td>
           <td><select data-field="room_id">${option(roomsForFloor, device.room_id, 'Nessuna stanza')}</select></td>
-          <td><select data-field="group_ids">${option(groups, (device.group_ids || [])[0], 'Nessun gruppo')}</select></td>
+          <td><select data-field="group_ids" multiple size="3">${multiOptions(groups, device.group_ids)}</select></td>
+          <td><select data-field="categories" multiple size="3">${categoryOptions(device.categories)}</select></td>
+          <td><input data-field="order" type="number" min="0" value="${esc(Object.values(device.orders || {})[0] || 0)}"></td>
+          <td><label><input data-field="visible" type="checkbox"${device.visible !== false ? ' checked' : ''}> Visibile</label><br><label><input data-field="favorite" type="checkbox"${device.favorite ? ' checked' : ''}> Preferito</label><br><label><input data-field="shortcut" type="checkbox"${device.shortcut ? ' checked' : ''}> Scorciatoia</label></td>
           <td><input data-field="icon_override" value="${esc(device.icon_override || '')}" placeholder="${esc(device.icon_auto || 'mdi:devices')}"></td>
           <td><button class="btn secondary small" data-save>Salva</button></td></tr>`;
       }).join('');
-      document.getElementById('orgDevices').innerHTML = `<table class="orgTable"><thead><tr><th>Dispositivo</th><th>Piano</th><th>Stanza</th><th>Gruppo</th><th>Icona MDI</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="6">Nessun dispositivo disponibile</td></tr>'}</tbody></table>`;
+      document.getElementById('orgDevices').innerHTML = `<table class="orgTable"><thead><tr><th>Dispositivo</th><th>Piano</th><th>Stanza</th><th>Gruppo</th><th>Categorie / pagine</th><th>Ordine</th><th>Presentazione</th><th>Icona MDI</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="9">Nessun dispositivo disponibile</td></tr>'}</tbody></table>`;
     }
     async function saveStructure() {
       model = await json('api/organization/structure', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({floors:model.floors, rooms:model.rooms, groups:model.groups})});
@@ -76,7 +88,11 @@
       const button=event.target.closest('[data-save]'); if(!button)return;
       const row=button.closest('tr'), get=field=>row.querySelector(`[data-field="${field}"]`).value;
       try {
-        await json('api/organization/device',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:row.dataset.source,device_id:row.dataset.id,floor_id:get('floor_id'),room_id:get('room_id'),group_ids:get('group_ids')?[get('group_ids')]:[],icon_override:get('icon_override').trim()})});
+        const categories = Array.from(row.querySelector('[data-field="categories"]').selectedOptions).map(x => x.value);
+        if (!categories.length) throw new Error('Seleziona almeno una categoria');
+        const order = Number(get('order')) || 0, orders = Object.fromEntries(categories.map(category => [category, order]));
+        const group_ids = Array.from(row.querySelector('[data-field="group_ids"]').selectedOptions).map(x => x.value);
+        await json('api/organization/device',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:row.dataset.source,device_id:row.dataset.id,floor_id:get('floor_id'),room_id:get('room_id'),group_ids,categories,orders,visible:row.querySelector('[data-field="visible"]').checked,favorite:row.querySelector('[data-field="favorite"]').checked,shortcut:row.querySelector('[data-field="shortcut"]').checked,icon_override:get('icon_override').trim()})});
         message('Associazione salvata'); setTimeout(()=>message(''),1500); await load();
       } catch(error){message(error.message);}
     });

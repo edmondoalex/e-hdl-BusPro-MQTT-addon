@@ -6,7 +6,7 @@ import time
 import unittest
 from pathlib import Path
 
-from e_hdl_buspro_mqtt.app.organization import OrganizationStore, canonical_key, default_icon
+from e_hdl_buspro_mqtt.app.organization import OrganizationStore, canonical_key, default_categories, default_icon
 
 
 class OrganizationTests(unittest.TestCase):
@@ -72,6 +72,32 @@ class OrganizationTests(unittest.TestCase):
         self.assertEqual("mdi:lightbulb", default_icon("light"))
         self.assertEqual("mdi:window-shutter", default_icon("cover"))
         self.assertEqual("mdi:devices", default_icon("future_class"))
+
+    def test_driver_neutral_presentation_defaults_and_overrides_persist(self):
+        self.store.sync_devices([
+            {"source":"hdl","device_id":"same","name":"HDL","device_class":"switch"},
+            {"source":"ksenia","device_id":"same","name":"Ksenia","device_class":"switch"},
+            {"source":"future","device_id":"same","name":"Future","device_class":"switch"},
+        ])
+        for source in ("hdl", "ksenia", "future"):
+            item = self.store.snapshot()["devices"][f"{source}:same"]
+            self.assertEqual(["extra"], item["categories"])
+            self.assertTrue(item["visible"])
+        self.store.assign({"source":"future","device_id":"same","categories":["lights","extra"],"orders":{"lights":2,"extra":9},"visible":False,"favorite":True,"shortcut":True})
+        restored = OrganizationStore(self.path).snapshot()["devices"]["future:same"]
+        self.assertEqual(["lights", "extra"], restored["categories"])
+        self.assertEqual({"lights":2, "extra":9}, restored["orders"])
+        self.assertFalse(restored["visible"])
+        self.assertTrue(restored["favorite"])
+        self.assertTrue(restored["shortcut"])
+        self.assertEqual(["comfort"], default_categories("thermostat"))
+
+    def test_invalid_presentation_category_and_order_are_rejected(self):
+        self.store.sync_devices([{"source":"future","device_id":"one","name":"One","device_class":"light"}])
+        with self.assertRaisesRegex(ValueError, "categories"):
+            self.store.assign({"source":"future","device_id":"one","categories":["admin"]})
+        with self.assertRaisesRegex(ValueError, "order"):
+            self.store.assign({"source":"future","device_id":"one","orders":{"lights":-1}})
 
     def test_atomic_write_backup_and_corrupt_recovery(self):
         self.store.save(self.store.empty())
@@ -143,6 +169,9 @@ class OrganizationTests(unittest.TestCase):
         self.assertIn("api/organization", script)
         self.assertIn("@media(max-width:850px)", script)
         self.assertIn("data-field=", script)
+        for field in ("categories", "order", "visible", "favorite", "shortcut", "icon_override"):
+            self.assertIn(f'data-field="{field}"', script)
+        self.assertIn("multiple size=\"3\"", script)
 
 
 if __name__ == "__main__":

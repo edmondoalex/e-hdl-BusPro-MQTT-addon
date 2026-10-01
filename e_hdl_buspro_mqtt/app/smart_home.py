@@ -8,6 +8,42 @@ SCHEMA_VERSION = "1.0"
 SECURITY_MARKERS = {"partition", "zone", "alarm", "arm", "disarm", "bypass", "pin", "panel", "sia", "tamper", "security"}
 KSENIA_SMART_HOME_TYPES = {"outputs", "scenarios", "domus", "thermostats"}
 
+VISUAL_CATEGORIES = {
+    "light": "lights", "dimmer": "lights", "switch": "extra",
+    "cover": "covers", "shutter": "covers", "awning": "covers", "gate": "covers", "garage_door": "covers",
+    "thermostat": "comfort", "temperature_sensor": "sensors", "humidity_sensor": "sensors",
+    "illuminance_sensor": "sensors", "environment_sensor": "sensors", "presence": "sensors", "dry_contact": "sensors",
+    "scenario": "scenarios",
+}
+
+
+def command_descriptors(capabilities: list[str]) -> list[dict[str, Any]]:
+    descriptors = []
+    for action in capabilities:
+        item: dict[str, Any] = {"action": str(action), "value_type": "none"}
+        if action in {"level", "position"}:
+            item.update({"value_type": "number", "minimum": 0, "maximum": 100})
+        elif action == "temperature":
+            item.update({"value_type": "number", "minimum": 5, "maximum": 35})
+        elif action in {"mode", "preset"}:
+            item["value_type"] = "string"
+        descriptors.append(item)
+    return descriptors
+
+
+def _semantic_fields(device_class: str, capabilities: list[str], read_only: bool, available: bool, orphaned: bool, categories: list[str] | None = None) -> dict[str, Any]:
+    return {
+        "visual_category": (categories or [VISUAL_CATEGORIES.get(device_class, "extra")])[0],
+        "commands": [] if read_only else command_descriptors(capabilities),
+        "features": {
+            "controllable": bool(capabilities and not read_only and available and not orphaned),
+            "realtime": True,
+            "scenario": device_class == "scenario" or "execute" in capabilities,
+            "routine_trigger": True,
+            "routine_action": bool(capabilities and not read_only),
+        },
+    }
+
 
 def validate_command_request(item: dict[str, Any] | None, action: Any) -> str:
     if not item:
@@ -47,10 +83,12 @@ def _hdl_capabilities(device: dict[str, Any]) -> tuple[list[str], bool]:
     return [kind or "state"], True
 
 
-def _organization_fields(record: dict[str, Any], floors: dict[str, str], rooms: dict[str, str], groups: dict[str, str]) -> dict[str, Any]:
+def _organization_fields(record: dict[str, Any], floors: dict[str, str], rooms: dict[str, str], groups: dict[str, str], device_class: str = "") -> dict[str, Any]:
     floor_id = str(record.get("floor_id") or "")
     room_id = str(record.get("room_id") or "")
     group_ids = [str(x) for x in record.get("group_ids") or []]
+    device_class = str(record.get("device_class") or device_class or "").strip().lower()
+    categories = [str(x) for x in record.get("categories") or [VISUAL_CATEGORIES.get(device_class, "extra")]]
     return {
         "floor_id": floor_id, "floor_name": floors.get(floor_id, ""),
         "room_id": room_id, "room_name": rooms.get(room_id, ""),
@@ -59,12 +97,17 @@ def _organization_fields(record: dict[str, Any], floors: dict[str, str], rooms: 
         "icon_override": str(record.get("icon_override") or ""),
         "icon": str(record.get("icon_override") or record.get("icon_auto") or "mdi:devices"),
         "orphaned": bool(record.get("orphaned", False)),
+        "categories": categories,
+        "orders": deepcopy(record.get("orders") or {}),
+        "visible": bool(record.get("visible", True)),
+        "favorite": bool(record.get("favorite", False)),
+        "shortcut": bool(record.get("shortcut", False)),
     }
 
 
 def build_smart_home(
     *, hdl_devices: list[dict[str, Any]], ksenia_snapshot: dict[str, Any], organization: dict[str, Any],
-    states: dict[str, Any], hdl_available: bool,
+    states: dict[str, Any], hdl_available: bool, additional_sources: dict[str, list[dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
     floors_rows = deepcopy(organization.get("floors") or [])
     rooms_rows = deepcopy(organization.get("rooms") or [])
@@ -96,7 +139,8 @@ def build_smart_home(
             "read_only": read_only, "available": bool(hdl_available), "stale": state is None,
             "state": deepcopy(state),
         }
-        row.update(_organization_fields(record, floors, rooms, groups))
+        row.update(_organization_fields(record, floors, rooms, groups, row["device_class"]))
+        row.update(_semantic_fields(row["device_class"], capabilities, read_only, row["available"], row["orphaned"], row["categories"]))
         devices.append(row)
         emitted.add(row["id"])
     ksenia_available = str(ksenia_snapshot.get("availability") or "").lower() in {"online", "available", "connected", "ok"}
@@ -118,15 +162,42 @@ def build_smart_home(
         for field in ("home_assistant_entity_id", "home_assistant_entity_ids"):
             if device.get(field):
                 row[field] = deepcopy(device[field])
-        row.update(_organization_fields(record, floors, rooms, groups))
+        row.update(_organization_fields(record, floors, rooms, groups, row["device_class"]))
+        row.update(_semantic_fields(row["device_class"], row["capabilities"], row["read_only"], row["available"], row["orphaned"], row["categories"]))
         devices.append(row)
         emitted.add(row["id"])
+    for source, source_devices in (additional_sources or {}).items():
+        clean_source = str(source or "").strip().lower()
+        if clean_source in {"hdl", "ksenia"}:
+            continue
+        for device in source_devices or []:
+            device_id = str(device.get("device_id") or "").strip()
+            if not clean_source or not device_id:
+                continue
+            key = f"{clean_source}:{device_id}"
+            capabilities = [str(x).strip().lower() for x in device.get("capabilities") or [] if str(x).strip()]
+            device_class = str(device.get("device_class") or "").strip().lower()
+            read_only = bool(device.get("read_only", not capabilities))
+            available = bool(device.get("available", False))
+            record = records.get(key) or {}
+            row = {
+                "id": key, "source": clean_source, "device_id": device_id,
+                "name": str(device.get("name") or device_id), "device_class": device_class,
+                "native_type": str(device.get("native_type") or ""), "native_id": str(device.get("native_id") or device_id),
+                "capabilities": capabilities, "read_only": read_only, "available": available,
+                "stale": bool(device.get("stale", device.get("state") is None)), "state": deepcopy(device.get("state")),
+            }
+            for field in ("home_assistant_entity_id", "home_assistant_entity_ids"):
+                if device.get(field):
+                    row[field] = deepcopy(device[field])
+            row.update(_organization_fields(record, floors, rooms, groups, row["device_class"]))
+            row.update(_semantic_fields(device_class, capabilities, read_only, available, row["orphaned"], row["categories"]))
+            devices.append(row)
+            emitted.add(key)
     for key, record in records.items():
         if key in emitted or not bool(record.get("orphaned")):
             continue
         source, _, device_id = str(key).partition(":")
-        if source not in {"hdl", "ksenia"}:
-            continue
         text = " ".join(str(record.get(k) or "").lower().replace("_", " ") for k in ("device_class", "name"))
         if source == "ksenia" and any(marker in text.split() for marker in SECURITY_MARKERS):
             continue
@@ -136,11 +207,16 @@ def build_smart_home(
             "native_type": "", "native_id": "", "capabilities": [], "read_only": True,
             "available": False, "stale": True, "state": None,
         }
-        row.update(_organization_fields(record, floors, rooms, groups))
+        row.update(_organization_fields(record, floors, rooms, groups, row["device_class"]))
         row["orphaned"] = True
+        row.update(_semantic_fields(row["device_class"], [], True, False, True, row["categories"]))
         devices.append(row)
     return {
         "schema_version": SCHEMA_VERSION,
+        "capability_model_version": "1.0",
         "organization_schema_version": organization.get("schema_version"),
+        "command_endpoint_template": "/api/user/smart-home/{source}/{device_id}/command",
+        "realtime": {"mode": "snapshot", "supports_refresh": True},
+        "features": {"organization": True, "commands": True, "scenarios": True, "routines": True},
         "floors": floors_rows, "rooms": rooms_rows, "groups": groups_rows, "devices": devices,
     }

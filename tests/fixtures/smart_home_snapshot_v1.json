@@ -1,6 +1,10 @@
 {
   "schema_version": "1.0",
+  "capability_model_version": "1.0",
   "organization_schema_version": 1,
+  "command_endpoint_template": "/api/user/smart-home/{source}/{device_id}/command",
+  "realtime": {"mode": "snapshot", "supports_refresh": true},
+  "features": {"organization": true, "commands": true, "scenarios": true, "routines": true},
   "floors": [{"id": "floor-pt", "name": "Piano terra"}],
   "rooms": [{"id": "room-sala", "name": "Sala", "floor_id": "floor-pt"}],
   "groups": [{"id": "group-sera", "name": "Sera"}],
@@ -8,9 +12,12 @@
     "id": "hdl:1.2.3", "source": "hdl", "device_id": "1.2.3", "name": "Luce sala",
     "device_class": "dimmer", "native_type": "light", "native_id": "1.2.3",
     "capabilities": ["on", "off", "level"], "read_only": false, "available": true, "stale": false,
+    "commands": [{"action":"on","value_type":"none"},{"action":"off","value_type":"none"},{"action":"level","value_type":"number","minimum":0,"maximum":100}],
+    "features": {"controllable":true,"realtime":true,"scenario":false,"routine_trigger":true,"routine_action":true},
     "state": {"state": "ON", "brightness": 128},
     "floor_id": "floor-pt", "floor_name": "Piano terra", "room_id": "room-sala", "room_name": "Sala",
     "group_ids": ["group-sera"], "group_names": ["Sera"],
+    "categories": ["lights"], "orders": {"lights": 2}, "visible": true, "favorite": true, "shortcut": false, "visual_category": "lights",
     "icon_auto": "mdi:brightness-6", "icon_override": "", "icon": "mdi:brightness-6", "orphaned": false
   }]
 }

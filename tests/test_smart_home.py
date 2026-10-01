@@ -18,8 +18,8 @@ class SmartHomeProducerTests(unittest.TestCase):
             "rooms": [{"id":"room-sala","name":"Sala","floor_id":"floor-pt"}],
             "groups": [{"id":"group-sera","name":"Sera"}],
             "devices": {
-                "hdl:1.2.3": {"floor_id":"floor-pt","room_id":"room-sala","group_ids":["group-sera"],"icon_auto":"mdi:lightbulb","icon_override":"mdi:ceiling-light","orphaned":False},
-                "ksenia:1.2.3": {"floor_id":"floor-pt","room_id":"room-sala","group_ids":[],"icon_auto":"mdi:window-shutter","icon_override":"","orphaned":False},
+                "hdl:1.2.3": {"floor_id":"floor-pt","room_id":"room-sala","group_ids":["group-sera"],"categories":["lights","extra"],"orders":{"lights":3,"extra":8},"visible":False,"favorite":True,"shortcut":True,"icon_auto":"mdi:lightbulb","icon_override":"mdi:ceiling-light","orphaned":False},
+                "ksenia:1.2.3": {"floor_id":"floor-pt","room_id":"room-sala","group_ids":[],"categories":["covers"],"orders":{"covers":4},"visible":True,"favorite":False,"shortcut":False,"icon_auto":"mdi:window-shutter","icon_override":"","orphaned":False},
                 "hdl:9.9.9": {"name":"Vecchio","device_class":"light","floor_id":"floor-pt","room_id":"room-sala","group_ids":[],"icon_auto":"mdi:lightbulb","icon_override":"","orphaned":True},
             },
         }
@@ -46,6 +46,11 @@ class SmartHomeProducerTests(unittest.TestCase):
         self.assertEqual(["Sera"], hdl["group_names"])
         self.assertEqual("mdi:ceiling-light", hdl["icon"])
         self.assertEqual(["on","off","level"], hdl["capabilities"])
+        self.assertEqual(["lights", "extra"], hdl["categories"])
+        self.assertEqual({"lights":3, "extra":8}, hdl["orders"])
+        self.assertFalse(hdl["visible"])
+        self.assertTrue(hdl["favorite"])
+        self.assertTrue(hdl["shortcut"])
 
     def test_same_native_id_across_sources_remains_distinct(self):
         ids = {x["id"] for x in self.payload()["devices"]}
@@ -101,6 +106,32 @@ class SmartHomeProducerTests(unittest.TestCase):
                 validate_command_request({**base, **changed}, "on")
         with self.assertRaisesRegex(ValueError, "capability"):
             validate_command_request(base, "off")
+
+    def test_driver_neutral_semantics_for_hdl_ksenia_and_future_driver(self):
+        org = {"schema_version":1,"floors":[],"rooms":[],"groups":[],"devices":{
+            source + ":same": {"name":source,"device_class":"dimmer","floor_id":"","room_id":"","group_ids":[],"categories":["lights","extra"],"orders":{"lights":7},"visible":True,"favorite":False,"shortcut":False,"icon_auto":"mdi:brightness-6","icon_override":"","orphaned":False}
+            for source in ("hdl", "ksenia", "future")
+        }}
+        payload = build_smart_home(
+            hdl_devices=[{"type":"light","name":"HDL","addr":"same","dimmable":True}],
+            ksenia_snapshot={"availability":"online","devices":[{"device_id":"same","name":"Ksenia","device_class":"dimmer","native_type":"outputs","native_id":"1","capabilities":["on","off","level"],"read_only":False,"stale":False,"state":{"value":{"level":50}}}]},
+            additional_sources={"future":[{"device_id":"same","name":"Future","device_class":"dimmer","native_type":"channel","capabilities":["on","off","level"],"read_only":False,"available":True,"stale":False,"state":{"level":50}}]},
+            organization=org, states={"states":{"same":{"level":50}}}, hdl_available=True,
+        )
+        rows = {x["source"]:x for x in payload["devices"]}
+        for source in ("ksenia", "future"):
+            for field in ("device_class", "capabilities", "commands", "features", "categories", "orders", "visible"):
+                self.assertEqual(rows["hdl"][field], rows[source][field], (source, field))
+
+    def test_visual_category_never_authorizes_a_command(self):
+        item = {"orphaned":False,"read_only":False,"available":True,"capabilities":["on"],"categories":["security"],"visual_category":"security"}
+        with self.assertRaisesRegex(ValueError, "capability"):
+            validate_command_request(item, "disarm")
+
+    def test_contract_has_no_bus_transport_details(self):
+        forbidden = {"command_topic", "state_topic", "mqtt_topic", "subnet_id", "channel"}
+        for item in self.payload()["devices"]:
+            self.assertFalse(forbidden.intersection(item), item)
 
     def test_published_schema_and_fixture_are_versioned(self):
         root = Path(__file__).resolve().parents[1]
@@ -160,6 +191,23 @@ class SmartHomeProducerTests(unittest.TestCase):
             result = asyncio.run(endpoint("ksenia", device_id, {"action":"on"}))
             self.assertTrue(result["ok"])
             self.assertEqual([(device_id, "on", None)], called)
+
+    def test_future_driver_registers_without_changing_core_route(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {
+            "BUSPRO_STATE": str(Path(tmp) / "state.json"),
+            "ECONTROL_ORGANIZATION": str(Path(tmp) / "organization.json"),
+        }):
+            app = create_app()
+            app.state.smart_home_sources["future"] = lambda: [{"device_id":"device-1","name":"Future light","device_class":"light","native_type":"channel","capabilities":["on"],"read_only":False,"available":True,"stale":False,"state":{"state":"OFF"}}]
+            called = []
+            async def handler(item, action, value):
+                called.append((item["id"], action, value))
+                return {"ok":True,"status":"confirmed"}
+            app.state.smart_home_command_handlers["future"] = handler
+            endpoint = next(r.endpoint for r in app.routes if getattr(r, "name", "") == "control_smart_home")
+            result = asyncio.run(endpoint("future", "device-1", {"action":"on"}))
+            self.assertTrue(result["ok"])
+            self.assertEqual([("future:device-1", "on", None)], called)
 
 
 if __name__ == "__main__":
