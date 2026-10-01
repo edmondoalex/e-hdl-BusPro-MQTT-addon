@@ -197,6 +197,7 @@ class OrganizationTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         nav = (root / "e_hdl_buspro_mqtt" / "app" / "static" / "hub" / "hub-nav.js").read_text(encoding="utf-8")
         css = (root / "e_hdl_buspro_mqtt" / "app" / "static" / "hub" / "hub.css").read_text(encoding="utf-8")
+        index = (root / "e_hdl_buspro_mqtt" / "app" / "static" / "index.html").read_text(encoding="utf-8")
         self.assertIn("tree('Programmazione'", nav)
         self.assertIn("adminLink('Scenari e automazioni','scenarios'", nav)
         self.assertIn("tree('Anteprima interfacce utente'", nav)
@@ -204,6 +205,9 @@ class OrganizationTests(unittest.TestCase):
         self.assertNotIn("Scenari multi-bus", nav)
         self.assertIn("--hub-bg:#101619", css)
         self.assertIn("--hub-surface:#171e22", css)
+        self.assertIn("Gestione scenari multi-bus", index)
+        self.assertIn("Strumenti avanzati · JSON scenario", index)
+        self.assertNotIn("Scenari: configurazione JSON", index)
 
 
 if __name__ == "__main__":
