@@ -1706,3 +1706,12 @@
 - Corretti gli URL relativi di API e asset per conservarli nel prefisso Ingress dell'add-on.
 - Aggiunta gestione esplicita delle risposte HTTP non JSON.
 - Version bump: 0.1.455 -> 0.1.456.
+# 2026-10-01 — CHANGE-2026-010 organizzazione globale multi-bus
+
+- Aggiunto archivio versionato e atomico `organization.json` per piani, stanze, gruppi, associazioni e icone.
+- Migrazione HDL idempotente da ordine gruppi e gruppi dispositivo esistenti, con backup e segnalazione collisioni.
+- Associazioni canoniche separate per bus: `hdl:<indirizzo>` e `ksenia:<device_id>`; driver futuri predisposti tramite `source`.
+- I dispositivi temporaneamente assenti diventano record orfani recuperabili e non vengono cancellati.
+- Icone MDI automatiche per classe/tipo con override manuale validato e persistente.
+- Nuova UI responsive nella pagina `Stanze, piani e gruppi`; archivio incluso nel backup e ripristino generale.
+- Version bump: 0.1.456 -> 0.1.457.

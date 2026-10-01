@@ -107,6 +107,21 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 
 ## Handoff corrente
 
+### Esito CHANGE-2026-010 organizzazione globale multi-bus — 2026-10-01
+
+- Stato: implementazione locale completata, verificata e committata localmente; hash definitivo registrato nel work order condiviso; nessun push/installazione/deploy.
+- Versione candidata: `0.1.457`.
+- Persistenza: nuovo archivio separato e versionato `/data/organization.json`, scrittura atomica, backup `.bak`, recupero controllato dei file corrotti e inclusione nel backup/ripristino generale.
+- Identità: chiavi canoniche `hdl:<subnet.device.channel>` e `ksenia:<device_id>`; collisioni fra bus impossibili e nessun topic o ID ricostruito per Ksenia.
+- Migrazione: importazione HDL una tantum e idempotente da intestazioni piano, gruppi e dispositivi esistenti; collisioni segnalate senza sovrascrittura.
+- Ciclo vita: dispositivi assenti conservati come orfani e riattivati mantenendo associazioni dopo rename, refresh, restart e offline/online.
+- Icone: default MDI centralizzati per classe/tipo e override manuale rigorosamente validato.
+- UI/API: pagina globale responsive per piani, stanze, gruppi e dispositivi HDL/Ksenia; API dedicate senza metodi MQTT generici.
+- Compatibilità: `app/discovery.py`, MQTT, payload, entity ID, unique ID e device identifier invariati; producer Ksenia non modificato.
+- Test: 25 test e-Control Hub e 14 test producer Ksenia superati; Python compile, route/versione, JavaScript, responsive statico, Discovery invariata e diff check superati.
+- Rischi residui: migrazione, backup/restore e resa Ingress desktop/mobile devono essere collaudati su staging reale prima della pubblicazione.
+- Prossimo gate: revisione coordinatore del commit locale; push, installazione, deploy e release vietati.
+
 ### Esito CHANGE-2026-009 consumer Ksenia Smart Home — aggiornato 2026-10-01
 
 - Stato: riallineamento locale al producer approvato completato e verificato; commit correttivo locale autorizzato, nessun push/installazione/deploy.

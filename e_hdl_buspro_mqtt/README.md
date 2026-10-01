@@ -18,6 +18,10 @@ Per applicare ACL broker dedicate si possono valorizzare `mqtt.ksenia_username`,
 
 Sono accettate soltanto le famiglie Ksenia `outputs`, `scenarios`, `domus` e `thermostats` presenti nella whitelist del producer. Partizioni, allarme, bypass, account/PIN, panel/reset, SIA-IP e accesso diretto alla centrale sono esclusi e bloccati dal consumer.
 
+## Organizzazione globale multi-bus
+
+La pagina Admin `Stanze, piani e gruppi` usa l'archivio versionato `/data/organization.json`, separato dai cataloghi dei driver. HDL BusPro usa chiavi `hdl:<subnet.device.channel>` e Ksenia usa esclusivamente `ksenia:<device_id>` emesso dal producer. Le associazioni restano disponibili durante assenze temporanee del dispositivo, sono comprese nel backup generale e supportano icone MDI automatiche per classe con override manuale validato.
+
 ## Sicurezza UI
 Configura `auth.mode` in `config.json` / opzioni add-on:
 - `none`: nessuna protezione

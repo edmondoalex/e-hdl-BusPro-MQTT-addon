@@ -46,6 +46,7 @@ from .discovery import (
 )
 from .icons import ensure_mdi_icons, parse_mdi_icon, placeholder_svg
 from .ksenia_consumer import ContractError, KseniaSmartHomeConsumer
+from .organization import OrganizationStore
 from .mqtt_client import MqttClient
 from .realtime import RealtimeHub
 from .settings import AUTH_BASIC, AUTH_NONE, AUTH_TOKEN, AuthConfig, load_settings, read_options
@@ -80,7 +81,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.456"
+ADDON_VERSION = "0.1.457"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -417,6 +418,12 @@ def create_app() -> FastAPI:
 
     store = StateStore(os.environ.get("BUSPRO_STATE", "/data/state.json"))
     api.state.store = store
+    organization_path = os.environ.get(
+        "ECONTROL_ORGANIZATION",
+        os.path.join(os.path.dirname(store.path), "organization.json"),
+    )
+    organization = OrganizationStore(organization_path)
+    api.state.organization = organization
 
     icons_dir = os.environ.get("BUSPRO_ICONS", "/data/icons")
     api.state.icons_dir = icons_dir
@@ -454,6 +461,25 @@ def create_app() -> FastAPI:
     )
     ksenia = KseniaSmartHomeConsumer(ksenia_mqtt)
     api.state.ksenia = ksenia
+
+    def _organization_devices() -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for dev in store.list_devices():
+            addr = str(dev.get("addr") or f"{dev.get('subnet_id')}.{dev.get('device_id')}.{dev.get('channel')}")
+            rows.append({
+                "source": "hdl", "device_id": addr, "name": dev.get("name") or addr,
+                "device_class": dev.get("type") or ("dimmer" if dev.get("dimmable") else "light"),
+            })
+        for dev in ksenia.snapshot().get("devices") or []:
+            rows.append({
+                "source": "ksenia", "device_id": dev.get("device_id"),
+                "name": dev.get("name") or dev.get("device_id"), "device_class": dev.get("device_class"),
+            })
+        return rows
+
+    def _sync_organization() -> dict[str, Any]:
+        organization.migrate_hdl(store.list_devices(), store.get_group_order())
+        return organization.sync_devices(_organization_devices())
 
     # Home Assistant (Core) integration via Supervisor token (no user token required)
     def _ha_enabled() -> bool:
@@ -6090,7 +6116,48 @@ self.addEventListener('fetch', (event) => {{
 
     @api.get("/api/integrations/ksenia")
     async def api_ksenia_snapshot():
-        return ksenia.snapshot()
+        snapshot = ksenia.snapshot()
+        organized = _sync_organization()
+        floors = {x["id"]: x["name"] for x in organized.get("floors") or []}
+        rooms = {x["id"]: x["name"] for x in organized.get("rooms") or []}
+        groups = {x["id"]: x["name"] for x in organized.get("groups") or []}
+        for device in snapshot.get("devices") or []:
+            record = (organized.get("devices") or {}).get(f"ksenia:{device.get('device_id')}") or {}
+            device["organization"] = {
+                "floor_id": record.get("floor_id") or "",
+                "floor_name": floors.get(record.get("floor_id"), ""),
+                "room_id": record.get("room_id") or "",
+                "room_name": rooms.get(record.get("room_id"), ""),
+                "group_ids": record.get("group_ids") or [],
+                "group_names": [groups[x] for x in record.get("group_ids") or [] if x in groups],
+                "icon": record.get("icon_override") or record.get("icon_auto") or "mdi:devices",
+            }
+        return snapshot
+
+    @api.get("/api/organization")
+    async def api_organization():
+        try:
+            return _sync_organization()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.put("/api/organization/structure")
+    async def api_organization_structure(payload: dict[str, Any]):
+        try:
+            result = organization.replace_structure(payload)
+            await hub.broadcast("organization", result)
+            return result
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.put("/api/organization/device")
+    async def api_organization_device(payload: dict[str, Any]):
+        try:
+            result = organization.assign(payload)
+            await hub.broadcast("organization", {"device": result})
+            return result
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
 
     @api.post("/api/integrations/ksenia/command/{device_id}")
     async def api_ksenia_command(device_id: str, payload: dict[str, Any]):
@@ -6826,12 +6893,16 @@ self.addEventListener('fetch', (event) => {{
     @api.get("/api/backup")
     async def api_backup():
         # Admin-only via port gate
-        return {"text": store.export_backup_text()}
+        state = json.loads(store.export_backup_text())
+        state["_econtrol_organization"] = organization.snapshot()
+        return {"text": json.dumps(state, ensure_ascii=False, indent=2)}
 
     @api.get("/api/backup/file")
     async def api_backup_file():
         # Admin-only via port gate
-        content = store.export_backup_text()
+        state = json.loads(store.export_backup_text())
+        state["_econtrol_organization"] = organization.snapshot()
+        content = json.dumps(state, ensure_ascii=False, indent=2)
         ts = time.strftime("%Y%m%d-%H%M%S")
         headers = {"Content-Disposition": f'attachment; filename="buspro_backup_{ts}.json"'}
         return Response(content=content, media_type="text/plain; charset=utf-8", headers=headers)
@@ -6914,7 +6985,12 @@ self.addEventListener('fetch', (event) => {{
                 state = data
             else:
                 raise HTTPException(status_code=400, detail="Provide 'text' or 'data'")
+            organization_state = state.pop("_econtrol_organization", None)
+            if organization_state is not None:
+                organization_state = organization.validate_backup(organization_state)
             store.import_backup(state)
+            if organization_state is not None:
+                organization.save(organization_state)
         except HTTPException:
             raise
         except Exception as e:
@@ -6933,6 +7009,7 @@ self.addEventListener('fetch', (event) => {{
         await _republish_discovery()
         await _broadcast_devices()
         await hub.broadcast("ui", {"group_order": store.get_group_order()})
+        await hub.broadcast("organization", organization.snapshot())
         return {"ok": True, "backup_path": backup_path}
 
     @api.get("/api/cover_groups")
