@@ -203,11 +203,23 @@ class OrganizationTests(unittest.TestCase):
         self.assertIn("tree('Anteprima interfacce utente'", nav)
         self.assertIn("Configurazione impianto", nav)
         self.assertNotIn("Scenari multi-bus", nav)
+        self.assertNotIn("Altre integrazioni", nav)
+        self.assertNotIn("adminLink('Entità Home Assistant'", nav)
+        self.assertEqual(1, nav.count("integrationLink('Home Assistant'"))
+        for bus in ("HDL BusPro", "Ksenia Smart Home", "Home Assistant", "KNX", "BTicino", "Tuya", "Modbus", "DALI"):
+            self.assertIn(bus, nav)
         self.assertIn("--hub-bg:#101619", css)
         self.assertIn("--hub-surface:#171e22", css)
         self.assertIn("Gestione scenari multi-bus", index)
         self.assertIn("Strumenti avanzati · JSON scenario", index)
         self.assertNotIn("Scenari: configurazione JSON", index)
+        self.assertIn("organization.js?v=0.1.466", index)
+        self.assertLess(index.index("Ksenia Smart Home</b>"), index.index("Home Assistant</b>"))
+        for page in (root / "e_hdl_buspro_mqtt" / "app" / "static" / "user").glob("*.html"):
+            source = page.read_text(encoding="utf-8")
+            if "static/hub/hub-nav.js" in source:
+                self.assertIn("hub-nav.js?v=0.1.466", source, page.name)
+                self.assertIn("hub.css?v=0.1.466", source, page.name)
 
 
 if __name__ == "__main__":
