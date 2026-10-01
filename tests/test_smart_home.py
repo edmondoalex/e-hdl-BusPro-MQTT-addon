@@ -129,11 +129,13 @@ class SmartHomeProducerTests(unittest.TestCase):
         self.assertIn('id="orgSearch"', source)
         self.assertIn('id="orgSourceFilter"', source)
         self.assertIn('id="orgCategoryFilter"', source)
-        self.assertIn("Posizione nella pagina", source)
-        self.assertIn("0 = prima posizione", source)
+        self.assertNotIn("Posizione nella pagina", source)
+        self.assertNotIn("0 = prima posizione", source)
         self.assertIn("Pagine in cui compare", source)
-        self.assertIn("Preferito", source)
-        self.assertIn("Scorciatoia", source)
+        self.assertNotIn('data-field="favorite"', source)
+        self.assertIn("Scorciatoie", source)
+        self.assertNotIn('data-field="shortcut"', source)
+        self.assertIn("gestita esclusivamente da e-Face", source)
         self.assertNotIn('<table class="orgTable">', source)
 
     def test_command_validation_denies_read_only_unavailable_and_capability(self):

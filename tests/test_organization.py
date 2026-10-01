@@ -182,8 +182,10 @@ class OrganizationTests(unittest.TestCase):
         self.assertIn("api/organization", script)
         self.assertIn("@media(max-width:850px)", script)
         self.assertIn("data-field=", script)
-        for field in ("order", "visible", "favorite", "shortcut", "icon_override"):
+        for field in ("visible", "icon_override"):
             self.assertIn(f'data-field="{field}"', script)
+        for field in ("order", "favorite", "shortcut"):
+            self.assertNotIn(f'data-field="{field}"', script)
         self.assertIn('data-category="${value}"', script)
         self.assertIn('id="orgSearch"', script)
         self.assertIn("multiple size=\"3\"", script)
