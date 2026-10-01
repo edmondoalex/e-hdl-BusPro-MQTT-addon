@@ -60,20 +60,27 @@ def validate_command_request(item: dict[str, Any] | None, action: Any) -> str:
     return clean_action
 
 
-def _hdl_class(device: dict[str, Any]) -> str:
+def _hdl_kind(device: dict[str, Any]) -> str:
     kind = str(device.get("type") or "").strip().lower()
+    if kind:
+        return kind
+    return "switch" if str(device.get("category") or "").strip().casefold() == "switch" else "light"
+
+
+def _hdl_class(device: dict[str, Any]) -> str:
+    kind = _hdl_kind(device)
     if kind == "light":
         return "dimmer" if bool(device.get("dimmable")) else "light"
     return {
-        "temperature": "temperature_sensor", "humidity": "humidity_sensor",
+        "temp": "temperature_sensor", "temperature": "temperature_sensor", "humidity": "humidity_sensor",
         "illuminance": "illuminance_sensor", "air": "environment_sensor",
         "pir": "presence", "ultrasonic": "presence", "dry_contact": "dry_contact",
     }.get(kind, kind or "device")
 
 
 def _hdl_capabilities(device: dict[str, Any]) -> tuple[list[str], bool]:
-    kind = str(device.get("type") or "").strip().lower()
-    if kind == "light":
+    kind = _hdl_kind(device)
+    if kind in {"light", "switch"}:
         return (["on", "off", "level"] if device.get("dimmable") else ["on", "off"], False)
     if kind == "cover":
         caps = ["open", "close", "stop"]
@@ -119,7 +126,7 @@ def build_smart_home(
     devices: list[dict[str, Any]] = []
     emitted: set[str] = set()
     state_keys = {
-        "light": "states", "cover": "cover_states", "temperature": "temp_states",
+        "light": "states", "switch": "states", "cover": "cover_states", "temp": "temp_states", "temperature": "temp_states",
         "humidity": "humidity_states", "illuminance": "illuminance_states",
         "air": "air_quality_states", "dry_contact": "dry_contact_states",
         "pir": "pir_states", "ultrasonic": "ultrasonic_states",
@@ -128,7 +135,7 @@ def build_smart_home(
         if str(device.get("origin") or "hdl").lower() == "ha":
             continue
         device_id = str(device.get("addr") or f"{device.get('subnet_id')}.{device.get('device_id')}.{device.get('channel')}")
-        kind = str(device.get("type") or "").lower()
+        kind = _hdl_kind(device)
         capabilities, read_only = _hdl_capabilities(device)
         state = (states.get(state_keys.get(kind, "")) or {}).get(device_id)
         record = records.get(f"hdl:{device_id}") or {}

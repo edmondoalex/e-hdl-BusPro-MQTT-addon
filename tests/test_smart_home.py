@@ -94,6 +94,23 @@ class SmartHomeProducerTests(unittest.TestCase):
         self.assertFalse(item["available"])
         self.assertTrue(item["stale"])
 
+    def test_legacy_hdl_devices_without_type_keep_classification_and_state(self):
+        payload = build_smart_home(
+            hdl_devices=[
+                {"name":"Luce storica","addr":"1.152.4","category":"Luci"},
+                {"name":"Switch storico","addr":"1.152.5","category":"Switch"},
+            ],
+            ksenia_snapshot={"availability":"offline","devices":[]},
+            organization={"schema_version":1,"floors":[],"rooms":[],"groups":[],"devices":{}},
+            states={"states":{"1.152.4":{"state":"ON"},"1.152.5":{"state":"OFF"}}},
+            hdl_available=True,
+        )
+        light, switch = payload["devices"]
+        self.assertEqual(("light", ["lights"], {"state":"ON"}, False),
+                         (light["device_class"], light["categories"], light["state"], light["stale"]))
+        self.assertEqual(("switch", ["extra"], {"state":"OFF"}, False),
+                         (switch["device_class"], switch["categories"], switch["state"], switch["stale"]))
+
     def test_command_validation_denies_read_only_unavailable_and_capability(self):
         base = {"orphaned":False,"read_only":False,"available":True,"capabilities":["on"]}
         self.assertEqual("on", validate_command_request(base, "ON"))
