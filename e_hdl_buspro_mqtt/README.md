@@ -22,6 +22,10 @@ Sono accettate soltanto le famiglie Ksenia `outputs`, `scenarios`, `domus` e `th
 
 La pagina Admin `Stanze, piani e gruppi` usa l'archivio versionato `/data/organization.json`, separato dai cataloghi dei driver. HDL BusPro usa chiavi `hdl:<subnet.device.channel>` e Ksenia usa esclusivamente `ksenia:<device_id>` emesso dal producer. Le associazioni restano disponibili durante assenze temporanee del dispositivo, sono comprese nel backup generale e supportano icone MDI automatiche per classe con override manuale validato.
 
+## Catalogo Smart Home per e-Face
+
+`GET /api/user/snapshot` mantiene invariato `devices` e aggiunge il ramo versionato `smart_home` con dispositivi HDL/Ksenia, organizzazione globale, stato, disponibilità, capability e icone. I comandi passano esclusivamente da `POST /api/user/smart-home/{source}/{device_id}/command`: il server risolve il proprio catalogo e rifiuta dispositivi assenti, orfani, in sola lettura, non disponibili o capability non dichiarate. Lo schema pubblico è in `docs/smart-home-v1.schema.json`.
+
 ## Sicurezza UI
 Configura `auth.mode` in `config.json` / opzioni add-on:
 - `none`: nessuna protezione

@@ -47,6 +47,7 @@ from .discovery import (
 from .icons import ensure_mdi_icons, parse_mdi_icon, placeholder_svg
 from .ksenia_consumer import ContractError, KseniaSmartHomeConsumer
 from .organization import OrganizationStore
+from .smart_home import build_smart_home, validate_command_request
 from .mqtt_client import MqttClient
 from .realtime import RealtimeHub
 from .settings import AUTH_BASIC, AUTH_NONE, AUTH_TOKEN, AuthConfig, load_settings, read_options
@@ -81,7 +82,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.457"
+ADDON_VERSION = "0.1.458"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -1193,6 +1194,8 @@ def create_app() -> FastAPI:
 
         # User allowed APIs (read-only + control)
         if path.startswith("/api/control/"):
+            return await call_next(request)
+        if path.startswith("/api/user/smart-home/") and path.endswith("/command") and request.method.upper() == "POST":
             return await call_next(request)
         if path.startswith("/api/user/light_scenarios"):
             return await call_next(request)
@@ -6102,11 +6105,25 @@ self.addEventListener('fetch', (event) => {{
             "mqtt": api.state.mqtt.status().__dict__,
         }
 
+    def _smart_home_payload(legacy: dict[str, Any] | None = None) -> dict[str, Any]:
+        legacy = legacy or _user_snapshot_payload()
+        organized = _sync_organization()
+        gw: BusproGateway | None = api.state.gateway
+        hdl_available = bool(gw is not None and gw.started and gw.transport_ready())
+        return build_smart_home(
+            hdl_devices=store.list_devices(),
+            ksenia_snapshot=ksenia.snapshot(),
+            organization=organized,
+            states=legacy,
+            hdl_available=hdl_available,
+        )
+
     @api.get("/api/user/snapshot")
     async def api_user_snapshot():
         payload = _user_snapshot_payload()
         ksenia_snapshot = ksenia.snapshot()
         payload["ksenia"] = ksenia_snapshot
+        payload["smart_home"] = _smart_home_payload(payload)
         payload["devices_by_bus"] = {
             "hdl_buspro": len(payload.get("devices") or []),
             "ksenia": len(ksenia_snapshot.get("devices") or []),
@@ -9714,6 +9731,61 @@ self.addEventListener('fetch', (event) => {{
         except Exception:
             pass
         return {"ok": True}
+
+    @api.post("/api/user/smart-home/{source}/{device_id}/command")
+    async def control_smart_home(source: str, device_id: str, payload: dict[str, Any]):
+        source = str(source or "").strip().lower()
+        requested_id = str(device_id or "").strip()
+        action = str(payload.get("action") or "").strip().lower()
+        value = payload.get("value")
+        if source not in {"hdl", "ksenia"}:
+            raise HTTPException(status_code=404, detail="unknown Smart Home source")
+        catalog = _smart_home_payload()
+        item = next((x for x in catalog.get("devices") or [] if x.get("source") == source and x.get("device_id") == requested_id), None)
+        try:
+            action = validate_command_request(item, action)
+        except ValueError as exc:
+            detail = str(exc)
+            status = 404 if "not catalogued" in detail and "device" in detail else 503 if "unavailable" in detail else 409 if "orphaned" in detail else 400
+            raise HTTPException(status_code=status, detail=detail)
+        if source == "ksenia":
+            try:
+                return await asyncio.to_thread(ksenia.execute, requested_id, action, value)
+            except ContractError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+
+        native = next((d for d in store.list_devices() if str(d.get("addr") or f"{d.get('subnet_id')}.{d.get('device_id')}.{d.get('channel')}") == requested_id), None)
+        if not native:
+            raise HTTPException(status_code=404, detail="HDL device not found")
+        try:
+            subnet_id, hdl_device_id, channel = (int(x) for x in requested_id.split("."))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="invalid HDL device identity")
+        kind = str(native.get("type") or "").lower()
+        if kind == "light":
+            if action in {"on", "off"}:
+                return await control_light(subnet_id, hdl_device_id, channel, {"state": action.upper()})
+            if action == "level":
+                try:
+                    level = float(value)
+                except (TypeError, ValueError):
+                    raise HTTPException(status_code=400, detail="level must be 0..100")
+                if level < 0 or level > 100:
+                    raise HTTPException(status_code=400, detail="level must be 0..100")
+                return await control_light(subnet_id, hdl_device_id, channel, {"state": "OFF" if level == 0 else "ON", "brightness": round(level * 255 / 100)})
+        if kind == "cover":
+            commands = {"open": "OPEN", "close": "CLOSE", "stop": "STOP"}
+            if action in commands:
+                return await control_cover(subnet_id, hdl_device_id, channel, {"command": commands[action]})
+            if action == "position":
+                try:
+                    position = int(value)
+                except (TypeError, ValueError):
+                    raise HTTPException(status_code=400, detail="position must be 0..100")
+                if position < 0 or position > 100:
+                    raise HTTPException(status_code=400, detail="position must be 0..100")
+                return await control_cover(subnet_id, hdl_device_id, channel, {"command": "SET_POSITION", "position": position})
+        raise HTTPException(status_code=400, detail="unsupported Smart Home command")
 
     @api.post("/api/control/ha/light/{entity_id}")
     async def control_ha_light(entity_id: str, payload: dict[str, Any]):

@@ -1715,3 +1715,12 @@
 - Icone MDI automatiche per classe/tipo con override manuale validato e persistente.
 - Nuova UI responsive nella pagina `Stanze, piani e gruppi`; archivio incluso nel backup e ripristino generale.
 - Version bump: 0.1.456 -> 0.1.457.
+# 2026-10-01 — CHANGE-2026-011 producer Smart Home per e-Face
+
+- Aggiunto il ramo additivo `smart_home` a `/api/user/snapshot`; il ramo legacy `devices` resta invariato.
+- Catalogo globale versionato con HDL, Ksenia, piani, stanze, gruppi, icone, disponibilità, stale, read-only e orfani.
+- ID canonici `source:device_id`; eventuali entity ID Home Assistant sono copiati soltanto quando dichiarati dal producer autorevole.
+- Nuovo endpoint comando Smart Home con risoluzione esclusivamente server-side e routing interno HDL/Ksenia.
+- Sicurezza Ksenia e famiglie non whitelist escluse; nessun endpoint accetta topic MQTT o indirizzi operativi arbitrari.
+- Pubblicati schema `smart-home-v1` e fixture consumer; aggiunti test di schema, collisione fra bus, stato, organizzazione e comandi.
+- Version bump: 0.1.457 -> 0.1.458.

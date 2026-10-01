@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ekonex.local/schemas/econtrol-smart-home-v1.json",
+  "title": "e-Control Hub Smart Home snapshot",
+  "type": "object",
+  "required": ["schema_version", "organization_schema_version", "floors", "rooms", "groups", "devices"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "organization_schema_version": {"type": "integer", "minimum": 1},
+    "floors": {"type": "array", "items": {"$ref": "#/$defs/named"}},
+    "rooms": {"type": "array", "items": {"allOf": [{"$ref": "#/$defs/named"}, {"type": "object", "required": ["floor_id"], "properties": {"floor_id": {"type": "string"}}}]}},
+    "groups": {"type": "array", "items": {"$ref": "#/$defs/named"}},
+    "devices": {"type": "array", "items": {"$ref": "#/$defs/device"}}
+  },
+  "$defs": {
+    "named": {"type": "object", "required": ["id", "name"], "properties": {"id": {"type": "string"}, "name": {"type": "string"}}},
+    "device": {
+      "type": "object",
+      "required": ["id", "source", "device_id", "name", "device_class", "native_type", "native_id", "capabilities", "read_only", "available", "stale", "state", "floor_id", "floor_name", "room_id", "room_name", "group_ids", "group_names", "icon_auto", "icon_override", "icon", "orphaned"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*:.+$"},
+        "source": {"type": "string"}, "device_id": {"type": "string"}, "name": {"type": "string"},
+        "device_class": {"type": "string"}, "native_type": {"type": "string"}, "native_id": {"type": "string"},
+        "capabilities": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "read_only": {"type": "boolean"}, "available": {"type": "boolean"}, "stale": {"type": "boolean"},
+        "floor_id": {"type": "string"}, "floor_name": {"type": "string"}, "room_id": {"type": "string"}, "room_name": {"type": "string"},
+        "group_ids": {"type": "array", "items": {"type": "string"}}, "group_names": {"type": "array", "items": {"type": "string"}},
+        "icon_auto": {"type": "string", "pattern": "^mdi:"}, "icon_override": {"type": "string"}, "icon": {"type": "string", "pattern": "^mdi:"},
+        "orphaned": {"type": "boolean"}
+      }
+    }
+  }
+}

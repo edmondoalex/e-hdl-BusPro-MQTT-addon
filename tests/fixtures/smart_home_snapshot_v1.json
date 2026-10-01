@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "organization_schema_version": 1,
+  "floors": [{"id": "floor-pt", "name": "Piano terra"}],
+  "rooms": [{"id": "room-sala", "name": "Sala", "floor_id": "floor-pt"}],
+  "groups": [{"id": "group-sera", "name": "Sera"}],
+  "devices": [{
+    "id": "hdl:1.2.3", "source": "hdl", "device_id": "1.2.3", "name": "Luce sala",
+    "device_class": "dimmer", "native_type": "light", "native_id": "1.2.3",
+    "capabilities": ["on", "off", "level"], "read_only": false, "available": true, "stale": false,
+    "state": {"state": "ON", "brightness": 128},
+    "floor_id": "floor-pt", "floor_name": "Piano terra", "room_id": "room-sala", "room_name": "Sala",
+    "group_ids": ["group-sera"], "group_names": ["Sera"],
+    "icon_auto": "mdi:brightness-6", "icon_override": "", "icon": "mdi:brightness-6", "orphaned": false
+  }]
+}

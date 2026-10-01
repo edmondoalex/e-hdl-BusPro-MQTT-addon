@@ -107,6 +107,19 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 
 ## Handoff corrente
 
+### Esito producer CHANGE-2026-011 Smart Home per e-Face — 2026-10-01
+
+- Stato: producer locale completato, verificato e committato; hash definitivo registrato nel work order condiviso; nessun push/installazione/deploy.
+- Versione candidata: `0.1.458`.
+- Contratto: `/api/user/snapshot` aggiunge `smart_home` schema `1.0`; `devices` legacy non viene modificato.
+- Contenuto: HDL e Ksenia con ID `source:device_id`, capability, stato, availability/stale/read-only, organizzazione globale, icone, orfani ed entity ID dichiarati autorevolmente.
+- Comandi: nuovo `POST /api/user/smart-home/{source}/{device_id}/command`; risoluzione server-side e routing interno, senza topic o indirizzi forniti dal client.
+- Sicurezza: Ksenia limitata alle famiglie Smart Home già whitelist; partizioni, zone, arm/disarm, bypass, panel, PIN, SIA e altri dati sicurezza esclusi.
+- Compatibilità: endpoint e payload legacy invariati; MQTT, Discovery, entity ID, unique ID e device identifier invariati.
+- Artefatti consumer: schema JSON pubblico e fixture `smart_home` v1 inclusi nel repository.
+- Test: 39 test Hub e 14 test producer Ksenia superati; inclusi lettura/comando HDL e Ksenia, read-only, unavailable, stale, capability negate, collisioni ID e sicurezza.
+- Prossimo gate: revisione coordinatore del commit producer; solo dopo approvazione e-Face può implementare il consumer. Push/installazione/deploy vietati.
+
 ### Esito CHANGE-2026-010 organizzazione globale multi-bus — 2026-10-01
 
 - Stato: implementazione locale completata, verificata e committata localmente; hash definitivo registrato nel work order condiviso; nessun push/installazione/deploy.
