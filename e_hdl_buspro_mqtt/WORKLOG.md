@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-10-02 (Netatmo provisioning recovery 0.1.483)
+- Il configuratore Home + Control / Netatmo resta interamente in e-Control.
+- Un config flow OAuth abbandonato con `already_in_progress` viene annullato in modo mirato e riavviato automaticamente.
+- Aggiunti messaggi leggibili per flusso già aperto, credenziali applicative mancanti e integrazione già configurata.
+- Version bump: 0.1.482 -> 0.1.483.
+
 ## 2026-10-02 (e-Modbus Manager 0.1.482)
 - Implementato e-Modbus Manager con connessioni TCP, seriale RTU/RS-485, RTU-over-TCP e UDP.
 - Aggiunti profili dispositivo versionati e riutilizzabili, validazione registri, tipi dati, scala, offset, unità, swap, polling e limiti.

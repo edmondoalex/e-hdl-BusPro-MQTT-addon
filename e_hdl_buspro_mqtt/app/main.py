@@ -86,7 +86,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.482"
+ADDON_VERSION = "0.1.483"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -6574,6 +6574,33 @@ self.addEventListener('fetch', (event) => {{
             raise HTTPException(status_code=502, detail=str(exc))
         if not isinstance(result, dict):
             raise HTTPException(status_code=502, detail="Invalid integration provisioning response")
+        # HA keeps abandoned OAuth flows in memory. Recover from e-Control,
+        # without asking the installer to open Home Assistant.
+        if result.get("type") == "abort" and result.get("reason") == "already_in_progress":
+            stale_flow_id = str(result.get("flow_id") or "").strip()
+            if stale_flow_id:
+                try:
+                    await asyncio.to_thread(
+                        _ha_request,
+                        "DELETE",
+                        f"/api/config/config_entries/flow/{urllib.parse.quote(stale_flow_id, safe='')}",
+                        payload=None,
+                        timeout_s=15,
+                    )
+                    result = await asyncio.to_thread(
+                        _ha_request,
+                        "POST",
+                        "/api/config/config_entries/flow",
+                        payload={"handler": domain},
+                        timeout_s=20,
+                    )
+                except Exception as exc:
+                    raise HTTPException(
+                        status_code=502,
+                        detail="Impossibile riavviare il configuratore Netatmo rimasto in sospeso: " + str(exc),
+                    )
+            if not isinstance(result, dict):
+                raise HTTPException(status_code=502, detail="Invalid integration provisioning response")
         return {"ok": True, "source": clean, "flow": result}
 
     @api.post("/api/integrations/bticino/{source}/provision/{flow_id}")
