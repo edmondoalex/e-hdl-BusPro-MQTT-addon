@@ -49,6 +49,7 @@ from .ha_catalog import build_ha_catalog
 from .bticino_manager import BticinoManager, INTEGRATIONS as BTICINO_INTEGRATIONS, MyHomeComponentInstaller
 from .ksenia_consumer import ContractError, KseniaSmartHomeConsumer
 from .knx_manager import KnxManager, KnxNotConfigured
+from .modbus_manager import ModbusManager
 from .organization import OrganizationStore, hdl_presentation_class
 from .smart_home import build_smart_home, validate_command_request
 from .mqtt_client import MqttClient
@@ -85,7 +86,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.481"
+ADDON_VERSION = "0.1.482"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -443,6 +444,9 @@ def create_app() -> FastAPI:
     api.state.bticino_manager = bticino_manager
     myhome_installer = MyHomeComponentInstaller(os.environ.get("HOME_ASSISTANT_CONFIG", "/config"))
     api.state.myhome_installer = myhome_installer
+    modbus_path = os.environ.get("ECONTROL_MODBUS_MANAGER", os.path.join(os.path.dirname(store.path), "modbus_manager.json"))
+    modbus_manager = ModbusManager(modbus_path, str(os.environ.get("SUPERVISOR_TOKEN") or "").strip(), os.environ.get("HOME_ASSISTANT_CONFIG", "/config"))
+    api.state.modbus_manager = modbus_manager
 
     icons_dir = os.environ.get("BUSPRO_ICONS", "/data/icons")
     api.state.icons_dir = icons_dir
@@ -487,6 +491,7 @@ def create_app() -> FastAPI:
     api.state.smart_home_sources["knx"] = lambda: knx_manager.store.catalog(getattr(api.state, "knx_states", {}) or {})
     api.state.smart_home_sources["myhome_scs"] = lambda: bticino_manager.store.catalog("myhome_scs", getattr(api.state, "ha_states", {}) or {})
     api.state.smart_home_sources["home_plus_control"] = lambda: bticino_manager.store.catalog("home_plus_control", getattr(api.state, "ha_states", {}) or {})
+    api.state.smart_home_sources["modbus"] = lambda: modbus_manager.store.catalog(getattr(api.state, "ha_states", {}) or {})
     api.state.smart_home_sources["ha"] = lambda: build_ha_catalog(
         store.list_ha_devices(),
         getattr(api.state, "ha_states", {}) or {},
@@ -5263,6 +5268,10 @@ self.addEventListener('fetch', (event) => {{
                                     await bticino_manager.sync(bticino_source, states)
                                 except Exception as exc:
                                     _LOGGER.debug("%s sync unavailable: %s", bticino_source, exc)
+                            try:
+                                await modbus_manager.sync(states)
+                            except Exception as exc:
+                                _LOGGER.debug("Modbus manager sync unavailable: %s", exc)
                             _sync_organization()
                     await asyncio.sleep(300)
                 except asyncio.CancelledError:
@@ -6286,7 +6295,7 @@ self.addEventListener('fetch', (event) => {{
             "bticino": myhome_detected + home_plus_detected,
             "myhome_scs": myhome_detected,
             "home_plus_control": home_plus_detected,
-            "tuya": 0, "modbus": 0, "dali": 0,
+            "tuya": 0, "modbus": len(modbus_manager.store.load().get("catalog") or {}), "dali": 0,
         }
         payload["integration_metrics"] = {
             "hdl_buspro": {
@@ -6326,6 +6335,12 @@ self.addEventListener('fetch', (event) => {{
                 "exported": smart_counts.get("home_plus_control", 0),
                 "visible": smart_visible.get("home_plus_control", 0),
                 "excluded": max(0, home_plus_detected - smart_counts.get("home_plus_control", 0)),
+            },
+            "modbus": {
+                "detected": len(modbus_manager.store.load().get("catalog") or {}),
+                "exported": smart_counts.get("modbus", 0),
+                "visible": smart_visible.get("modbus", 0),
+                "excluded": max(0, len(modbus_manager.store.load().get("catalog") or {}) - smart_counts.get("modbus", 0)),
             },
         }
         return payload
@@ -6594,6 +6609,57 @@ self.addEventListener('fetch', (event) => {{
         _sync_organization()
         await _broadcast_devices()
         return {"ok": True, "device": row}
+
+    @api.get("/api/integrations/modbus")
+    async def api_modbus_snapshot():
+        return modbus_manager.snapshot()
+
+    @api.put("/api/integrations/modbus/connections")
+    async def api_modbus_connection(payload: dict[str, Any]):
+        try: row = modbus_manager.store.put_connection(payload)
+        except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc))
+        return {"ok": True, "connection": row}
+
+    @api.put("/api/integrations/modbus/profiles")
+    async def api_modbus_profile(payload: dict[str, Any]):
+        try: row = modbus_manager.store.put_profile(payload)
+        except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc))
+        return {"ok": True, "profile": row}
+
+    @api.put("/api/integrations/modbus/devices")
+    async def api_modbus_device(payload: dict[str, Any]):
+        try: row = modbus_manager.store.put_device(payload)
+        except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc))
+        return {"ok": True, "device": row}
+
+    @api.post("/api/integrations/modbus/apply")
+    async def api_modbus_apply():
+        try:
+            result = await asyncio.to_thread(modbus_manager.apply)
+            result["validation"] = await asyncio.to_thread(_supervisor_request, "POST", "/core/check", timeout_s=60)
+        except Exception as exc: raise HTTPException(status_code=502, detail=str(exc))
+        return {"ok": True, "result": result}
+
+    @api.post("/api/integrations/modbus/sync")
+    async def api_modbus_sync():
+        states = await asyncio.to_thread(_ha_request, "GET", "/api/states", payload=None, timeout_s=15)
+        try: result = await modbus_manager.sync(states if isinstance(states, list) else [])
+        except Exception as exc: raise HTTPException(status_code=502, detail=str(exc))
+        api.state.ha_states = {str(x.get("entity_id") or "").lower(): x for x in states if isinstance(x, dict)}
+        _sync_organization(); await _broadcast_devices()
+        return {"ok": True, "result": result}
+
+    @api.put("/api/integrations/modbus/catalog/{device_id}")
+    async def api_modbus_catalog_update(device_id: str, payload: dict[str, Any]):
+        try: row = modbus_manager.store.update_catalog(device_id, payload)
+        except KeyError: raise HTTPException(status_code=404, detail="Modbus entity not found")
+        _sync_organization(); await _broadcast_devices()
+        return {"ok": True, "device": row}
+
+    @api.post("/api/integrations/modbus/restart")
+    async def api_modbus_restart():
+        result = await asyncio.to_thread(_supervisor_request, "POST", "/core/restart", timeout_s=30)
+        return {"ok": True, "result": result}
 
     @api.get("/api/organization")
     async def api_organization():
@@ -7358,6 +7424,7 @@ self.addEventListener('fetch', (event) => {{
         state["_econtrol_organization"] = organization.snapshot()
         state["_econtrol_knx"] = knx_manager.store.load()
         state["_econtrol_bticino"] = bticino_manager.store.load()
+        state["_econtrol_modbus"] = modbus_manager.store.load()
         return {"text": json.dumps(state, ensure_ascii=False, indent=2)}
 
     @api.get("/api/backup/file")
@@ -7367,6 +7434,7 @@ self.addEventListener('fetch', (event) => {{
         state["_econtrol_organization"] = organization.snapshot()
         state["_econtrol_knx"] = knx_manager.store.load()
         state["_econtrol_bticino"] = bticino_manager.store.load()
+        state["_econtrol_modbus"] = modbus_manager.store.load()
         content = json.dumps(state, ensure_ascii=False, indent=2)
         ts = time.strftime("%Y%m%d-%H%M%S")
         headers = {"Content-Disposition": f'attachment; filename="buspro_backup_{ts}.json"'}
@@ -7453,12 +7521,15 @@ self.addEventListener('fetch', (event) => {{
             organization_state = state.pop("_econtrol_organization", None)
             knx_state = state.pop("_econtrol_knx", None)
             bticino_state = state.pop("_econtrol_bticino", None)
+            modbus_state = state.pop("_econtrol_modbus", None)
             if organization_state is not None:
                 organization_state = organization.validate_backup(organization_state)
             if knx_state is not None and (not isinstance(knx_state, dict) or knx_state.get("schema_version") != 1):
                 raise ValueError("invalid KNX manager backup")
             if bticino_state is not None and (not isinstance(bticino_state, dict) or bticino_state.get("schema_version") != 1):
                 raise ValueError("invalid BTicino manager backup")
+            if modbus_state is not None and (not isinstance(modbus_state, dict) or modbus_state.get("schema_version") != 1):
+                raise ValueError("invalid Modbus manager backup")
             store.import_backup(state)
             if organization_state is not None:
                 organization.save(organization_state)
@@ -7466,6 +7537,8 @@ self.addEventListener('fetch', (event) => {{
                 knx_manager.store.save(knx_state)
             if bticino_state is not None:
                 bticino_manager.store.save(bticino_state)
+            if modbus_state is not None:
+                modbus_manager.store.save(modbus_state)
         except HTTPException:
             raise
         except Exception as e:
@@ -10308,6 +10381,7 @@ self.addEventListener('fetch', (event) => {{
         "knx": _smart_home_ha_command,
         "myhome_scs": _smart_home_ha_command,
         "home_plus_control": _smart_home_ha_command,
+        "modbus": _smart_home_ha_command,
         "ha": _smart_home_ha_command,
     })
 

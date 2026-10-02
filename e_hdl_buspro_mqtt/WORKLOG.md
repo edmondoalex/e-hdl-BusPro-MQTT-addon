@@ -1,5 +1,15 @@
 # WORKLOG
 
+## 2026-10-02 (e-Modbus Manager 0.1.482)
+- Implementato e-Modbus Manager con connessioni TCP, seriale RTU/RS-485, RTU-over-TCP e UDP.
+- Aggiunti profili dispositivo versionati e riutilizzabili, validazione registri, tipi dati, scala, offset, unità, swap, polling e limiti.
+- Aggiunta associazione connessione/profilo/slave e generazione deterministica della configurazione Home Assistant Modbus/pymodbus.
+- e-Control inserisce automaticamente l'include gestito, conserva un backup, rifiuta configurazioni Modbus già possedute da terzi e valida la configurazione tramite Supervisor prima del riavvio esplicito.
+- Aggiunti tutorial contestuali brevi per TCP, RS-485, RTU-over-TCP e UDP, inclusi cablaggio e dati da recuperare nel manuale del dispositivo.
+- Aggiunti catalogo opt-in per e-Face, comandi protetti da sola lettura, diagnostica, conteggi e backup/ripristino.
+- Prima versione produttiva focalizzata sulle primitive sicure e universali `sensor`, `binary_sensor` e `switch`; i profili HVAC composti saranno aggiunti e collaudati sui manuali reali delle pompe di calore.
+- Version bump: 0.1.481 -> 0.1.482.
+
 ## Tag operativi per collaudi futuri
 
 ### TODO-KNX-COLLAUDO
