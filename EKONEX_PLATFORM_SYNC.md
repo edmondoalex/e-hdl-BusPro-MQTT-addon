@@ -493,3 +493,9 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 - Classificazione corretta per tipo nativo: `NATherm1` e `NRV` climate, `NAMain`/`NAModule1` sensori, `NAPlug` gateway tecnico in sola lettura.
 - Risincronizzazione reale completata: 21 dispositivi aggiornati, zero orfani; nomi e stanze Netatmo verificati via API sul NUC.
 - Runtime installato e avviato in versione `0.1.499`; suite `78 passed`; commit `2d8de2f` pubblicato.
+
+## Nome visualizzato dispositivi 0.1.500
+
+- Aggiunto alla configurazione globale il campo persistente `Nome visualizzato`, separato dal nome originale del catalogo e dall'identificativo tecnico.
+- Un valore personalizzato viene pubblicato a e-Face e sopravvive a riavvii e risincronizzazioni; lasciandolo vuoto si continua a seguire il nome originale.
+- Installazione reale verificata in versione `0.1.500`; campo servito nella UI e catalogo Netatmo aggiornato; suite `79 passed`; commit `c3eb664`.
