@@ -46,6 +46,7 @@ from .discovery import (
 )
 from .icons import ensure_mdi_icons, parse_mdi_icon, placeholder_svg
 from .ha_catalog import build_ha_catalog
+from .bticino_manager import BticinoManager, INTEGRATIONS as BTICINO_INTEGRATIONS, MyHomeComponentInstaller
 from .ksenia_consumer import ContractError, KseniaSmartHomeConsumer
 from .knx_manager import KnxManager, KnxNotConfigured
 from .organization import OrganizationStore, hdl_presentation_class
@@ -84,7 +85,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.480"
+ADDON_VERSION = "0.1.481"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -434,6 +435,14 @@ def create_app() -> FastAPI:
     knx_manager = KnxManager(knx_path, str(os.environ.get("SUPERVISOR_TOKEN") or "").strip())
     api.state.knx_manager = knx_manager
     api.state.knx_states = {}
+    bticino_path = os.environ.get(
+        "ECONTROL_BTICINO_MANAGER",
+        os.path.join(os.path.dirname(store.path), "bticino_manager.json"),
+    )
+    bticino_manager = BticinoManager(bticino_path, str(os.environ.get("SUPERVISOR_TOKEN") or "").strip())
+    api.state.bticino_manager = bticino_manager
+    myhome_installer = MyHomeComponentInstaller(os.environ.get("HOME_ASSISTANT_CONFIG", "/config"))
+    api.state.myhome_installer = myhome_installer
 
     icons_dir = os.environ.get("BUSPRO_ICONS", "/data/icons")
     api.state.icons_dir = icons_dir
@@ -476,6 +485,8 @@ def create_app() -> FastAPI:
     api.state.smart_home_sources = {}
     api.state.smart_home_command_handlers = {}
     api.state.smart_home_sources["knx"] = lambda: knx_manager.store.catalog(getattr(api.state, "knx_states", {}) or {})
+    api.state.smart_home_sources["myhome_scs"] = lambda: bticino_manager.store.catalog("myhome_scs", getattr(api.state, "ha_states", {}) or {})
+    api.state.smart_home_sources["home_plus_control"] = lambda: bticino_manager.store.catalog("home_plus_control", getattr(api.state, "ha_states", {}) or {})
     api.state.smart_home_sources["ha"] = lambda: build_ha_catalog(
         store.list_ha_devices(),
         getattr(api.state, "ha_states", {}) or {},
@@ -558,6 +569,25 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=504, detail="timeout")
         except urllib.error.URLError as e:
             raise HTTPException(status_code=502, detail=str(e.reason or e))
+
+    def _supervisor_request(method: str, path: str, *, timeout_s: int = 20) -> Any:
+        token = str(os.environ.get("SUPERVISOR_TOKEN") or "").strip()
+        if not token:
+            raise HTTPException(status_code=503, detail="Supervisor API not available")
+        request = urllib.request.Request(
+            url="http://supervisor/" + path.lstrip("/"),
+            method=method.upper(),
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=timeout_s) as response:
+                raw = response.read()
+            return json.loads(raw.decode("utf-8", errors="replace")) if raw else {"result": "ok"}
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            raise HTTPException(status_code=int(exc.code or 502), detail=detail or str(exc))
+        except (urllib.error.URLError, socket.timeout, TimeoutError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
 
     def _ha_upload_file(filename: str, content: bytes, *, timeout_s: int = 120) -> str:
         token = str(os.environ.get("SUPERVISOR_TOKEN") or "").strip()
@@ -5220,11 +5250,19 @@ self.addEventListener('fetch', (event) => {{
                     if _ha_enabled():
                         states = await asyncio.to_thread(_ha_request, "GET", "/api/states", payload=None, timeout_s=15)
                         if isinstance(states, list):
-                            await knx_manager.sync(states)
                             api.state.knx_states = {
                                 str(item.get("entity_id") or "").strip().lower(): item
                                 for item in states if isinstance(item, dict) and str(item.get("entity_id") or "").strip()
                             }
+                            try:
+                                await knx_manager.sync(states)
+                            except Exception as exc:
+                                _LOGGER.debug("KNX manager sync unavailable: %s", exc)
+                            for bticino_source in BTICINO_INTEGRATIONS:
+                                try:
+                                    await bticino_manager.sync(bticino_source, states)
+                                except Exception as exc:
+                                    _LOGGER.debug("%s sync unavailable: %s", bticino_source, exc)
                             _sync_organization()
                     await asyncio.sleep(300)
                 except asyncio.CancelledError:
@@ -6237,12 +6275,18 @@ self.addEventListener('fetch', (event) => {{
         ha_security = sum(1 for item in ha_configured if str(item.get("page") or "").strip().lower() == "locks")
         ha_exported = smart_counts.get("ha", 0)
         knx_catalog = knx_manager.store.catalog(getattr(api.state, "knx_states", {}) or {})
+        bticino_data = bticino_manager.store.load().get("integrations") or {}
+        myhome_detected = len((bticino_data.get("myhome_scs") or {}).get("devices") or {})
+        home_plus_detected = len((bticino_data.get("home_plus_control") or {}).get("devices") or {})
         payload["devices_by_bus"] = {
             "hdl_buspro": hdl_detected,
             "ksenia": len(ksenia_snapshot.get("devices") or []),
             "home_assistant": len(ha_configured),
             "knx": len(knx_catalog),
-            "bticino": 0, "tuya": 0, "modbus": 0, "dali": 0,
+            "bticino": myhome_detected + home_plus_detected,
+            "myhome_scs": myhome_detected,
+            "home_plus_control": home_plus_detected,
+            "tuya": 0, "modbus": 0, "dali": 0,
         }
         payload["integration_metrics"] = {
             "hdl_buspro": {
@@ -6270,6 +6314,18 @@ self.addEventListener('fetch', (event) => {{
                 "exported": smart_counts.get("knx", 0),
                 "visible": smart_visible.get("knx", 0),
                 "excluded": max(0, len(knx_catalog) - smart_counts.get("knx", 0)),
+            },
+            "myhome_scs": {
+                "detected": myhome_detected,
+                "exported": smart_counts.get("myhome_scs", 0),
+                "visible": smart_visible.get("myhome_scs", 0),
+                "excluded": max(0, myhome_detected - smart_counts.get("myhome_scs", 0)),
+            },
+            "home_plus_control": {
+                "detected": home_plus_detected,
+                "exported": smart_counts.get("home_plus_control", 0),
+                "visible": smart_visible.get("home_plus_control", 0),
+                "excluded": max(0, home_plus_detected - smart_counts.get("home_plus_control", 0)),
             },
         }
         return payload
@@ -6415,6 +6471,126 @@ self.addEventListener('fetch', (event) => {{
             )
         except KeyError:
             raise HTTPException(status_code=404, detail="KNX device not found")
+        _sync_organization()
+        await _broadcast_devices()
+        return {"ok": True, "device": row}
+
+    def _bticino_source(source: str) -> str:
+        clean = str(source or "").strip().lower()
+        if clean not in BTICINO_INTEGRATIONS:
+            raise HTTPException(status_code=404, detail="BTicino integration not found")
+        return clean
+
+    @api.get("/api/integrations/bticino/{source}")
+    async def api_bticino_snapshot(source: str):
+        clean = _bticino_source(source)
+        spec = BTICINO_INTEGRATIONS[clean]
+        if bticino_manager.ws is not None and not bticino_manager.entries.get(clean):
+            try:
+                entries = await bticino_manager.ws.command("config_entries/get", domain=spec["domain"])
+                bticino_manager.entries[clean] = entries if isinstance(entries, list) else []
+                if not bticino_manager.entries[clean]:
+                    bticino_manager.errors[clean] = f"{spec['name']} is not configured"
+            except Exception as exc:
+                bticino_manager.errors[clean] = str(exc)
+        data = bticino_manager.store.load()["integrations"][clean]
+        return {
+            "source": clean,
+            "status": bticino_manager.status(clean),
+            "devices": list((data.get("devices") or {}).values()),
+            "component": myhome_installer.status() if clean == "myhome_scs" else {
+                "installed": True, "managed_version": "Home Assistant Core", "official": True,
+            },
+        }
+
+    @api.post("/api/integrations/bticino/myhome_scs/component/install")
+    async def api_myhome_component_install():
+        try:
+            result = await asyncio.to_thread(myhome_installer.install)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+        return {"ok": True, "component": result, "message": "Componente installato; riavvia Home Assistant Core per caricarlo"}
+
+    @api.post("/api/integrations/bticino/myhome_scs/component/restart")
+    async def api_myhome_component_restart():
+        result = await asyncio.to_thread(_supervisor_request, "POST", "/core/restart", timeout_s=30)
+        return {"ok": True, "result": result}
+
+    @api.post("/api/integrations/bticino/{source}/sync")
+    async def api_bticino_sync(source: str):
+        clean = _bticino_source(source)
+        if not _ha_enabled():
+            raise HTTPException(status_code=503, detail="Home Assistant API not available")
+        states = await asyncio.to_thread(_ha_request, "GET", "/api/states", payload=None, timeout_s=15)
+        if not isinstance(states, list):
+            raise HTTPException(status_code=502, detail="Invalid Home Assistant states response")
+        try:
+            result = await bticino_manager.sync(clean, states)
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc))
+        except RuntimeError as exc:
+            status = 409 if "not configured" in str(exc).lower() else 502
+            raise HTTPException(status_code=status, detail=str(exc))
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+        api.state.ha_states = {
+            str(item.get("entity_id") or "").strip().lower(): item
+            for item in states if isinstance(item, dict) and str(item.get("entity_id") or "").strip()
+        }
+        _sync_organization()
+        await _broadcast_devices()
+        return {"ok": True, "result": result, "status": bticino_manager.status(clean)}
+
+    @api.post("/api/integrations/bticino/{source}/provision/start")
+    async def api_bticino_provision_start(source: str):
+        clean = _bticino_source(source)
+        if not _ha_enabled():
+            raise HTTPException(status_code=503, detail="Home Assistant API not available")
+        domain = BTICINO_INTEGRATIONS[clean]["domain"]
+        try:
+            result = await asyncio.to_thread(
+                _ha_request,
+                "POST",
+                "/api/config/config_entries/flow",
+                payload={"handler": domain},
+                timeout_s=20,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+        if not isinstance(result, dict):
+            raise HTTPException(status_code=502, detail="Invalid integration provisioning response")
+        return {"ok": True, "source": clean, "flow": result}
+
+    @api.post("/api/integrations/bticino/{source}/provision/{flow_id}")
+    async def api_bticino_provision_step(source: str, flow_id: str, payload: dict[str, Any]):
+        clean = _bticino_source(source)
+        clean_id = str(flow_id or "").strip()
+        if not clean_id or len(clean_id) > 128:
+            raise HTTPException(status_code=400, detail="invalid flow id")
+        try:
+            result = await asyncio.to_thread(
+                _ha_request,
+                "POST",
+                f"/api/config/config_entries/flow/{urllib.parse.quote(clean_id, safe='')}",
+                payload=payload,
+                timeout_s=30,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+        return {"ok": True, "source": clean, "flow": result}
+
+    @api.put("/api/integrations/bticino/{source}/devices/{device_id}")
+    async def api_bticino_device_update(source: str, device_id: str, payload: dict[str, Any]):
+        clean = _bticino_source(source)
+        try:
+            row = bticino_manager.store.update(
+                clean,
+                str(device_id or "").strip(),
+                enabled=payload.get("enabled") if "enabled" in payload else None,
+                read_only=payload.get("read_only") if "read_only" in payload else None,
+            )
+        except KeyError:
+            raise HTTPException(status_code=404, detail="BTicino device not found")
         _sync_organization()
         await _broadcast_devices()
         return {"ok": True, "device": row}
@@ -7181,6 +7357,7 @@ self.addEventListener('fetch', (event) => {{
         state = json.loads(store.export_backup_text())
         state["_econtrol_organization"] = organization.snapshot()
         state["_econtrol_knx"] = knx_manager.store.load()
+        state["_econtrol_bticino"] = bticino_manager.store.load()
         return {"text": json.dumps(state, ensure_ascii=False, indent=2)}
 
     @api.get("/api/backup/file")
@@ -7189,6 +7366,7 @@ self.addEventListener('fetch', (event) => {{
         state = json.loads(store.export_backup_text())
         state["_econtrol_organization"] = organization.snapshot()
         state["_econtrol_knx"] = knx_manager.store.load()
+        state["_econtrol_bticino"] = bticino_manager.store.load()
         content = json.dumps(state, ensure_ascii=False, indent=2)
         ts = time.strftime("%Y%m%d-%H%M%S")
         headers = {"Content-Disposition": f'attachment; filename="buspro_backup_{ts}.json"'}
@@ -7274,15 +7452,20 @@ self.addEventListener('fetch', (event) => {{
                 raise HTTPException(status_code=400, detail="Provide 'text' or 'data'")
             organization_state = state.pop("_econtrol_organization", None)
             knx_state = state.pop("_econtrol_knx", None)
+            bticino_state = state.pop("_econtrol_bticino", None)
             if organization_state is not None:
                 organization_state = organization.validate_backup(organization_state)
             if knx_state is not None and (not isinstance(knx_state, dict) or knx_state.get("schema_version") != 1):
                 raise ValueError("invalid KNX manager backup")
+            if bticino_state is not None and (not isinstance(bticino_state, dict) or bticino_state.get("schema_version") != 1):
+                raise ValueError("invalid BTicino manager backup")
             store.import_backup(state)
             if organization_state is not None:
                 organization.save(organization_state)
             if knx_state is not None:
                 knx_manager.store.save(knx_state)
+            if bticino_state is not None:
+                bticino_manager.store.save(bticino_state)
         except HTTPException:
             raise
         except Exception as e:
@@ -10123,6 +10306,8 @@ self.addEventListener('fetch', (event) => {{
         "hdl": _smart_home_hdl_command,
         "ksenia": _smart_home_ksenia_command,
         "knx": _smart_home_ha_command,
+        "myhome_scs": _smart_home_ha_command,
+        "home_plus_control": _smart_home_ha_command,
         "ha": _smart_home_ha_command,
     })
 

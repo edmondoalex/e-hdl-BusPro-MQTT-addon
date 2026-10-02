@@ -1,5 +1,14 @@
 # WORKLOG
 
+## 2026-10-02 (BTicino MyHOME SCS e Home + Control 0.1.481)
+- Separati i trasporti BTicino in `myhome_scs` (OpenWebNet locale) e `home_plus_control` (Netatmo cloud).
+- Aggiunti cataloghi persistenti indipendenti, rilevamento dal registry Home Assistant, opt-in verso e-Face e instradamento comandi.
+- Aggiunte pagine professionali per panoramica, dispositivi e diagnostica di ciascuna integrazione.
+- Aggiunto installatore verificato del componente MyHOME 0.9.4, con controllo SHA-256 e backup della versione precedente.
+- Aggiunti configurazione guidata Home Assistant, conteggi separati, backup/ripristino e stato dinamico nel menu.
+- Aggiornato il registro capability e uniformati gli stati UI ad ATTIVO/INATTIVO.
+- Version bump: 0.1.480 -> 0.1.481.
+
 ## 2026-10-02 (Stati integrazioni e logo Home Assistant coerenti)
 - Uniformati i badge del menu a `ATTIVO` e `INATTIVO`: rimossi `NUOVO` e `PIANIFICATO` dalla navigazione e dalle viste informative.
 - Home Assistant usa ora lo stesso riquadro logo degli altri bus e integrazioni.

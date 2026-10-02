@@ -234,7 +234,7 @@ class OrganizationTests(unittest.TestCase):
         for page in (root / "e_hdl_buspro_mqtt" / "app" / "static" / "user").glob("*.html"):
             source = page.read_text(encoding="utf-8")
             if "static/hub/hub-nav.js" in source:
-                self.assertIn("hub-nav.js?v=0.1.480", source, page.name)
+                self.assertIn("hub-nav.js?v=0.1.481", source, page.name)
                 self.assertIn("hub.css?v=0.1.479", source, page.name)
 
     def test_home_reports_live_ksenia_status(self):
