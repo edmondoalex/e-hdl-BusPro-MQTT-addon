@@ -243,6 +243,14 @@ class SmartHomeProducerTests(unittest.TestCase):
             self.assertTrue(result["ok"])
             self.assertEqual(128, gateway.calls[-1]["brightness255"])
 
+            # Historical HDL outputs may not contain an explicit type. They are
+            # presented as lights by the catalog and must use the same inference
+            # when a command arrives from e-Face.
+            app.state.store.add_device({"name":"Luce legacy","category":"Luci","subnet_id":1,"device_id":2,"channel":4,"addr":"1.2.4"})
+            result = asyncio.run(endpoint("hdl", "1.2.4", {"action":"on","value":None}))
+            self.assertTrue(result["ok"])
+            self.assertTrue(gateway.calls[-1]["on"])
+
     def test_ksenia_command_route_delegates_only_catalogued_device(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {
             "BUSPRO_STATE": str(Path(tmp) / "state.json"),

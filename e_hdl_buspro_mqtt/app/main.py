@@ -86,7 +86,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.491"
+ADDON_VERSION = "0.1.492"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -6694,28 +6694,11 @@ self.addEventListener('fetch', (event) => {{
         except Exception as exc:
             raise HTTPException(status_code=502, detail="Impossibile azzerare il tentativo di collegamento: " + str(exc))
 
-        # OAuth flows are not always exposed by the progress API. Restart through
-        # the internal control API after returning the HTTP confirmation, so the
-        # browser can retain a clear success message while services recycle.
-        async def _restart_integration_service() -> None:
-            await asyncio.sleep(1.0)
-            try:
-                await asyncio.to_thread(
-                    _ha_request,
-                    "POST",
-                    "/api/services/homeassistant/restart",
-                    payload={},
-                    timeout_s=20,
-                )
-            except Exception:
-                _LOGGER.warning("Delayed integration service restart disconnected or failed", exc_info=True)
-
-        asyncio.create_task(_restart_integration_service())
         return {
             "ok": True,
             "source": clean,
             "removed_flows": removed,
-            "message": "Tentativi precedenti azzerati. Attendi il riavvio dei servizi e riprova.",
+            "message": "Tentativi precedenti recuperabili eliminati. Puoi riprovare il collegamento.",
         }
 
     @api.get("/api/integrations/bticino/home_plus_control/credentials")
@@ -10471,7 +10454,12 @@ self.addEventListener('fetch', (event) => {{
             subnet_id, hdl_device_id, channel = (int(x) for x in requested_id.split("."))
         except (TypeError, ValueError):
             raise HTTPException(status_code=400, detail="invalid HDL device identity")
-        kind = str(native.get("type") or "").lower()
+        kind = str(native.get("type") or "").strip().lower()
+        if not kind:
+            # Legacy HDL lights often predate the explicit type field. The
+            # catalog already presents them as lights; command routing must use
+            # the same inference or only those historical devices return 400.
+            kind = "switch" if str(native.get("category") or "").strip().casefold() == "switch" else "light"
         if kind == "light":
             if action in {"on", "off"}:
                 return await control_light(subnet_id, hdl_device_id, channel, {"state": action.upper()})

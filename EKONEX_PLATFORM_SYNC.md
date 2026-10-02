@@ -475,3 +475,4 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 - Navigazione: la voce del catalogo generico è ora `Integrazioni esterne`, con icona neutra e senza marchi del motore sottostante.
 - Test: build e-Face completata, compilazione Python superata, `73 passed`; controllo testuale delle superfici UI senza occorrenze vietate.
 - Correzione 0.1.491: il reset usa il canale di controllo interno con avvio differito, evitando il `403 Forbidden` del Supervisor; la sincronizzazione mantiene un esito persistente con il conteggio rilevato.
+- Correzione 0.1.492: ripristinato il comando delle luci HDL legacy prive di `type` usando la stessa inferenza del catalogo; eliminato il riavvio automatico dal reset Netatmo.
