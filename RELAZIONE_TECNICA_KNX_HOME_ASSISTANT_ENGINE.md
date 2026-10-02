@@ -244,3 +244,34 @@ Gli aggiornamenti non vengono assunti compatibili automaticamente. e-Manager pot
 - XKNX: https://github.com/XKNX/xknx
 - KNX frontend: https://github.com/XKNX/knx-frontend
 
+## 14. Stato implementato e collaudo 0.1.477
+
+Implementato e installato sull'impianto di sviluppo:
+
+- ramo professionale `e-KNX Manager` con Panoramica, Progetto ETS, Dispositivi e Diagnostica;
+- rilevamento automatico della presenza della config entry KNX;
+- wizard e-Control che usa il config-flow ufficiale Home Assistant, senza aprire la UI Home Assistant;
+- supporto guidato alle modalita' tunneling e routing restituite dalla versione HA installata;
+- import `.knxproj` fino a 100 MB tramite file-upload ufficiale HA e comando `knx/project_file_process`;
+- lettura metadati progetto mediante `knx/get_knx_project`;
+- monitor degli ultimi telegrammi tramite `knx/group_monitor_info`, senza accesso diretto al database HA;
+- import del registry limitato a `platform=knx`, catalogo persistente opt-in e ID stabili anche dopo rename;
+- esposizione Smart Home v1 `source=knx`, consumabile da e-Face senza codice KNX specifico;
+- dispositivi nuovi disabilitati e read-only per default; comandi consentiti soltanto dopo doppia abilitazione installatore;
+- catalogo KNX incluso nel backup e-Control esistente.
+
+Collaudo eseguito sulla release installata `0.1.477`:
+
+- add-on avviato e API meta coerente;
+- Supervisor token accettato sia dalla REST API sia dalla WebSocket API Home Assistant;
+- assenza della config entry riconosciuta come `setup_required`, non come generico errore;
+- config-flow reale avviato e schema `connection_type` ricevuto correttamente;
+- interfaccia ETS e monitor presenti nella build servita;
+- validazione upload non `.knxproj` verificata con risposta HTTP 400;
+- monitor senza integrazione configurata verificato in fail-safe, senza effetti su HDL o Ksenia;
+- suite automatica: 58 test superati, compilazione Python e controllo diff superati.
+
+Il collaudo fisico di tunnel, telegrammi e dispositivi resta necessariamente sospeso fino alla disponibilita' dei parametri del gateway KNX/IP. e-Control non crea automaticamente una connessione inventando indirizzi: il wizard richiede soltanto i dati di campo indispensabili, poi configura autonomamente il motore nascosto.
+
+Lo stesso modello sara' riutilizzato per le altre integrazioni HA-backed: e-Control possiede UX, catalogo e policy; Home Assistant ospita il motore aggiornato. Non tutte le etichette pianificate hanno pero' un'integrazione HA equivalente (per esempio DALI dipende dal gateway scelto e Modbus richiede un modello registri), quindi il provisioning viene abilitato per driver con un contratto verificato, non con un pulsante generico che potrebbe configurare sistemi incompatibili.
+
