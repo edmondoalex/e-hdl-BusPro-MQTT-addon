@@ -201,7 +201,8 @@ class OrganizationTests(unittest.TestCase):
         self.assertIn("tree('Programmazione'", nav)
         self.assertIn("tree('Scenari e automazioni'", nav)
         self.assertIn("adminLink('Scenari multi-bus','scenario_management'", nav)
-        self.assertIn("adminLink('Trigger Home Assistant','scenario_triggers'", nav)
+        self.assertIn("adminLink('Trigger automazioni','scenario_triggers'", nav)
+        self.assertNotIn("Home Assistant", nav)
         self.assertIn("tree('Esposizione interfacce'", nav)
         self.assertIn("adminLink('Collegamenti Home','exposure_home'", nav)
         self.assertIn("tree('Dispositivi HDL'", nav)
@@ -211,11 +212,11 @@ class OrganizationTests(unittest.TestCase):
         self.assertIn("Configurazione impianto", nav)
         self.assertNotIn("Altre integrazioni", nav)
         self.assertNotIn("adminLink('Entità Home Assistant'", nav)
-        self.assertEqual(1, nav.count("integrationLink('Home Assistant'"))
+        self.assertEqual(1, nav.count("integrationLink('Integrazioni esterne'"))
         self.assertEqual(1, nav.count("'info','mdi:home-analytics'"))
         self.assertIn("adminLink('Diagnostica HDL','hdl_diagnostics'", nav)
         self.assertNotIn("adminLink('Diagnostica HDL','tools'", nav)
-        for bus in ("HDL BusPro", "Ksenia Smart Home", "Home Assistant", "KNX", "BTicino", "Tuya", "Modbus", "DALI"):
+        for bus in ("HDL BusPro", "Ksenia Smart Home", "Integrazioni esterne", "KNX", "BTicino", "Tuya", "Modbus", "DALI"):
             self.assertIn(bus, nav)
         self.assertIn("--hub-bg:#101619", css)
         self.assertIn("--hub-surface:#171e22", css)
@@ -230,7 +231,7 @@ class OrganizationTests(unittest.TestCase):
         self.assertNotIn("Scenari: configurazione JSON", index)
         self.assertIn("organization.js?v=0.1.479", index)
         self.assertIn("link('Home','home','mdi:home-analytics','home')+link('Home2'", nav)
-        self.assertLess(index.index("Ksenia Smart Home</b>"), index.index("Home Assistant</b>"))
+        self.assertLess(index.index("Ksenia Smart Home</b>"), index.index("Integrazioni esterne</b>"))
         for page in (root / "e_hdl_buspro_mqtt" / "app" / "static" / "user").glob("*.html"):
             source = page.read_text(encoding="utf-8")
             if "static/hub/hub-nav.js" in source:

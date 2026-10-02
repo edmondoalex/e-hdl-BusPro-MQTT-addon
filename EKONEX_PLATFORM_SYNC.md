@@ -107,6 +107,138 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 
 ## Handoff corrente
 
+### Credenziali applicative Netatmo in e-Control - 2026-10-02
+
+- Release `0.1.488` installata e avviata; commit `af1bdce` pubblicato.
+- La pagina Home + Control accetta Client ID e Client Secret con campo password e li registra tramite `application_credentials/create` ufficiale Home Assistant.
+- Il Secret non viene restituito dalla API di stato né scritto nei log; la UI espone soltanto presenza, conteggio e nome credenziale.
+- Link Netatmo Developer, documentazione e istruzioni sicurezza inclusi nella stessa pagina.
+- Verifica live: versione `0.1.488`, form presente, endpoint credenziali HTTP 200 e stato iniziale non configurato coerente.
+- Test: `73 passed`, compilazione Python e diff check superati.
+
+### Ripristino provisioning Home + Control / Netatmo - 2026-10-02
+
+- Release installata: e-Control Hub `0.1.486`; commit pubblicati `4671156`, `2cb37b0`, `87b56b4`, `7e25eef`.
+- Causa verificata: Home Assistant manteneva un lock OAuth Netatmo fantasma e restituiva `already_in_progress`, pur senza un config-flow Netatmo nell'elenco attivo; il `flow_id` dell'abort era già invalido.
+- e-Control tenta ora il recupero autonomo dei flow attivi, supportando handler semplici e composti, senza indirizzare l'installatore alla UI Home Assistant.
+- Per il lock fantasma già presente sull'impianto è stato riavviato esclusivamente Home Assistant Core; add-on e bus locali sono rimasti attivi.
+- Collaudo live conclusivo: `POST /api/integrations/bticino/home_plus_control/provision/start` restituisce HTTP 200, `type=external`, `step_id=auth` e URL OAuth ufficiale Netatmo.
+- Test locali: `73 passed`, compilazione Python e `git diff --check` superati.
+- Prossimo passo utente: completare il login Netatmo dalla pagina e-Control, quindi sincronizzare e abilitare selettivamente i dispositivi per e-Face.
+
+### Conteggi Info separati per integrazione - 2026-10-02
+
+- Candidata locale: `0.1.479`; nessun push o aggiornamento impianto eseguito.
+- Corretto `devices_by_bus.hdl_buspro`: prima contava l'intero ramo legacy, includendo 46 entita' Home Assistant; ora usa esclusivamente il catalogo HDL.
+- Aggiunta `integration_metrics` additiva con rilevati/configurati, esportati Smart Home, visibili, sicurezza legacy ed esclusi per HDL, Ksenia, Home Assistant e KNX.
+- La pagina Info espone tutti i conteggi e lo stato reale e-KNX Manager; il totale globale include Home Assistant come sorgente distinta.
+- Verifica sull'impianto corrente atteso: HDL `130`, Ksenia `9`, Home Assistant `47 = 40 Smart Home + 7 Sicurezza legacy`, esclusi HA `0`.
+- Test: `62 passed`; compile Python, JSON config e `git diff --check` superati.
+
+### Ripristino entita' Home Assistant in e-Face - 2026-10-02
+
+- Causa: dopo l'adozione del catalogo Smart Home v1, le entita' HA configurate restavano soltanto nel ramo legacy `devices`; e-Face privilegia correttamente `smart_home`, quindi luci ed extra HA non erano piu' visibili.
+- Correzione installata: e-Control Hub `0.1.478`, commit `4ccee0d`.
+- Aggiunto adapter `source=ha` che conserva entity ID, nome, destinazione, gruppo, icona, stato e capability; i comandi passano dall'endpoint Smart Home validato.
+- Le entita' della pagina serrature restano sul percorso sicurezza legacy e-Face gia' protetto, evitando duplicati e regressioni di autorizzazione.
+- Collaudo live: 47 configurazioni HA persistenti; 40 entita' non-sicurezza pubblicate nel nuovo catalogo (`lights:3`, `extra:37`), tutte 40 disponibili; le 7 serrature restano nel percorso legacy.
+- Catalogo live totale: `hdl:130`, `ksenia:9`, `ha:40`. Comando non catalogato respinto HTTP 400.
+- Test: `61 passed`, compilazione Python e `git diff --check` superati.
+
+### e-KNX Manager con Home Assistant nascosto - 2026-10-02
+
+- Architettura approvata dal proprietario: e-Control e' configuratore, catalogo e policy engine; Home Assistant KNX/XKNX resta il motore di campo nascosto e aggiornabile; e-Face consuma Smart Home v1 `source=knx`.
+- Release installata e collaudata: `0.1.477`; commit pubblicati `fe5a424`, `0114b25`, `1f865ed`, `a75fc1d`, `ba94faf`.
+- Aggiunto `e-KNX Manager` con pagine Panoramica, Progetto ETS, Dispositivi e Diagnostica/monitor BUS.
+- Provisioning KNX eseguito da e-Control tramite config-flow ufficiale HA; nessun intervento nella UI Home Assistant richiesto.
+- Import `.knxproj` tramite API file-upload ufficiale HA, lettura progetto e monitor telegrammi tramite WebSocket KNX ufficiale; nessun accesso a `.storage`, database o YAML interni.
+- Catalogo persistente opt-in, ID stabili, dispositivi read-only per default, adapter Smart Home v1 e backup/restore e-Control completati.
+- Verifica live: API Supervisor REST/WebSocket accessibili; KNX non configurato rilevato come `setup_required`; config-flow reale avviato al passo `connection_type`; upload invalido respinto 400; monitor non configurato fallisce isolato senza degradare HDL/Ksenia.
+- Test: `58 passed`, Python compile e `git diff --check` superati.
+- Limite di collaudo: sull'impianto non e' presente/configurato un gateway KNX/IP; tunnel, import reale ETS, telegrammi e comandi fisici richiedono i dati e l'hardware di campo. Nessun indirizzo e' stato inventato e nessuna configurazione fittizia e' stata salvata.
+- Compatibilita': API Smart Home v1 additiva; identificativi, driver HDL/Ksenia, MQTT e Discovery invariati.
+
+### Gerarchia completa delle pagine Admin - 2026-10-02
+
+- Release installata: `0.1.471`; commit `4c613f7` pubblicato su `origin/main`.
+- Applicata all'intera area interessata la regola concordata: una funzione con una sola pagina resta un collegamento diretto; una funzione con piu' pagine diventa un ramo e mostra sottopagine distinte.
+- `Azioni Home` resta diretta e apre immediatamente il proprio contenuto.
+- `Esposizione interfacce` ora espone cinque sottopagine autonome: collegamenti Home, ordine Home2, WebApp Home2, proxy/collegamenti esterni e telecamere e-Guard.
+- `HDL BusPro` contiene il ramo `Dispositivi HDL`, articolato in nove pagine funzionali: luci e dimmer, cover, gruppi cover, temperatura, umidita', luminosita', qualita' aria, presenza e contatti; `Diagnostica HDL` resta diretta.
+- `Manutenzione` resta diretta e apre subito gli strumenti MQTT. Conservati i deep link legacy `#scenarios`, `#devices/<sezione>` e `#exposure` tramite instradamento compatibile.
+- Corretto il collegamento del marchio Hub verso `Stato e informazioni`, evitando il vecchio hash generico dei dispositivi.
+- Collaudo visivo live completato su Azioni Home, Esposizione interfacce, Dispositivi HDL e Manutenzione; rami, sottopagine, stato attivo e pannelli aperti verificati.
+- Test finali: `53 passed`; controlli JavaScript, compilazione Python e `git diff --check` superati.
+
+### Gerarchia pagine e apertura diretta - 2026-10-02
+
+- Release installata: `0.1.470`; commit `36b545b` pubblicato su `origin/main`.
+- `Scenari e automazioni` è ora un ramo con due sottopagine reali: `Scenari multi-bus` e `Trigger Home Assistant`.
+- Il ramo selezionato si apre automaticamente e ciascuna pagina mostra subito il relativo contenuto aperto.
+- `Home Assistant`, avendo una sola pagina, resta una voce diretta; `Entità da Home Assistant` viene aperta immediatamente senza accordion chiuso.
+- Conservata la compatibilità del precedente deep link `#scenarios`, indirizzato alla gestione scenari multi-bus.
+- Collaudo visivo live completato sulle tre destinazioni; menu, stato attivo e contenuti verificati.
+- Test: `53 passed`; JavaScript, Python compile e diff check superati.
+
+### Audit globale dashboard e collaudo live - 2026-10-01
+
+- Release installata: `0.1.469`; commit e `origin/main` allineati a `76f1e87`.
+- Verificate tutte le route utente (`home`, `home2`, `e-face`, luci, cover, extra, scenari, serrature e Ksenia), le API snapshot/Ksenia e tutte le destinazioni Admin della nuova sidebar: risposta HTTP `200`.
+- Ripristinato l'accesso diretto a pagina, catalogo e comandi Ksenia sulla porta utente; le autorizzazioni operative restano validate server-side.
+- Sidebar resa univoca: HDL, Ksenia e Home Assistant attivi; KNX, BTicino, Tuya, Modbus e DALI pianificati; nessun duplicato Home Assistant o Info.
+- Separata Diagnostica HDL dagli strumenti globali; backup e ripristino hanno una destinazione dedicata.
+- Ksenia verificata live online, compatibile, MQTT connessa e con 9 risorse; dashboard Ksenia ripulita dal JSON grezzo con stati e comandi leggibili e ambienti visibili.
+- Panoramica globale corretta: Ksenia non appare più `Non collegato`, mostra 9 dispositivi e partecipa al totale globale di 185 dispositivi.
+- Verifica visiva desktop eseguita pagina per pagina sull'installazione reale; organizzazione, ambienti, scenari, info, diagnostica, manutenzione, strumenti e anteprime risultano caricate e coerenti.
+- Test finali: `53 passed`; JavaScript, Python compile, HTML, `git diff --check`, route runtime e log di avvio superati. Restano soltanto warning FastAPI di deprecazione, non errori runtime.
+
+### Correzione post-collaudo cache/menu - 2026-10-01
+
+- Versione candidata: `0.1.466`.
+- Risolta la causa della pagina vuota e del vecchio pannello ancora visibile: aggiunto cache-buster agli asset shell/organizzazione in Admin e pagine utente.
+- Menu `Bus e integrazioni` piatto e completo: HDL, Ksenia, Home Assistant, KNX, BTicino, Tuya, Modbus, DALI; rimosso il contenitore `Altre integrazioni`.
+- Home Assistant eliminato dalla Programmazione e mantenuto una sola volta come integrazione attiva.
+- Badge attivo ripristinato su HDL e Ksenia; panoramica riordinata con Ksenia subito dopo HDL.
+- Verifica Ksenia live: detected/compatible/MQTT online, 9 dispositivi, nessun errore.
+- Test: `50 passed`, JavaScript e diff check superati.
+
+### Revisione navigazione e palette Hub - 2026-10-01
+
+- Versione candidata: `0.1.465`.
+- Sidebar ricostruita per attivita' installatore: programmazione globale, driver, anteprime utente separate e sistema.
+- `Scenari e automazioni` apre l'editor Admin con configurazione e trigger; la UI esecutiva e' confinata alle anteprime.
+- Editor scenari reso installatore-first: controlli visuali in primo piano e JSON confinato in `Strumenti avanzati`.
+- Palette unica grafite/ciano applicata alla shell e alle superfici comuni Admin/User; colori semantici conservati per stato, successo e pericolo.
+- Colori base Admin allineati anche prima del caricamento della shell, eliminando il fallback grigio.
+- Driver futuri raccolti nel ramo compatto `Altre integrazioni`.
+- Compatibilita': nessuna modifica a driver, API, route, persistenza, MQTT, Discovery o identificativi.
+- Test: suite Hub completa `50 passed`, sintassi JavaScript, compilazione Python e diff check superati.
+- Push: `origin/main` allineato a `db7c2a3`.
+- Backup Supervisor pre-update: `14930047` (`Pre e-Control Hub 0.1.465`).
+- Installazione: aggiornamento da `0.1.462` a `0.1.465` completato; add-on `started`, nessun update pendente.
+- Smoke test: porte 8124/8125 e route health/meta/home/Admin scenari rispondono `200`; gateway HDL avviato, nessun errore di startup rilevato.
+- Verifica visiva live desktop superata su Admin Scenari e nuova sidebar.
+
+### Correzione collaudo organizzazione Hub - 2026-10-01
+
+- Versione candidata: `0.1.464`.
+- Separata la pagina `Dispositivi e presentazione` da `Piani, stanze e gruppi` e da `Azioni Home`.
+- Rimossi dai filtri dispositivi `Sicurezza` e `Scenari`: la sicurezza Ksenia resta esclusa dal contratto Smart Home e gli scenari usano le aree dedicate.
+- Eventuali categorie legacy non vengono cancellate durante il salvataggio.
+- Rimossa la dicitura errata `JSON`; il riquadro storico e' ora `Ordine ambienti legacy` e spiega il formato testuale HDL.
+- Archivio autorevole invariato: `/data/organization.json`, persistente e incluso nel backup.
+- Test: `49 passed`; sintassi JavaScript, compilazione Python e diff check superati.
+- Gate: nessun push, installazione o deploy eseguito.
+
+### Esito CHANGE-2026-013 - 2026-10-01
+
+- Versione candidata: `0.1.463`.
+- Commit locale: `1bf7aaf` (`Clarify Hub organization ownership 0.1.463`).
+- UI organizzazione: rimossi numero posizione, Preferito e Scorciatoia; ordine delegato al drag e-Face; gruppi spiegati come insiemi logici facoltativi.
+- Compatibilita': campi persistenti legacy conservati; nessuna modifica a MQTT, Discovery, identificativi o comandi bus.
+- Test: `49 passed`, JavaScript valido, Python compile e diff check superati.
+- Gate: nessun push, installazione o deploy eseguito.
+
 ### Esito producer CHANGE-2026-011 Smart Home per e-Face — 2026-10-01
 
 - Stato: producer driver-neutral completato, verificato e committato localmente; hash definitivo registrato nel work order condiviso; nessun push/installazione/deploy/release.
@@ -303,3 +435,42 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 - Tutti i collegamenti verso le pagine Admin ora usano la route esplicita `index.html#<pagina>`; eliminato il calcolo tramite directory relativa che nell'Ingress poteva perdere l'hash e aprire la Home.
 - Confermata la pagina `Entità da Home Assistant` sotto Bus e integrazioni.
 - Versione aggiornata coerentemente a `0.1.453`; backend operativo, HDL BusPro, MQTT, Discovery e persistenza invariati.
+
+## Handoff corrente — BTicino 0.1.481
+
+- Risultato: implementate e mantenute separate le integrazioni `myhome_scs` (BTicino MyHOME SCS/OpenWebNet locale) e `home_plus_control` (BTicino/Legrand Home + Control tramite Netatmo cloud).
+- Architettura: e-Control gestisce configurazione, catalogazione, diagnostica, opt-in e organizzazione; Home Assistant fornisce i motori aggiornati; e-Face riceve esclusivamente i dispositivi abilitati nel catalogo Smart Home normalizzato.
+- UI: ciascuna integrazione dispone di pagine singole Panoramica, Dispositivi e Diagnostica sotto il ramo BTicino e Legrand; stati uniformati ad ATTIVO/INATTIVO.
+- MyHOME: installatore del componente OpenWebNet-HA/MyHOME 0.9.4 con URL e SHA-256 bloccati, limite dimensione, validazione percorsi/manifest e backup della versione precedente. Installazione e riavvio non eseguiti sull'impianto perché non è disponibile un gateway MyHOME per il collaudo.
+- Home + Control: configurazione guidata tramite il config flow ufficiale Home Assistant Netatmo; nessun account collegato durante il collaudo.
+- Backup: incluso lo stato persistente dei due cataloghi nel backup/ripristino e-Control.
+- Compatibilità: HDL, Ksenia, catalogo Home Assistant legacy, KNX, MQTT, Discovery e identificativi esistenti conservati.
+- Test: `67 passed`; Python compile, JavaScript syntax, JSON parsing e diff check superati.
+- Pubblicazione: commit `487fa19`, push su `origin/main`, add-on aggiornato e avviato alla versione `0.1.481`.
+- Verifica runtime: endpoint Admin MyHOME e Home + Control rispondono; entrambi risultano correttamente INATTIVI/non configurati con zero dispositivi. Conteggi snapshot separati e aggregato BTicino coerenti a zero.
+- Rischio residuo: collaudo fisico e comandi reali richiedono rispettivamente gateway SCS/OpenWebNet o account Home + Control/Netatmo.
+- Prossimo passo: quando sarà disponibile l'impianto, eseguire configurazione guidata, sincronizzazione, abilitazione selettiva dispositivi e prova completa e-Face/comandi.
+
+## Handoff corrente — e-Modbus Manager 0.1.482
+
+- Risultato: implementato e pubblicato e-Modbus Manager con configuratore e-Control per TCP, seriale RTU/RS-485, RTU-over-TCP e UDP.
+- Modello: connessioni, profili versionati, registri validati, dispositivi/slave, catalogo Home Assistant e opt-in e-Face persistenti in `/data/modbus_manager.json`.
+- Home Assistant nascosto: e-Control genera `/config/modbus_econtrol.yaml`, inserisce una sola volta l'include nel file principale, crea backup preventivo, rifiuta sezioni Modbus già gestite esternamente e richiama la validazione Supervisor prima del riavvio esplicito.
+- UI: pagine Panoramica, Connessioni, Profili e registri, Dispositivi e Diagnostica; tutorial contestuale breve per ogni trasporto con cablaggio, parametri e dati da reperire nel manuale.
+- Sicurezza: entità non esposte automaticamente; sola lettura predefinita; scritture abilitate esplicitamente; limiti, indirizzi, tipi dato, scala, offset, swap e framing validati.
+- Prima capability produttiva: sensori, sensori binari e switch, sufficienti per telemetria, stati, consensi e allarmi PDC. Le entità HVAC composte richiedono i manuali reali dei costruttori per modellare setpoint, modalità e conferme correttamente.
+- Backup: archivio Modbus incluso nell'export/import generale e-Control.
+- Test: 73 test superati; compilazione Python, sintassi JavaScript esterna e inline, JSON e diff check superati.
+- Pubblicazione: commit `8523561`, push su `origin/main`, add-on aggiornato e avviato alla versione `0.1.482`.
+- Smoke test reale: API e-Modbus Manager disponibile, UI contiene tutorial RS-485/TCP, stato iniziale coerente (zero connessioni/profili/dispositivi), log senza errori.
+- Non eseguito: nessuna configurazione fittizia applicata e nessun riavvio Home Assistant, per non alterare l'impianto senza una pompa di calore/gateway reale.
+- Prossimo passo: acquisire marca, modello e manuale registri della prima PDC; creare il profilo ufficiale e svolgere collaudo lettura prima di abilitare comandi.
+
+## Handoff corrente — interfaccia e-Control e reset Netatmo 0.1.490
+
+- Regola UI applicata globalmente: il motore sottostante non viene nominato nelle schermate installatore o utente; le diciture sono state sostituite con termini e-Control, integrazioni esterne e servizi di sistema.
+- Home + Control: eliminata dalla UX la scelta del motore OAuth; e-Control seleziona automaticamente le credenziali applicative `e-Control Hub`.
+- Documentazione: rimossi collegamenti e riquadri esterni non necessari; mantenuta una guida Netatmo breve direttamente nell'integrazione.
+- Recupero: aggiunto il comando `Azzera tentativo`, che conserva le credenziali Netatmo, elimina i flussi recuperabili e riavvia il servizio d'integrazione per liberare anche i flussi OAuth non enumerabili.
+- Navigazione: la voce del catalogo generico è ora `Integrazioni esterne`, con icona neutra e senza marchi del motore sottostante.
+- Test: build e-Face completata, compilazione Python superata, `73 passed`; controllo testuale delle superfici UI senza occorrenze vietate.

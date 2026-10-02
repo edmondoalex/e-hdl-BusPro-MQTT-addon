@@ -66,7 +66,7 @@
           <li><a href="#dispositivi">Dispositivi: come aggiungerli bene</a></li>
           <li><a href="#scenari">Scenari: RUN, ON/OFF, trigger</a></li>
           <li><a href="#covers">Tapparelle: Su/Giu/Stop, Min, Step</a></li>
-          <li><a href="#ha">Entita Home Assistant esterne</a></li>
+          <li><a href="#ha">Entità esterne</a></li>
           <li><a href="#mqtt">MQTT discovery e pulizia</a></li>
           <li><a href="#diagnosi">Diagnosi problemi tipici</a></li>
           <li><a href="#checklist">Checklist finale</a></li>
@@ -78,7 +78,7 @@
         <ul>
           <li><b>Blocco A</b>: BusPro UDP (parla con moduli HDL)</li>
           <li><b>Blocco B</b>: Store configurazione addon</li>
-          <li><b>Blocco C</b>: MQTT discovery/stati verso Home Assistant</li>
+          <li><b>Blocco C</b>: distribuzione MQTT di dispositivi e stati</li>
           <li><b>Blocco D</b>: UI Admin e UI Utente</li>
           <li><b>Figura 1</b>: Schema a blocchi del flusso</li>
           <li><b>Esempio 1</b>: Creo una luce dimmer</li>
@@ -93,7 +93,7 @@
           <ol>
             <li><b>BusPro UDP</b>: parla con i moduli HDL (luci, cover, sensori).</li>
             <li><b>Store interno</b>: salva configurazione (dispositivi, scenari, gruppi, trigger).</li>
-            <li><b>MQTT Discovery</b>: crea/aggiorna entita in Home Assistant.</li>
+            <li><b>MQTT Discovery</b>: crea e aggiorna le entità del sistema.</li>
             <li><b>UI Web</b>: Admin per configurare, pagine utente per usare.</li>
           </ol>
           <div class="note">Se capisci questo, capisci il 90% dell'addon.</div>
@@ -118,7 +118,7 @@
               <line x1="220" y1="59" x2="260" y2="59" stroke="#6ea8fe" stroke-width="2"/>
               <line x1="470" y1="59" x2="510" y2="59" stroke="#6ea8fe" stroke-width="2"/>
               <line x1="720" y1="59" x2="760" y2="59" stroke="#6ea8fe" stroke-width="2"/>
-              <text x="10" y="145" fill="#9aa4b2" font-size="12" font-family="Arial">Figura 1 - Flusso principale: impianto -> addon -> Home Assistant -> controllo utente</text>
+              <text x="10" y="145" fill="#9aa4b2" font-size="12" font-family="Arial">Figura 1 - Flusso principale: impianto -> e-Control -> interfaccia utente</text>
             </svg>
             <div class="figcap">Figura 1: schema a blocchi (A-B-C-D) usato in tutta la guida.</div>
           </div>
@@ -210,9 +210,9 @@
       </details>
 
       <details id="ha" open>
-        <summary>6) Entita Home Assistant esterne</summary>
+        <summary>6) Entità esterne</summary>
         <div class="body">
-          <p>Sezione <b>Home Assistant devices (UI utente)</b> serve per mostrare entita HA in pagine utente addon.</p>
+          <p>La sezione <b>Entità esterne</b> consente di catalogare nelle interfacce e-Control i dispositivi acquisiti dalle integrazioni.</p>
           <ul>
             <li>Non crea un device BusPro nuovo.</li>
             <li>Non passa da MQTT discovery BusPro: usa API HA.</li>

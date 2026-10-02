@@ -432,7 +432,7 @@
         }
         if (route.startsWith('ha:')) {
           const entityId = route.slice('ha:'.length);
-          if (!entityId.startsWith('cover.')) throw new Error('Entita cover Home Assistant non valida');
+          if (!entityId.startsWith('cover.')) throw new Error('Entità cover esterna non valida');
           await getJson(`api/control/ha/cover/${encodeURIComponent(entityId)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command: targetCommand}) });
           return;
         }
@@ -448,7 +448,7 @@
         }
         if (route.startsWith('ha:')) {
           const entityId = route.slice('ha:'.length);
-          if (!entityId.startsWith('cover.')) throw new Error('Entita cover Home Assistant non valida');
+          if (!entityId.startsWith('cover.')) throw new Error('Entità cover esterna non valida');
           await getJson(`api/control/ha/cover/${encodeURIComponent(entityId)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command:'SET_POSITION', position: targetPosition}) });
           return;
         }

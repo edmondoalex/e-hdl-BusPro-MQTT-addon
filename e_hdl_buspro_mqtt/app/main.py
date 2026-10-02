@@ -86,7 +86,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.489"
+ADDON_VERSION = "0.1.490"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -619,7 +619,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=int(exc.code or 502), detail=detail or str(exc))
         file_id = str(result.get("file_id") or "") if isinstance(result, dict) else ""
         if not file_id:
-            raise HTTPException(status_code=502, detail="Home Assistant did not return an upload id")
+            raise HTTPException(status_code=502, detail="Il motore di integrazione non ha restituito un identificativo di caricamento")
         return file_id
 
     def _ha_fetch(path: str, *, timeout_s: int = 8, use_auth: bool = True) -> tuple[bytes, str]:
@@ -6388,10 +6388,10 @@ self.addEventListener('fetch', (event) => {{
     @api.post("/api/integrations/knx/sync")
     async def api_knx_sync():
         if not _ha_enabled():
-            raise HTTPException(status_code=503, detail="Home Assistant API not available")
+            raise HTTPException(status_code=503, detail="Servizi di integrazione not available")
         states = await asyncio.to_thread(_ha_request, "GET", "/api/states", payload=None, timeout_s=15)
         if not isinstance(states, list):
-            raise HTTPException(status_code=502, detail="Invalid Home Assistant states response")
+            raise HTTPException(status_code=502, detail="Risposta stati del motore di integrazione non valida")
         try:
             result = await knx_manager.sync(states)
         except KnxNotConfigured as exc:
@@ -6411,7 +6411,7 @@ self.addEventListener('fetch', (event) => {{
     @api.post("/api/integrations/knx/provision/start")
     async def api_knx_provision_start():
         if not _ha_enabled():
-            raise HTTPException(status_code=503, detail="Home Assistant API not available")
+            raise HTTPException(status_code=503, detail="Servizi di integrazione not available")
         try:
             result = await asyncio.to_thread(
                 _ha_request,
@@ -6466,7 +6466,7 @@ self.addEventListener('fetch', (event) => {{
     @api.get("/api/integrations/knx/monitor")
     async def api_knx_monitor():
         if knx_manager.ws is None:
-            raise HTTPException(status_code=503, detail="Home Assistant API not available")
+            raise HTTPException(status_code=503, detail="Servizi di integrazione not available")
         try:
             result = await knx_manager.ws.command("knx/group_monitor_info")
         except Exception as exc:
@@ -6514,7 +6514,7 @@ self.addEventListener('fetch', (event) => {{
             "status": bticino_manager.status(clean),
             "devices": list((data.get("devices") or {}).values()),
             "component": myhome_installer.status() if clean == "myhome_scs" else {
-                "installed": True, "managed_version": "Home Assistant Core", "official": True,
+                "installed": True, "managed_version": "Motore di integrazione", "official": True,
             },
         }
 
@@ -6524,7 +6524,7 @@ self.addEventListener('fetch', (event) => {{
             result = await asyncio.to_thread(myhome_installer.install)
         except Exception as exc:
             raise HTTPException(status_code=502, detail=str(exc))
-        return {"ok": True, "component": result, "message": "Componente installato; riavvia Home Assistant Core per caricarlo"}
+        return {"ok": True, "component": result, "message": "Componente installato; riavvia Motore di integrazione per caricarlo"}
 
     @api.post("/api/integrations/bticino/myhome_scs/component/restart")
     async def api_myhome_component_restart():
@@ -6535,10 +6535,10 @@ self.addEventListener('fetch', (event) => {{
     async def api_bticino_sync(source: str):
         clean = _bticino_source(source)
         if not _ha_enabled():
-            raise HTTPException(status_code=503, detail="Home Assistant API not available")
+            raise HTTPException(status_code=503, detail="Servizi di integrazione not available")
         states = await asyncio.to_thread(_ha_request, "GET", "/api/states", payload=None, timeout_s=15)
         if not isinstance(states, list):
-            raise HTTPException(status_code=502, detail="Invalid Home Assistant states response")
+            raise HTTPException(status_code=502, detail="Risposta stati del motore di integrazione non valida")
         try:
             result = await bticino_manager.sync(clean, states)
         except PermissionError as exc:
@@ -6560,7 +6560,7 @@ self.addEventListener('fetch', (event) => {{
     async def api_bticino_provision_start(source: str):
         clean = _bticino_source(source)
         if not _ha_enabled():
-            raise HTTPException(status_code=503, detail="Home Assistant API not available")
+            raise HTTPException(status_code=503, detail="Servizi di integrazione not available")
         domain = BTICINO_INTEGRATIONS[clean]["domain"]
         try:
             result = await asyncio.to_thread(
@@ -6664,10 +6664,50 @@ self.addEventListener('fetch', (event) => {{
                 )
         return {"ok": True, "source": clean, "flow": result}
 
+    @api.post("/api/integrations/bticino/{source}/provision/reset")
+    async def api_bticino_provision_reset(source: str):
+        clean = _bticino_source(source)
+        domain = BTICINO_INTEGRATIONS[clean]["domain"]
+        removed = 0
+        try:
+            if bticino_manager.ws is not None:
+                progress = await bticino_manager.ws.command("config_entries/flow/progress")
+                for row in progress if isinstance(progress, list) else []:
+                    if not isinstance(row, dict):
+                        continue
+                    handler = row.get("handler")
+                    handlers = {str(part or "") for part in handler} if isinstance(handler, (list, tuple)) else {str(handler or "")}
+                    flow_id = str(row.get("flow_id") or "").strip()
+                    if domain not in handlers or not flow_id:
+                        continue
+                    try:
+                        await asyncio.to_thread(
+                            _ha_request,
+                            "DELETE",
+                            f"/api/config/config_entries/flow/{urllib.parse.quote(flow_id, safe='')}",
+                            payload=None,
+                            timeout_s=15,
+                        )
+                        removed += 1
+                    except Exception:
+                        _LOGGER.warning("Unable to remove stale %s flow %s", domain, flow_id, exc_info=True)
+            # OAuth flows are not always exposed by the progress API. Restarting
+            # the integration service is the reliable final cleanup and leaves
+            # the saved e-Control application credentials untouched.
+            await asyncio.to_thread(_supervisor_request, "POST", "/core/restart", timeout_s=30)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail="Impossibile azzerare il tentativo di collegamento: " + str(exc))
+        return {
+            "ok": True,
+            "source": clean,
+            "removed_flows": removed,
+            "message": "Tentativi precedenti azzerati. Attendi il riavvio dei servizi e riprova.",
+        }
+
     @api.get("/api/integrations/bticino/home_plus_control/credentials")
     async def api_homeplus_credentials_status():
         if bticino_manager.ws is None:
-            raise HTTPException(status_code=503, detail="Home Assistant API not available")
+            raise HTTPException(status_code=503, detail="Servizi di integrazione not available")
         try:
             rows = await bticino_manager.ws.command("application_credentials/list")
         except Exception as exc:
@@ -6682,7 +6722,7 @@ self.addEventListener('fetch', (event) => {{
     @api.post("/api/integrations/bticino/home_plus_control/credentials")
     async def api_homeplus_credentials_save(payload: dict[str, Any]):
         if bticino_manager.ws is None:
-            raise HTTPException(status_code=503, detail="Home Assistant API not available")
+            raise HTTPException(status_code=503, detail="Servizi di integrazione not available")
         client_id = str(payload.get("client_id") or "").strip()
         client_secret = str(payload.get("client_secret") or "").strip()
         if not 8 <= len(client_id) <= 256 or not 8 <= len(client_secret) <= 512:
@@ -7049,7 +7089,7 @@ self.addEventListener('fetch', (event) => {{
         if not guard_enabled:
             raise HTTPException(status_code=404, detail="Not Found")
         if not _ha_enabled():
-            raise HTTPException(status_code=503, detail="Home Assistant not available")
+            raise HTTPException(status_code=503, detail="Motore di integrazione non disponibile")
         eid = str(entity_id or "").strip().lower()
         try:
             try:
@@ -7183,7 +7223,7 @@ self.addEventListener('fetch', (event) => {{
         if not guard_enabled:
             raise HTTPException(status_code=404, detail="Not Found")
         if not _ha_enabled():
-            raise HTTPException(status_code=503, detail="Home Assistant not available")
+            raise HTTPException(status_code=503, detail="Motore di integrazione non disponibile")
         eid = str(entity_id or "").strip().lower()
         if not eid.startswith("camera."):
             raise HTTPException(status_code=400, detail="entity_id must be camera.*")
@@ -10449,7 +10489,7 @@ self.addEventListener('fetch', (event) => {{
     async def _smart_home_ha_command(item: dict[str, Any], action: str, value: Any):
         entity_id = str(item.get("home_assistant_entity_id") or "").strip().lower()
         if not entity_id or "." not in entity_id:
-            raise HTTPException(status_code=409, detail="device has no Home Assistant mapping")
+            raise HTTPException(status_code=409, detail="il dispositivo non ha una mappatura esterna")
         domain = entity_id.split(".", 1)[0]
         service = ""
         data: dict[str, Any] = {"entity_id": entity_id}
@@ -10511,7 +10551,7 @@ self.addEventListener('fetch', (event) => {{
     @api.post("/api/control/ha/light/{entity_id}")
     async def control_ha_light(entity_id: str, payload: dict[str, Any]):
         if not _ha_enabled():
-            raise HTTPException(status_code=503, detail="Home Assistant API not available (SUPERVISOR_TOKEN missing)")
+            raise HTTPException(status_code=503, detail="Servizi di integrazione not available")
         eid = str(entity_id or "").strip().lower()
         if not eid.startswith("light."):
             raise HTTPException(status_code=400, detail="entity_id must start with light.")
@@ -10534,7 +10574,7 @@ self.addEventListener('fetch', (event) => {{
     @api.post("/api/control/ha/switch/{entity_id}")
     async def control_ha_switch(entity_id: str, payload: dict[str, Any]):
         if not _ha_enabled():
-            raise HTTPException(status_code=503, detail="Home Assistant API not available (SUPERVISOR_TOKEN missing)")
+            raise HTTPException(status_code=503, detail="Servizi di integrazione not available")
         eid = str(entity_id or "").strip().lower()
         if not eid.startswith("switch."):
             raise HTTPException(status_code=400, detail="entity_id must start with switch.")
@@ -10548,7 +10588,7 @@ self.addEventListener('fetch', (event) => {{
     @api.post("/api/control/ha/cover/{entity_id}")
     async def control_ha_cover(entity_id: str, payload: dict[str, Any]):
         if not _ha_enabled():
-            raise HTTPException(status_code=503, detail="Home Assistant API not available (SUPERVISOR_TOKEN missing)")
+            raise HTTPException(status_code=503, detail="Servizi di integrazione not available")
         eid = str(entity_id or "").strip().lower()
         if not eid.startswith("cover."):
             raise HTTPException(status_code=400, detail="entity_id must start with cover.")
@@ -10571,7 +10611,7 @@ self.addEventListener('fetch', (event) => {{
     @api.post("/api/control/ha/lock/{entity_id}")
     async def control_ha_lock(entity_id: str, payload: dict[str, Any]):
         if not _ha_enabled():
-            raise HTTPException(status_code=503, detail="Home Assistant API not available (SUPERVISOR_TOKEN missing)")
+            raise HTTPException(status_code=503, detail="Servizi di integrazione not available")
         eid = str(entity_id or "").strip().lower()
         if not (eid.startswith("lock.") or eid.startswith("switch.")):
             raise HTTPException(status_code=400, detail="entity_id must start with lock. or switch.")
@@ -10611,7 +10651,7 @@ self.addEventListener('fetch', (event) => {{
 
         if kind == "ha":
             if not _ha_enabled():
-                raise HTTPException(status_code=503, detail="Home Assistant API not available (SUPERVISOR_TOKEN missing)")
+                raise HTTPException(status_code=503, detail="Servizi di integrazione not available")
             eid = str(data.get("entity_id") or "").strip().lower()
             if not eid or "." not in eid:
                 raise HTTPException(status_code=400, detail="Invalid action: data.entity_id required")

@@ -188,7 +188,7 @@ const heroSubtitle = computed(() => {
   if (activeCategory.value === 'lights') return `${onCount.value} luci accese in questa stanza`
   if (activeCategory.value === 'covers') return 'Controllo tapparelle, tende e aperture'
   if (activeCategory.value === 'locks') return 'Serrature, cancelli e sicurezza'
-  if (activeCategory.value === 'sensors') return 'Misure, presenza e stati da Home Assistant'
+  if (activeCategory.value === 'sensors') return 'Misure, presenza e stati dell’impianto'
   return 'Comandi rapidi, prese e servizi'
 })
 
