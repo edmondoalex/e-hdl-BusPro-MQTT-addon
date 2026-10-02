@@ -26,6 +26,10 @@ COMMAND_CAPABILITIES = {
 }
 
 
+class KnxNotConfigured(RuntimeError):
+    pass
+
+
 def _device_class(domain: str, state: dict[str, Any]) -> str:
     attrs = state.get("attributes") if isinstance(state, dict) else {}
     attrs = attrs if isinstance(attrs, dict) else {}
@@ -228,6 +232,9 @@ class KnxManager:
         if self.ws is None:
             raise RuntimeError("SUPERVISOR_TOKEN missing")
         try:
+            entries = await self.ws.command("config_entries/get", domain="knx")
+            if not isinstance(entries, list) or not entries:
+                raise KnxNotConfigured("KNX integration is not configured")
             registry = await self.ws.command("config/entity_registry/list")
             base_data = await self.ws.command("knx/get_base_data")
             project = await self.ws.command("knx/get_knx_project") if base_data.get("project_info") else {}
@@ -252,4 +259,5 @@ class KnxManager:
             "project": self.base_data.get("project_info") or data.get("project") or {},
             "devices": len(devices), "enabled": sum(bool(x.get("enabled")) for x in devices.values()),
             "last_sync": data.get("last_sync"), "error": self.last_error,
+            "setup_required": self.last_error == "KNX integration is not configured",
         }

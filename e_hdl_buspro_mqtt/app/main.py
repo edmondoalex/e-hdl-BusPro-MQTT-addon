@@ -46,7 +46,7 @@ from .discovery import (
 )
 from .icons import ensure_mdi_icons, parse_mdi_icon, placeholder_svg
 from .ksenia_consumer import ContractError, KseniaSmartHomeConsumer
-from .knx_manager import KnxManager
+from .knx_manager import KnxManager, KnxNotConfigured
 from .organization import OrganizationStore, hdl_presentation_class
 from .smart_home import build_smart_home, validate_command_request
 from .mqtt_client import MqttClient
@@ -83,7 +83,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.474"
+ADDON_VERSION = "0.1.475"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -6236,6 +6236,8 @@ self.addEventListener('fetch', (event) => {{
             raise HTTPException(status_code=502, detail="Invalid Home Assistant states response")
         try:
             result = await knx_manager.sync(states)
+        except KnxNotConfigured as exc:
+            raise HTTPException(status_code=409, detail={"code": "setup_required", "message": str(exc)})
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc))
         except Exception as exc:
@@ -6247,6 +6249,38 @@ self.addEventListener('fetch', (event) => {{
         _sync_organization()
         await _broadcast_devices()
         return {"ok": True, "result": result, "status": knx_manager.status()}
+
+    @api.post("/api/integrations/knx/provision/start")
+    async def api_knx_provision_start():
+        if not _ha_enabled():
+            raise HTTPException(status_code=503, detail="Home Assistant API not available")
+        try:
+            result = await asyncio.to_thread(
+                _ha_request,
+                "POST",
+                "/api/config/config_entries/flow",
+                payload={"handler": "knx"},
+                timeout_s=20,
+            )
+        except HTTPException:
+            raise
+        if not isinstance(result, dict):
+            raise HTTPException(status_code=502, detail="Invalid KNX provisioning response")
+        return {"ok": True, "flow": result}
+
+    @api.post("/api/integrations/knx/provision/{flow_id}")
+    async def api_knx_provision_step(flow_id: str, payload: dict[str, Any]):
+        clean_id = str(flow_id or "").strip()
+        if not clean_id or len(clean_id) > 128:
+            raise HTTPException(status_code=400, detail="invalid flow id")
+        result = await asyncio.to_thread(
+            _ha_request,
+            "POST",
+            f"/api/config/config_entries/flow/{urllib.parse.quote(clean_id, safe='')}",
+            payload=payload,
+            timeout_s=30,
+        )
+        return {"ok": True, "flow": result}
 
     @api.put("/api/integrations/knx/devices/{device_id}")
     async def api_knx_device_update(device_id: str, payload: dict[str, Any]):

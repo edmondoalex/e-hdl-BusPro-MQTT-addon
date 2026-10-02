@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from e_hdl_buspro_mqtt.app.knx_manager import KnxCatalogStore
+from e_hdl_buspro_mqtt.app.knx_manager import KnxCatalogStore, KnxManager, KnxNotConfigured
 
 
 class KnxCatalogStoreTests(unittest.TestCase):
@@ -50,6 +50,36 @@ class KnxCatalogStoreTests(unittest.TestCase):
             device_id = next(iter(store.load()["devices"]))
             store.sync([], {})
             self.assertTrue(store.load()["devices"][device_id]["orphaned"])
+
+
+class _FakeWs:
+    def __init__(self, replies):
+        self.replies = replies
+
+    async def command(self, command, **kwargs):
+        return self.replies[command]
+
+
+class KnxManagerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_sync_reports_missing_knx_config_entry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = KnxManager(str(Path(tmp) / "knx.json"), token="token")
+            manager.ws = _FakeWs({"config_entries/get": []})
+            with self.assertRaises(KnxNotConfigured):
+                await manager.sync([])
+            self.assertTrue(manager.status()["setup_required"])
+
+    async def test_sync_reads_registry_only_after_knx_is_configured(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = KnxManager(str(Path(tmp) / "knx.json"), token="token")
+            manager.ws = _FakeWs({
+                "config_entries/get": [{"entry_id": "knx-entry"}],
+                "config/entity_registry/list": [],
+                "knx/get_base_data": {"project_info": None, "connection_info": {"version": "3.0"}},
+            })
+            result = await manager.sync([])
+            self.assertEqual(0, result["total"])
+            self.assertEqual("3.0", manager.status()["xknx_version"])
 
 
 if __name__ == "__main__":
