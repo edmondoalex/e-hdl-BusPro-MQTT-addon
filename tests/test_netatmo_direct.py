@@ -20,6 +20,21 @@ class _Response:
 
 
 class NetatmoDirectTests(unittest.TestCase):
+    def test_discovery_merges_topology_names_rooms_and_live_state(self):
+        with tempfile.TemporaryDirectory() as folder:
+            manager = NetatmoDirect(str(Path(folder) / "netatmo.json"))
+            topology = {"body": {"homes": [{
+                "id": "home-1", "name": "Casa",
+                "modules": [{"id": "09:00", "type": "NRV", "module_name": "Valvola cucina"}],
+                "rooms": [{"id": "room-1", "name": "Cucina", "module_ids": ["09:00"]}],
+            }]}}
+            status = {"body": {"home": {"modules": [{"id": "09:00", "type": "NRV", "reachable": True}]}}}
+            with patch.object(manager, "_api", side_effect=[topology, status]):
+                rows = manager.discover()
+            self.assertEqual("Valvola cucina", rows[0]["module_name"])
+            self.assertEqual("Cucina", rows[0]["room_name"])
+            self.assertEqual("room-1", rows[0]["room_id"])
+            self.assertTrue(rows[0]["reachable"])
     def test_direct_oauth_never_uses_external_engine_relay(self):
         with tempfile.TemporaryDirectory() as folder:
             manager = NetatmoDirect(str(Path(folder) / "netatmo.json"))

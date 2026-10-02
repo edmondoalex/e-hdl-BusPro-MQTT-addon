@@ -143,12 +143,28 @@ class NetatmoDirect:
                 continue
             status = self._api("/api/homestatus", {"home_id": home["id"]})
             live_home = (status.get("body") or {}).get("home") or {}
-            rooms = {str(x.get("id")): str(x.get("name") or "") for x in live_home.get("rooms") or [] if isinstance(x, dict)}
+            topology_modules = {
+                str(item.get("id")): item for item in home.get("modules") or []
+                if isinstance(item, dict) and item.get("id")
+            }
+            rooms: dict[str, str] = {}
+            module_rooms: dict[str, str] = {}
+            for room in [*(home.get("rooms") or []), *(live_home.get("rooms") or [])]:
+                if not isinstance(room, dict) or not room.get("id"):
+                    continue
+                room_id, room_name = str(room["id"]), str(room.get("name") or "")
+                if room_name:
+                    rooms[room_id] = room_name
+                for module_id in room.get("module_ids") or []:
+                    module_rooms[str(module_id)] = room_id
             for module in live_home.get("modules") or []:
                 if not isinstance(module, dict) or not module.get("id"):
                     continue
+                module_id = str(module["id"])
+                merged = {**(topology_modules.get(module_id) or {}), **module}
+                room_id = str(merged.get("room_id") or module_rooms.get(module_id) or "")
                 rows.append({
-                    **module, "home_id": str(home["id"]), "home_name": str(home.get("name") or ""),
-                    "room_name": rooms.get(str(module.get("room_id") or ""), ""),
+                    **merged, "home_id": str(home["id"]), "home_name": str(home.get("name") or ""),
+                    "room_id": room_id, "room_name": rooms.get(room_id, ""),
                 })
         return rows

@@ -271,13 +271,20 @@ class BticinoCatalogStore:
                 seen.add(stable_id)
                 old = devices.get(stable_id) or {}
                 module_type = str(module.get("type") or "module").lower()
+                climate_types = {"natherm1", "nrv", "ots", "bns", "nsmarter"}
+                sensor_types = {"namain", "namodule1", "namodule2", "namodule3", "namodule4", "nacamera", "nhc"}
+                bridge_types = {"naplug"}
                 is_cover = any(key in module for key in ("current_position", "target_position"))
-                is_climate = any(key in module for key in ("therm_measured_temperature", "setpoint", "therm_setpoint_temperature"))
+                is_climate = module_type in climate_types or any(key in module for key in ("therm_measured_temperature", "setpoint", "therm_setpoint_temperature"))
                 is_light = "brightness" in module or "light" in module_type
-                domain = "cover" if is_cover else "climate" if is_climate else "light" if is_light else "switch"
+                is_sensor = module_type in sensor_types or "dashboard_data" in module
+                is_bridge = module_type in bridge_types
+                domain = "cover" if is_cover else "climate" if is_climate else "light" if is_light else "sensor" if is_sensor else "gateway" if is_bridge else "switch"
                 capabilities = (["open", "close", "stop", "position"] if is_cover else
                                 ["temperature", "target_temperature"] if is_climate else
                                 ["on", "off", "level"] if is_light and "brightness" in module else ["on", "off"])
+                if is_sensor or is_bridge:
+                    capabilities = []
                 state_value = module.get("on")
                 state = {"state": "ON" if state_value is True else "OFF" if state_value is False else str(module.get("status") or "unknown"), "attributes": deepcopy(module)}
                 row = {
@@ -286,7 +293,7 @@ class BticinoCatalogStore:
                     "group": str(module.get("room_name") or module.get("home_name") or "Netatmo"),
                     "domain": domain, "device_class": domain, "capabilities": capabilities,
                     "manufacturer": "Netatmo / BTicino", "model": str(module.get("type") or ""),
-                    "enabled": bool(old.get("enabled", False)), "read_only": bool(old.get("read_only", False)),
+                    "enabled": bool(old.get("enabled", False)), "read_only": bool(old.get("read_only", False) or is_sensor or is_bridge),
                     "orphaned": False, "direct": True, "state": state, "last_seen": time.time(),
                 }
                 added += int(not bool(old))

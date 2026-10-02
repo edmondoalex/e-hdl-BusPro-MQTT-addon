@@ -10,6 +10,24 @@ from e_hdl_buspro_mqtt.app.bticino_manager import BticinoCatalogStore, BticinoMa
 
 
 class BticinoCatalogStoreTests(unittest.TestCase):
+    def test_direct_netatmo_uses_real_module_types(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = BticinoCatalogStore(str(Path(tmp) / "bticino.json"))
+            store.sync_direct_netatmo([
+                {"id": "bridge", "type": "NAPlug", "module_name": "Bridge casa"},
+                {"id": "thermostat", "type": "NATherm1", "module_name": "Termostato sala", "room_name": "Sala"},
+                {"id": "valve", "type": "NRV", "module_name": "Valvola cucina", "room_name": "Cucina"},
+                {"id": "weather", "type": "NAMain", "module_name": "Meteo esterno", "dashboard_data": {"Temperature": 18.2}},
+            ])
+            rows = {row["native_id"]: row for row in store.load()["integrations"]["home_plus_control"]["devices"].values()}
+            self.assertEqual("gateway", rows["bridge"]["domain"])
+            self.assertTrue(rows["bridge"]["read_only"])
+            self.assertEqual("climate", rows["thermostat"]["domain"])
+            self.assertEqual("climate", rows["valve"]["domain"])
+            self.assertEqual("sensor", rows["weather"]["domain"])
+            self.assertEqual("Valvola cucina", rows["valve"]["name"])
+            self.assertEqual("Cucina", rows["valve"]["group"])
+
     def test_sources_are_independent_and_opt_in(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = BticinoCatalogStore(str(Path(tmp) / "bticino.json"))
