@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Ksenia Smart Home · e-Control Hub</title>
-  <link rel="stylesheet" href="static/hub/hub.css?v=0.1.475">
+  <link rel="stylesheet" href="static/hub/hub.css?v=0.1.476">
   <style>
     *{box-sizing:border-box}body{margin:0;background:#4a5358;color:#f4f7f8;font:14px/1.45 system-ui,Segoe UI,sans-serif}
     main{max-width:1180px;margin:auto;padding:30px 22px 80px}.hero,.panel{background:#202426;border:1px solid rgba(255,255,255,.13);border-radius:18px;padding:22px;margin-bottom:18px}.hero h1{margin:0 0 5px;font-size:30px}.muted{color:#aeb9bd}.status{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}.chip{padding:7px 11px;border-radius:999px;background:#151a1c;border:1px solid rgba(255,255,255,.13)}.ok{color:#4ee0a4}.warn{color:#ffd166}.bad{color:#ff758f}
@@ -13,7 +13,7 @@
 <body><main>
   <section class="hero"><div class="muted">INTEGRAZIONE SMART HOME</div><h1>Ksenia</h1><div class="muted">Uscite, cover, sensori ambientali, termostati e scenari autorizzati dal catalogo Ksenia. Sicurezza esclusa.</div><div class="status" id="status"></div><div class="error" id="error"></div></section>
   <section class="panel"><div class="tabs" id="tabs"></div><div class="grid" id="grid"></div></section>
-</main><script src="static/hub/hub-nav.js?v=0.1.475"></script><script>
+</main><script src="static/hub/hub-nav.js?v=0.1.476"></script><script>
 const labels={all:'Panoramica',light:'Uscite e luci',switch:'Uscite e luci',cover:'Cover e varchi',sensor:'Sensori ambientali',binary_sensor:'Sensori ambientali',climate:'Termostati',scene:'Scenari Smart Home'};
 let snap=null,filter=(location.hash||'#all').slice(1);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function groupKey(c){if(['light','switch','dimmer'].includes(c))return'light';if(['cover','gate','garage_door','awning','shutter'].includes(c))return'cover';if(['environment_sensor','temperature_sensor','humidity_sensor','illuminance_sensor'].includes(c))return'sensor';if(c==='thermostat')return'climate';if(c==='scenario')return'scene';return c}

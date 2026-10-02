@@ -83,7 +83,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.475"
+ADDON_VERSION = "0.1.476"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -6221,6 +6221,13 @@ self.addEventListener('fetch', (event) => {{
 
     @api.get("/api/integrations/knx")
     async def api_knx_snapshot():
+        if knx_manager.ws is not None and not knx_manager.base_data and not knx_manager.last_error:
+            try:
+                entries = await knx_manager.ws.command("config_entries/get", domain="knx")
+                if not isinstance(entries, list) or not entries:
+                    knx_manager.last_error = "KNX integration is not configured"
+            except Exception as exc:
+                knx_manager.last_error = str(exc)
         data = knx_manager.store.load()
         return {
             "status": knx_manager.status(),
