@@ -62,7 +62,7 @@ def validate_command_request(item: dict[str, Any] | None, action: Any) -> str:
     return clean_action
 
 
-def _hdl_kind(device: dict[str, Any]) -> str:
+def hdl_device_kind(device: dict[str, Any]) -> str:
     kind = str(device.get("type") or "").strip().lower()
     if kind:
         return kind
@@ -74,7 +74,7 @@ def _hdl_class(device: dict[str, Any]) -> str:
 
 
 def _hdl_capabilities(device: dict[str, Any]) -> tuple[list[str], bool]:
-    kind = _hdl_kind(device)
+    kind = hdl_device_kind(device)
     if kind in {"light", "switch"}:
         return (["on", "off", "level"] if device.get("dimmable") else ["on", "off"], False)
     if kind == "cover":
@@ -130,7 +130,7 @@ def build_smart_home(
         if str(device.get("origin") or "hdl").lower() == "ha":
             continue
         device_id = str(device.get("addr") or f"{device.get('subnet_id')}.{device.get('device_id')}.{device.get('channel')}")
-        kind = _hdl_kind(device)
+        kind = hdl_device_kind(device)
         capabilities, read_only = _hdl_capabilities(device)
         state = (states.get(state_keys.get(kind, "")) or {}).get(device_id)
         record = records.get(f"hdl:{device_id}") or {}

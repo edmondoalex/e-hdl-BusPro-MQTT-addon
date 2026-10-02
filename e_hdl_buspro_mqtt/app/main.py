@@ -51,7 +51,7 @@ from .ksenia_consumer import ContractError, KseniaSmartHomeConsumer
 from .knx_manager import KnxManager, KnxNotConfigured
 from .modbus_manager import ModbusManager
 from .organization import OrganizationStore, hdl_presentation_class
-from .smart_home import build_smart_home, validate_command_request
+from .smart_home import build_smart_home, hdl_device_kind, validate_command_request
 from .mqtt_client import MqttClient
 from .realtime import RealtimeHub
 from .settings import AUTH_BASIC, AUTH_NONE, AUTH_TOKEN, AuthConfig, load_settings, read_options
@@ -10454,12 +10454,7 @@ self.addEventListener('fetch', (event) => {{
             subnet_id, hdl_device_id, channel = (int(x) for x in requested_id.split("."))
         except (TypeError, ValueError):
             raise HTTPException(status_code=400, detail="invalid HDL device identity")
-        kind = str(native.get("type") or "").strip().lower()
-        if not kind:
-            # Legacy HDL lights often predate the explicit type field. The
-            # catalog already presents them as lights; command routing must use
-            # the same inference or only those historical devices return 400.
-            kind = "switch" if str(native.get("category") or "").strip().casefold() == "switch" else "light"
+        kind = hdl_device_kind(native)
         if kind == "light":
             if action in {"on", "off"}:
                 return await control_light(subnet_id, hdl_device_id, channel, {"state": action.upper()})
