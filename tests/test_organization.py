@@ -202,6 +202,11 @@ class OrganizationTests(unittest.TestCase):
         self.assertIn("tree('Scenari e automazioni'", nav)
         self.assertIn("adminLink('Scenari multi-bus','scenario_management'", nav)
         self.assertIn("adminLink('Trigger Home Assistant','scenario_triggers'", nav)
+        self.assertIn("tree('Esposizione interfacce'", nav)
+        self.assertIn("adminLink('Collegamenti Home','exposure_home'", nav)
+        self.assertIn("tree('Dispositivi HDL'", nav)
+        self.assertIn("adminLink('Luci e dimmer','hdl_lights'", nav)
+        self.assertIn("adminLink('Contatti','hdl_dry_contact'", nav)
         self.assertIn("tree('Anteprima interfacce utente'", nav)
         self.assertIn("Configurazione impianto", nav)
         self.assertNotIn("Altre integrazioni", nav)
@@ -218,15 +223,18 @@ class OrganizationTests(unittest.TestCase):
         self.assertIn("id:'scenario_management'", index)
         self.assertIn("id:'scenario_triggers'", index)
         self.assertIn("items:['ha_devices'],openItems:true", index)
+        self.assertIn("items:['home_actions'],openItems:true", index)
+        self.assertIn("id:'exposure_proxy'", index)
+        self.assertIn("id:'hdl_temperature'", index)
         self.assertIn("Strumenti avanzati · JSON scenario", index)
         self.assertNotIn("Scenari: configurazione JSON", index)
-        self.assertIn("organization.js?v=0.1.470", index)
+        self.assertIn("organization.js?v=0.1.471", index)
         self.assertLess(index.index("Ksenia Smart Home</b>"), index.index("Home Assistant</b>"))
         for page in (root / "e_hdl_buspro_mqtt" / "app" / "static" / "user").glob("*.html"):
             source = page.read_text(encoding="utf-8")
             if "static/hub/hub-nav.js" in source:
-                self.assertIn("hub-nav.js?v=0.1.470", source, page.name)
-                self.assertIn("hub.css?v=0.1.470", source, page.name)
+                self.assertIn("hub-nav.js?v=0.1.471", source, page.name)
+                self.assertIn("hub.css?v=0.1.471", source, page.name)
 
     def test_home_reports_live_ksenia_status(self):
         root = Path(__file__).resolve().parents[1]
