@@ -83,7 +83,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.476"
+ADDON_VERSION = "0.1.477"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -552,6 +552,34 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=504, detail="timeout")
         except urllib.error.URLError as e:
             raise HTTPException(status_code=502, detail=str(e.reason or e))
+
+    def _ha_upload_file(filename: str, content: bytes, *, timeout_s: int = 120) -> str:
+        token = str(os.environ.get("SUPERVISOR_TOKEN") or "").strip()
+        boundary = "----ekonex" + os.urandom(12).hex()
+        safe_name = filename.replace('"', "_")
+        body = (
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{safe_name}\"\r\n"
+            "Content-Type: application/octet-stream\r\n\r\n"
+        ).encode("utf-8") + content + f"\r\n--{boundary}--\r\n".encode("ascii")
+        req = urllib.request.Request(
+            url=_ha_base_url().rstrip("/") + "/api/file_upload",
+            method="POST",
+            data=body,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+                result = json.loads(resp.read().decode("utf-8", errors="replace"))
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            raise HTTPException(status_code=int(exc.code or 502), detail=detail or str(exc))
+        file_id = str(result.get("file_id") or "") if isinstance(result, dict) else ""
+        if not file_id:
+            raise HTTPException(status_code=502, detail="Home Assistant did not return an upload id")
+        return file_id
 
     def _ha_fetch(path: str, *, timeout_s: int = 8, use_auth: bool = True) -> tuple[bytes, str]:
         base = _ha_base_url().rstrip("/")
@@ -6288,6 +6316,42 @@ self.addEventListener('fetch', (event) => {{
             timeout_s=30,
         )
         return {"ok": True, "flow": result}
+
+    @api.post("/api/integrations/knx/project")
+    async def api_knx_project_upload(request: Request):
+        raw_name = urllib.parse.unquote(str(request.headers.get("x-knx-filename") or "").strip())
+        filename = os.path.basename(raw_name)
+        if not filename or filename != raw_name or not filename.lower().endswith(".knxproj"):
+            raise HTTPException(status_code=400, detail="Select a valid .knxproj file")
+        length = int(request.headers.get("content-length") or 0)
+        if length <= 0 or length > 100 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="KNX project must be between 1 byte and 100 MB")
+        content = await request.body()
+        if not content or len(content) > 100 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="KNX project must be between 1 byte and 100 MB")
+        password = str(request.headers.get("x-knx-password") or "")
+        file_id = await asyncio.to_thread(_ha_upload_file, filename, content)
+        try:
+            await knx_manager.ws.command("knx/project_file_process", file_id=file_id, password=password)
+            states = await asyncio.to_thread(_ha_request, "GET", "/api/states", payload=None, timeout_s=15)
+            result = await knx_manager.sync(states if isinstance(states, list) else [])
+        except Exception as exc:
+            knx_manager.last_error = str(exc)
+            raise HTTPException(status_code=502, detail=str(exc))
+        return {"ok": True, "result": result, "status": knx_manager.status()}
+
+    @api.get("/api/integrations/knx/monitor")
+    async def api_knx_monitor():
+        if knx_manager.ws is None:
+            raise HTTPException(status_code=503, detail="Home Assistant API not available")
+        try:
+            result = await knx_manager.ws.command("knx/group_monitor_info")
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+        if not isinstance(result, dict):
+            raise HTTPException(status_code=502, detail="Invalid KNX monitor response")
+        telegrams = result.get("recent_telegrams") if isinstance(result.get("recent_telegrams"), list) else []
+        return {"project_loaded": bool(result.get("project_loaded")), "telegrams": telegrams[:500]}
 
     @api.put("/api/integrations/knx/devices/{device_id}")
     async def api_knx_device_update(device_id: str, payload: dict[str, Any]):
