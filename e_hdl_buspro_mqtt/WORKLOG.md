@@ -1,5 +1,12 @@
 # WORKLOG
 
+## 2026-10-02 (Conteggi integrazioni verificabili)
+- Corretto `devices_by_bus.hdl_buspro`: il totale HDL non include più per errore le entità Home Assistant del ramo legacy.
+- Aggiunte metriche per sorgente con elementi rilevati/configurati, esportati Smart Home, visibili, sicurezza legacy ed esclusi.
+- La pagina Info distingue chiaramente catalogo tecnico ed esposizione e-Face; e-KNX Manager mostra lo stato reale invece di risultare pianificato.
+- Il totale globale include Home Assistant come sorgente separata.
+- Version bump: 0.1.478 -> 0.1.479.
+
 ## 2026-10-01 (Smart Home globale driver-neutral)
 - L'Hub è la fonte autorevole per categorie/pagine multiple, piano, stanza, gruppi, ordine, visibilità, preferiti, scorciatoie e icone di HDL, Ksenia e driver futuri.
 - Il contratto `smart_home` pubblica capability e descrittori uniformi per comandi, realtime, scenari e routine senza dettagli di trasporto.

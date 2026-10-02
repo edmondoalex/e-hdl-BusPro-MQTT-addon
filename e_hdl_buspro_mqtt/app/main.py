@@ -84,7 +84,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.478"
+ADDON_VERSION = "0.1.479"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -6220,11 +6220,57 @@ self.addEventListener('fetch', (event) => {{
         ksenia_snapshot = ksenia.snapshot()
         payload["ksenia"] = ksenia_snapshot
         payload["smart_home"] = _smart_home_payload(payload)
+        smart_devices = payload["smart_home"].get("devices") or []
+        smart_counts: dict[str, int] = {}
+        smart_visible: dict[str, int] = {}
+        for item in smart_devices:
+            if not isinstance(item, dict):
+                continue
+            source = str(item.get("source") or "").strip().lower()
+            if not source:
+                continue
+            smart_counts[source] = smart_counts.get(source, 0) + 1
+            if item.get("visible", True):
+                smart_visible[source] = smart_visible.get(source, 0) + 1
+        hdl_detected = len(store.list_devices())
+        ha_configured = store.list_ha_devices()
+        ha_security = sum(1 for item in ha_configured if str(item.get("page") or "").strip().lower() == "locks")
+        ha_exported = smart_counts.get("ha", 0)
+        knx_catalog = knx_manager.store.catalog(getattr(api.state, "knx_states", {}) or {})
         payload["devices_by_bus"] = {
-            "hdl_buspro": len(payload.get("devices") or []),
+            "hdl_buspro": hdl_detected,
             "ksenia": len(ksenia_snapshot.get("devices") or []),
-            "knx": len(knx_manager.store.catalog(getattr(api.state, "knx_states", {}) or {})),
+            "home_assistant": len(ha_configured),
+            "knx": len(knx_catalog),
             "bticino": 0, "tuya": 0, "modbus": 0, "dali": 0,
+        }
+        payload["integration_metrics"] = {
+            "hdl_buspro": {
+                "detected": hdl_detected,
+                "exported": smart_counts.get("hdl", 0),
+                "visible": smart_visible.get("hdl", 0),
+                "excluded": max(0, hdl_detected - smart_counts.get("hdl", 0)),
+            },
+            "ksenia": {
+                "detected": len(ksenia_snapshot.get("devices") or []),
+                "exported": smart_counts.get("ksenia", 0),
+                "visible": smart_visible.get("ksenia", 0),
+                "excluded": max(0, len(ksenia_snapshot.get("devices") or []) - smart_counts.get("ksenia", 0)),
+                "security_policy": "Funzioni di sicurezza escluse dal catalogo Smart Home",
+            },
+            "home_assistant": {
+                "configured": len(ha_configured),
+                "exported": ha_exported,
+                "visible": smart_visible.get("ha", 0),
+                "security_legacy": ha_security,
+                "excluded": max(0, len(ha_configured) - ha_exported - ha_security),
+            },
+            "knx": {
+                "detected": len(knx_catalog),
+                "exported": smart_counts.get("knx", 0),
+                "visible": smart_visible.get("knx", 0),
+                "excluded": max(0, len(knx_catalog) - smart_counts.get("knx", 0)),
+            },
         }
         return payload
 

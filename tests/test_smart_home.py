@@ -195,6 +195,32 @@ class SmartHomeProducerTests(unittest.TestCase):
         self.assertIn('payload["smart_home"]', source)
         self.assertIn('/api/user/smart-home/{source}/{device_id}/command', source)
 
+    def test_snapshot_reports_per_source_detected_exported_and_security_counts(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {
+            "BUSPRO_STATE": str(Path(tmp) / "state.json"),
+            "ECONTROL_ORGANIZATION": str(Path(tmp) / "organization.json"),
+            "ECONTROL_KNX_STORE": str(Path(tmp) / "knx.json"),
+        }):
+            app = create_app()
+            app.state.store.add_device({"type":"light","name":"Luce","subnet_id":1,"device_id":2,"channel":3,"addr":"1.2.3"})
+            app.state.store.add_ha_device({"entity_id":"light.sala","page":"lights","name":"Sala"})
+            app.state.store.add_ha_device({"entity_id":"switch.cancello","page":"locks","name":"Cancello"})
+            app.state.ha_states = {
+                "light.sala": {"state":"OFF"},
+                "switch.cancello": {"state":"OFF"},
+            }
+            endpoint = next(r.endpoint for r in app.routes if getattr(r, "path", "") == "/api/user/snapshot")
+
+            snapshot = asyncio.run(endpoint())
+
+            self.assertEqual(1, snapshot["devices_by_bus"]["hdl_buspro"])
+            self.assertEqual(2, snapshot["devices_by_bus"]["home_assistant"])
+            self.assertEqual({"detected":1, "exported":1, "visible":1, "excluded":0}, snapshot["integration_metrics"]["hdl_buspro"])
+            self.assertEqual(2, snapshot["integration_metrics"]["home_assistant"]["configured"])
+            self.assertEqual(1, snapshot["integration_metrics"]["home_assistant"]["exported"])
+            self.assertEqual(1, snapshot["integration_metrics"]["home_assistant"]["security_legacy"])
+            self.assertEqual(0, snapshot["integration_metrics"]["home_assistant"]["excluded"])
+
     def test_hdl_command_route_uses_internal_catalog_identity(self):
         class Gateway:
             started = True
