@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-10-02 (Netatmo active-flow lookup 0.1.484)
+- Il recupero interroga l'elenco config-flow attivi di Home Assistant e usa l'ID reale, poiché l'abort `already_in_progress` può contenere un ID già scaduto.
+- Un DELETE già risolto (404) è tollerato e il nuovo avvio viene comunque tentato.
+- Version bump: 0.1.483 -> 0.1.484.
+
 ## 2026-10-02 (Netatmo provisioning recovery 0.1.483)
 - Il configuratore Home + Control / Netatmo resta interamente in e-Control.
 - Un config flow OAuth abbandonato con `already_in_progress` viene annullato in modo mirato e riavviato automaticamente.

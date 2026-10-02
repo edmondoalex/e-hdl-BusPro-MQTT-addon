@@ -86,7 +86,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.483"
+ADDON_VERSION = "0.1.484"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -6578,27 +6578,45 @@ self.addEventListener('fetch', (event) => {{
         # without asking the installer to open Home Assistant.
         if result.get("type") == "abort" and result.get("reason") == "already_in_progress":
             stale_flow_id = str(result.get("flow_id") or "").strip()
-            if stale_flow_id:
-                try:
-                    await asyncio.to_thread(
-                        _ha_request,
-                        "DELETE",
-                        f"/api/config/config_entries/flow/{urllib.parse.quote(stale_flow_id, safe='')}",
-                        payload=None,
-                        timeout_s=15,
-                    )
-                    result = await asyncio.to_thread(
-                        _ha_request,
-                        "POST",
-                        "/api/config/config_entries/flow",
-                        payload={"handler": domain},
-                        timeout_s=20,
-                    )
-                except Exception as exc:
-                    raise HTTPException(
-                        status_code=502,
-                        detail="Impossibile riavviare il configuratore Netatmo rimasto in sospeso: " + str(exc),
-                    )
+            try:
+                if bticino_manager.ws is not None:
+                    progress = await bticino_manager.ws.command("config_entries/flow/progress")
+                    if isinstance(progress, list):
+                        active = next(
+                            (
+                                row for row in progress
+                                if isinstance(row, dict)
+                                and str(row.get("handler") or "") == domain
+                                and str(row.get("flow_id") or "").strip()
+                            ),
+                            None,
+                        )
+                        if active:
+                            stale_flow_id = str(active["flow_id"]).strip()
+                if stale_flow_id:
+                    try:
+                        await asyncio.to_thread(
+                            _ha_request,
+                            "DELETE",
+                            f"/api/config/config_entries/flow/{urllib.parse.quote(stale_flow_id, safe='')}",
+                            payload=None,
+                            timeout_s=15,
+                        )
+                    except HTTPException as exc:
+                        if exc.status_code != 404:
+                            raise
+                result = await asyncio.to_thread(
+                    _ha_request,
+                    "POST",
+                    "/api/config/config_entries/flow",
+                    payload={"handler": domain},
+                    timeout_s=20,
+                )
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=502,
+                    detail="Impossibile riavviare il configuratore Netatmo rimasto in sospeso: " + str(exc),
+                )
             if not isinstance(result, dict):
                 raise HTTPException(status_code=502, detail="Invalid integration provisioning response")
         return {"ok": True, "source": clean, "flow": result}
