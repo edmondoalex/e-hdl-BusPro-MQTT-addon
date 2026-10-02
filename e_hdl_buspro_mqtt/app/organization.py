@@ -278,6 +278,7 @@ class OrganizationStore:
                 "source": source,
                 "device_id": device_id,
                 "name": _clean_optional_text(raw.get("name"), "device.name", 160),
+                "name_override": _clean_optional_text(raw.get("name_override"), "device.name_override", 160),
                 "device_class": _clean_optional_text(raw.get("device_class"), "device.device_class", 80).lower(),
                 "floor_id": floor_id,
                 "room_id": room_id,
@@ -312,6 +313,7 @@ class OrganizationStore:
                     "orphaned": False,
                 })
                 current.setdefault("floor_id", "")
+                current.setdefault("name_override", "")
                 current.setdefault("room_id", "")
                 current.setdefault("group_ids", [])
                 current.setdefault("icon_override", "")
@@ -434,7 +436,7 @@ class OrganizationStore:
             if key not in data["devices"]:
                 raise ValueError("unknown device")
             item = data["devices"][key]
-            for field in ("floor_id", "room_id", "group_ids", "icon_override", "categories", "orders", "visible", "favorite", "shortcut"):
+            for field in ("name_override", "floor_id", "room_id", "group_ids", "icon_override", "categories", "orders", "visible", "favorite", "shortcut"):
                 if field in payload:
                     item[field] = payload[field]
             saved = self.save(data)

@@ -74,6 +74,14 @@ class OrganizationTests(unittest.TestCase):
         self.assertEqual("mdi:ceiling-light", item["icon_override"])
         self.assertEqual("mdi:ceiling-light", self.store.snapshot()["devices"]["hdl:1.2.3"]["icon"])
 
+    def test_visual_name_override_survives_catalog_refresh(self):
+        self.store.sync_devices([{"source":"hdl","device_id":"1.2.3","name":"Nome originale","device_class":"light"}])
+        self.store.assign({"source":"hdl","device_id":"1.2.3","name_override":"Nome personalizzato"})
+        refreshed = self.store.sync_devices([{"source":"hdl","device_id":"1.2.3","name":"Nuovo nome originale","device_class":"light"}])
+        row = refreshed["devices"]["hdl:1.2.3"]
+        self.assertEqual("Nuovo nome originale", row["name"])
+        self.assertEqual("Nome personalizzato", row["name_override"])
+
     def test_invalid_icon_and_references_are_rejected(self):
         self.store.sync_devices([{"source":"hdl","device_id":"1.2.3","name":"Luce","device_class":"light"}])
         with self.assertRaises(ValueError):
