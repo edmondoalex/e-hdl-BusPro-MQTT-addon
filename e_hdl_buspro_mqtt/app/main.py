@@ -46,6 +46,7 @@ from .discovery import (
 )
 from .icons import ensure_mdi_icons, parse_mdi_icon, placeholder_svg
 from .ksenia_consumer import ContractError, KseniaSmartHomeConsumer
+from .knx_manager import KnxManager
 from .organization import OrganizationStore, hdl_presentation_class
 from .smart_home import build_smart_home, validate_command_request
 from .mqtt_client import MqttClient
@@ -82,7 +83,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.472"
+ADDON_VERSION = "0.1.473"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -425,6 +426,13 @@ def create_app() -> FastAPI:
     )
     organization = OrganizationStore(organization_path)
     api.state.organization = organization
+    knx_path = os.environ.get(
+        "ECONTROL_KNX_MANAGER",
+        os.path.join(os.path.dirname(store.path), "knx_manager.json"),
+    )
+    knx_manager = KnxManager(knx_path, str(os.environ.get("SUPERVISOR_TOKEN") or "").strip())
+    api.state.knx_manager = knx_manager
+    api.state.knx_states = {}
 
     icons_dir = os.environ.get("BUSPRO_ICONS", "/data/icons")
     api.state.icons_dir = icons_dir
@@ -466,6 +474,7 @@ def create_app() -> FastAPI:
     # Smart Home contract and endpoint never need source-specific routing changes.
     api.state.smart_home_sources = {}
     api.state.smart_home_command_handlers = {}
+    api.state.smart_home_sources["knx"] = lambda: knx_manager.store.catalog(getattr(api.state, "knx_states", {}) or {})
 
     def _organization_devices() -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
@@ -5170,6 +5179,28 @@ self.addEventListener('fetch', (event) => {{
         except Exception:
             api.state.ha_poll_task = None
 
+        async def _knx_sync_loop() -> None:
+            await asyncio.sleep(8)
+            while True:
+                try:
+                    if _ha_enabled():
+                        states = await asyncio.to_thread(_ha_request, "GET", "/api/states", payload=None, timeout_s=15)
+                        if isinstance(states, list):
+                            await knx_manager.sync(states)
+                            api.state.knx_states = {
+                                str(item.get("entity_id") or "").strip().lower(): item
+                                for item in states if isinstance(item, dict) and str(item.get("entity_id") or "").strip()
+                            }
+                            _sync_organization()
+                    await asyncio.sleep(300)
+                except asyncio.CancelledError:
+                    return
+                except Exception as exc:
+                    _LOGGER.debug("KNX manager sync unavailable: %s", exc)
+                    await asyncio.sleep(60)
+
+        api.state.knx_sync_task = asyncio.create_task(_knx_sync_loop(), name="knx-manager-sync")
+
         def _parse_dt(val: str | None) -> datetime | None:
             if not val:
                 return None
@@ -5540,6 +5571,9 @@ self.addEventListener('fetch', (event) => {{
         ha_poll = getattr(api.state, "ha_poll_task", None)
         if ha_poll is not None:
             ha_poll.cancel()
+        knx_sync = getattr(api.state, "knx_sync_task", None)
+        if knx_sync is not None:
+            knx_sync.cancel()
 
         gw: BusproGateway | None = api.state.gateway
         if gw is not None:
@@ -6155,7 +6189,8 @@ self.addEventListener('fetch', (event) => {{
         payload["devices_by_bus"] = {
             "hdl_buspro": len(payload.get("devices") or []),
             "ksenia": len(ksenia_snapshot.get("devices") or []),
-            "knx": 0, "bticino": 0, "tuya": 0, "modbus": 0, "dali": 0,
+            "knx": len(knx_manager.store.catalog(getattr(api.state, "knx_states", {}) or {})),
+            "bticino": 0, "tuya": 0, "modbus": 0, "dali": 0,
         }
         return payload
 
@@ -6183,6 +6218,49 @@ self.addEventListener('fetch', (event) => {{
                 "icon": record.get("icon_override") or record.get("icon_auto") or "mdi:devices",
             }
         return snapshot
+
+    @api.get("/api/integrations/knx")
+    async def api_knx_snapshot():
+        data = knx_manager.store.load()
+        return {
+            "status": knx_manager.status(),
+            "devices": list((data.get("devices") or {}).values()),
+        }
+
+    @api.post("/api/integrations/knx/sync")
+    async def api_knx_sync():
+        if not _ha_enabled():
+            raise HTTPException(status_code=503, detail="Home Assistant API not available")
+        states = await asyncio.to_thread(_ha_request, "GET", "/api/states", payload=None, timeout_s=15)
+        if not isinstance(states, list):
+            raise HTTPException(status_code=502, detail="Invalid Home Assistant states response")
+        try:
+            result = await knx_manager.sync(states)
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc))
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+        api.state.knx_states = {
+            str(item.get("entity_id") or "").strip().lower(): item
+            for item in states if isinstance(item, dict) and str(item.get("entity_id") or "").strip()
+        }
+        _sync_organization()
+        await _broadcast_devices()
+        return {"ok": True, "result": result, "status": knx_manager.status()}
+
+    @api.put("/api/integrations/knx/devices/{device_id}")
+    async def api_knx_device_update(device_id: str, payload: dict[str, Any]):
+        try:
+            row = knx_manager.store.update(
+                str(device_id or "").strip(),
+                enabled=payload.get("enabled") if "enabled" in payload else None,
+                read_only=payload.get("read_only") if "read_only" in payload else None,
+            )
+        except KeyError:
+            raise HTTPException(status_code=404, detail="KNX device not found")
+        _sync_organization()
+        await _broadcast_devices()
+        return {"ok": True, "device": row}
 
     @api.get("/api/organization")
     async def api_organization():
@@ -6945,6 +7023,7 @@ self.addEventListener('fetch', (event) => {{
         # Admin-only via port gate
         state = json.loads(store.export_backup_text())
         state["_econtrol_organization"] = organization.snapshot()
+        state["_econtrol_knx"] = knx_manager.store.load()
         return {"text": json.dumps(state, ensure_ascii=False, indent=2)}
 
     @api.get("/api/backup/file")
@@ -6952,6 +7031,7 @@ self.addEventListener('fetch', (event) => {{
         # Admin-only via port gate
         state = json.loads(store.export_backup_text())
         state["_econtrol_organization"] = organization.snapshot()
+        state["_econtrol_knx"] = knx_manager.store.load()
         content = json.dumps(state, ensure_ascii=False, indent=2)
         ts = time.strftime("%Y%m%d-%H%M%S")
         headers = {"Content-Disposition": f'attachment; filename="buspro_backup_{ts}.json"'}
@@ -7036,11 +7116,16 @@ self.addEventListener('fetch', (event) => {{
             else:
                 raise HTTPException(status_code=400, detail="Provide 'text' or 'data'")
             organization_state = state.pop("_econtrol_organization", None)
+            knx_state = state.pop("_econtrol_knx", None)
             if organization_state is not None:
                 organization_state = organization.validate_backup(organization_state)
+            if knx_state is not None and (not isinstance(knx_state, dict) or knx_state.get("schema_version") != 1):
+                raise ValueError("invalid KNX manager backup")
             store.import_backup(state)
             if organization_state is not None:
                 organization.save(organization_state)
+            if knx_state is not None:
+                knx_manager.store.save(knx_state)
         except HTTPException:
             raise
         except Exception as e:
@@ -9825,9 +9910,62 @@ self.addEventListener('fetch', (event) => {{
     async def _smart_home_ksenia_command(item: dict[str, Any], action: str, value: Any):
         return await asyncio.to_thread(ksenia.execute, str(item.get("device_id") or ""), action, value)
 
+    async def _smart_home_knx_command(item: dict[str, Any], action: str, value: Any):
+        entity_id = str(item.get("home_assistant_entity_id") or "").strip().lower()
+        if not entity_id or "." not in entity_id:
+            raise HTTPException(status_code=409, detail="KNX device has no Home Assistant mapping")
+        domain = entity_id.split(".", 1)[0]
+        service = ""
+        data: dict[str, Any] = {"entity_id": entity_id}
+        if domain in {"light", "switch", "fan"} and action in {"on", "off"}:
+            service = "turn_on" if action == "on" else "turn_off"
+        elif domain == "light" and action == "level":
+            try:
+                level = max(0.0, min(100.0, float(value)))
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="level must be 0..100")
+            service = "turn_off" if level == 0 else "turn_on"
+            if level:
+                data["brightness_pct"] = level
+        elif domain == "cover" and action in {"open", "close", "stop"}:
+            service = {"open": "open_cover", "close": "close_cover", "stop": "stop_cover"}[action]
+        elif domain == "cover" and action == "position":
+            try:
+                position = int(value)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="position must be 0..100")
+            if not 0 <= position <= 100:
+                raise HTTPException(status_code=400, detail="position must be 0..100")
+            service = "set_cover_position"
+            data["position"] = position
+        elif domain == "scene" and action == "execute":
+            service = "turn_on"
+        elif domain == "button" and action == "execute":
+            service = "press"
+        elif domain == "climate" and action == "temperature":
+            try:
+                data["temperature"] = float(value)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="temperature must be numeric")
+            service = "set_temperature"
+        elif domain == "number" and action == "level":
+            try:
+                data["value"] = float(value)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="value must be numeric")
+            service = "set_value"
+        elif domain == "select" and action == "mode":
+            data["option"] = str(value or "")
+            service = "select_option"
+        if not service:
+            raise HTTPException(status_code=400, detail="unsupported KNX command")
+        await asyncio.to_thread(_ha_request, "POST", f"/api/services/{domain}/{service}", payload=data, timeout_s=10)
+        return {"ok": True, "accepted": True, "confirmed": False, "source": "knx"}
+
     api.state.smart_home_command_handlers.update({
         "hdl": _smart_home_hdl_command,
         "ksenia": _smart_home_ksenia_command,
+        "knx": _smart_home_knx_command,
     })
 
     @api.post("/api/control/ha/light/{entity_id}")
