@@ -88,7 +88,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.496"
+ADDON_VERSION = "0.1.497"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -6507,6 +6507,23 @@ self.addEventListener('fetch', (event) => {{
     async def api_bticino_snapshot(source: str):
         clean = _bticino_source(source)
         spec = BTICINO_INTEGRATIONS[clean]
+        if clean == "home_plus_control":
+            data = bticino_manager.store.load()["integrations"][clean]
+            direct = netatmo_direct.status()
+            devices = data.get("devices") or {}
+            return {
+                "source": clean,
+                "status": {
+                    **spec, "available": True, "configured": direct["credentials_configured"],
+                    "connected": direct["connected"], "config_entries": 1 if direct["connected"] else 0,
+                    "devices": len(devices), "enabled": sum(bool(x.get("enabled")) for x in devices.values()),
+                    "orphaned": sum(bool(x.get("orphaned")) for x in devices.values()),
+                    "last_sync": data.get("last_sync"), "error": direct.get("error") or "",
+                    "setup_required": not direct["connected"],
+                },
+                "devices": list(devices.values()),
+                "component": {"installed": True, "managed_version": "e-Control Direct", "official": True},
+            }
         if bticino_manager.ws is not None and not bticino_manager.entries.get(clean):
             try:
                 entries = await bticino_manager.ws.command("config_entries/get", domain=spec["domain"])
@@ -6541,6 +6558,18 @@ self.addEventListener('fetch', (event) => {{
     @api.post("/api/integrations/bticino/{source}/sync")
     async def api_bticino_sync(source: str):
         clean = _bticino_source(source)
+        if clean == "home_plus_control":
+            if not netatmo_direct.status()["connected"]:
+                raise HTTPException(status_code=409, detail="Account Netatmo non collegato a e-Control")
+            try:
+                modules = await asyncio.to_thread(netatmo_direct.discover)
+                result = bticino_manager.store.sync_direct_netatmo(modules)
+            except Exception as exc:
+                _LOGGER.warning("netatmo_direct_sync_failed", exc_info=True)
+                raise HTTPException(status_code=502, detail="Sincronizzazione Netatmo non riuscita: " + str(exc))
+            _sync_organization()
+            await _broadcast_devices()
+            return {"ok": True, "result": result, "status": (await api_bticino_snapshot(clean))["status"]}
         if not _ha_enabled():
             raise HTTPException(status_code=503, detail="Servizi di integrazione not available")
         states = await asyncio.to_thread(_ha_request, "GET", "/api/states", payload=None, timeout_s=15)

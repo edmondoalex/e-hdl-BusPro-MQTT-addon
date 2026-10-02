@@ -256,6 +256,49 @@ class BticinoCatalogStore:
             self.save(data)
             return deepcopy(row)
 
+    def sync_direct_netatmo(self, modules: list[dict[str, Any]]) -> dict[str, Any]:
+        with self._lock:
+            data = self.load()
+            bucket = data["integrations"]["home_plus_control"]
+            devices = bucket.setdefault("devices", {})
+            seen: set[str] = set()
+            added = updated = 0
+            for module in modules:
+                native_id = str(module.get("id") or "").strip()
+                if not native_id:
+                    continue
+                stable_id = "netatmo-" + sha256(native_id.encode("utf-8")).hexdigest()[:20]
+                seen.add(stable_id)
+                old = devices.get(stable_id) or {}
+                module_type = str(module.get("type") or "module").lower()
+                is_cover = any(key in module for key in ("current_position", "target_position"))
+                is_climate = any(key in module for key in ("therm_measured_temperature", "setpoint", "therm_setpoint_temperature"))
+                is_light = "brightness" in module or "light" in module_type
+                domain = "cover" if is_cover else "climate" if is_climate else "light" if is_light else "switch"
+                capabilities = (["open", "close", "stop", "position"] if is_cover else
+                                ["temperature", "target_temperature"] if is_climate else
+                                ["on", "off", "level"] if is_light and "brightness" in module else ["on", "off"])
+                state_value = module.get("on")
+                state = {"state": "ON" if state_value is True else "OFF" if state_value is False else str(module.get("status") or "unknown"), "attributes": deepcopy(module)}
+                row = {
+                    **old, "device_id": stable_id, "native_id": native_id,
+                    "home_id": str(module.get("home_id") or ""), "name": str(module.get("module_name") or module.get("name") or native_id),
+                    "group": str(module.get("room_name") or module.get("home_name") or "Netatmo"),
+                    "domain": domain, "device_class": domain, "capabilities": capabilities,
+                    "manufacturer": "Netatmo / BTicino", "model": str(module.get("type") or ""),
+                    "enabled": bool(old.get("enabled", False)), "read_only": bool(old.get("read_only", False)),
+                    "orphaned": False, "direct": True, "state": state, "last_seen": time.time(),
+                }
+                added += int(not bool(old))
+                updated += int(bool(old) and row != old)
+                devices[stable_id] = row
+            for stable_id, row in devices.items():
+                if row.get("direct") and stable_id not in seen:
+                    row["orphaned"] = True
+            bucket["last_sync"] = time.time()
+            self.save(data)
+            return {"added": added, "updated": updated, "total": len(devices), "enabled": sum(bool(x.get("enabled")) for x in devices.values())}
+
     def catalog(self, source: str, states: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
         if source not in INTEGRATIONS:
             return []
@@ -264,16 +307,17 @@ class BticinoCatalogStore:
         for row in devices.values():
             if not isinstance(row, dict) or not row.get("enabled"):
                 continue
-            state = states.get(str(row.get("entity_id") or "")) or {}
+            state = deepcopy(row.get("state") or {}) if row.get("direct") else states.get(str(row.get("entity_id") or "")) or {}
             raw_state = state.get("state") if isinstance(state, dict) else None
-            available = raw_state not in {None, "unavailable", "unknown"} and not row.get("orphaned")
+            available = (bool(row.get("direct")) or raw_state not in {None, "unavailable", "unknown"}) and not row.get("orphaned")
             rows.append({
                 "device_id": row.get("device_id"),
                 "name": row.get("name"),
                 "device_class": row.get("device_class"),
                 "native_type": row.get("domain"),
-                "native_id": row.get("entity_id"),
-                "home_assistant_entity_id": row.get("entity_id"),
+                "native_id": row.get("native_id") or row.get("entity_id"),
+                "home_id": row.get("home_id"),
+                "home_assistant_entity_id": row.get("entity_id") if not row.get("direct") else None,
                 "capabilities": list(row.get("capabilities") or []),
                 "read_only": bool(row.get("read_only", True)),
                 "available": available,

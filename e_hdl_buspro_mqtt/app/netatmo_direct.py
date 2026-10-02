@@ -100,3 +100,55 @@ class NetatmoDirect:
         for key in ("access_token", "refresh_token", "expires_at", "authorized_at", "oauth_state", "oauth_state_expires"):
             data.pop(key, None)
         self._save(data)
+
+    def _token(self) -> str:
+        data = self._load()
+        if not data.get("refresh_token"):
+            raise ValueError("Account Netatmo non collegato")
+        if data.get("access_token") and float(data.get("expires_at") or 0) > time.time():
+            return str(data["access_token"])
+        body = urllib.parse.urlencode({
+            "grant_type": "refresh_token", "client_id": data["client_id"],
+            "client_secret": data["client_secret"], "refresh_token": data["refresh_token"],
+        }).encode()
+        request = urllib.request.Request(TOKEN_URL, data=body, headers={"Content-Type": "application/x-www-form-urlencoded"})
+        with urllib.request.urlopen(request, timeout=30) as response:
+            tokens = json.loads(response.read().decode("utf-8"))
+        data.update({
+            "access_token": tokens["access_token"],
+            "refresh_token": tokens.get("refresh_token") or data["refresh_token"],
+            "expires_at": time.time() + int(tokens.get("expires_in") or 10800) - 60,
+        })
+        self._save(data)
+        return str(data["access_token"])
+
+    def _api(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        body = urllib.parse.urlencode(params or {}).encode()
+        request = urllib.request.Request(
+            f"https://api.netatmo.com{path}", data=body,
+            headers={"Authorization": f"Bearer {self._token()}", "Content-Type": "application/x-www-form-urlencoded"},
+        )
+        with urllib.request.urlopen(request, timeout=30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("Risposta Netatmo non valida")
+        return payload
+
+    def discover(self) -> list[dict[str, Any]]:
+        topology = self._api("/api/homesdata")
+        homes = ((topology.get("body") or {}).get("homes") or [])
+        rows: list[dict[str, Any]] = []
+        for home in homes if isinstance(homes, list) else []:
+            if not isinstance(home, dict) or not home.get("id"):
+                continue
+            status = self._api("/api/homestatus", {"home_id": home["id"]})
+            live_home = (status.get("body") or {}).get("home") or {}
+            rooms = {str(x.get("id")): str(x.get("name") or "") for x in live_home.get("rooms") or [] if isinstance(x, dict)}
+            for module in live_home.get("modules") or []:
+                if not isinstance(module, dict) or not module.get("id"):
+                    continue
+                rows.append({
+                    **module, "home_id": str(home["id"]), "home_name": str(home.get("name") or ""),
+                    "room_name": rooms.get(str(module.get("room_id") or ""), ""),
+                })
+        return rows
