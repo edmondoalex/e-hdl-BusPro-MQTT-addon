@@ -86,7 +86,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.488"
+ADDON_VERSION = "0.1.489"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -6636,6 +6636,31 @@ self.addEventListener('fetch', (event) => {{
                 raise HTTPException(
                     status_code=409,
                     detail="Il flusso Netatmo è ancora occupato e non può essere recuperato automaticamente.",
+                )
+        # Keep Home Assistant as an implementation detail. When HA asks which
+        # OAuth implementation to use, prefer the credential named e-Control Hub
+        # and continue the flow without exposing engine choices to the installer.
+        if clean == "home_plus_control" and result.get("step_id") == "pick_implementation":
+            schema = result.get("data_schema") if isinstance(result.get("data_schema"), list) else []
+            implementation_value = ""
+            for field in schema:
+                if not isinstance(field, dict) or str(field.get("name") or "") != "implementation":
+                    continue
+                options = (field.get("selector") or {}).get("select", {}).get("options") or field.get("options") or []
+                for option in options:
+                    value = option.get("value") if isinstance(option, dict) else (option[0] if isinstance(option, list) else option)
+                    label = option.get("label") if isinstance(option, dict) else (option[1] if isinstance(option, list) and len(option) > 1 else option)
+                    if str(label or "").strip().lower() == "e-control hub":
+                        implementation_value = str(value or "")
+                        break
+            flow_id = str(result.get("flow_id") or "").strip()
+            if implementation_value and flow_id:
+                result = await asyncio.to_thread(
+                    _ha_request,
+                    "POST",
+                    f"/api/config/config_entries/flow/{urllib.parse.quote(flow_id, safe='')}",
+                    payload={"implementation": implementation_value},
+                    timeout_s=30,
                 )
         return {"ok": True, "source": clean, "flow": result}
 

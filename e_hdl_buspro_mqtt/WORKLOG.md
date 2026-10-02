@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-10-02 (Netatmo engine hidden 0.1.489)
+- Home Assistant resta un motore interno: la scelta `pick_implementation` non viene mostrata all'installatore.
+- Se presente, e-Control seleziona automaticamente la credenziale `e-Control Hub` e continua il flusso OAuth.
+- Rimossi link e schede Home Assistant dalla guida; mantenuta una procedura breve e-Control/Netatmo.
+- Version bump: 0.1.488 -> 0.1.489.
+
 ## 2026-10-02 (Netatmo application credentials 0.1.488)
 - Aggiunti campi protetti Client ID e Client Secret nella pagina Home + Control.
 - Registrazione tramite WebSocket ufficiale Home Assistant `application_credentials/create`; il Secret non viene restituito alla UI o registrato nei log.
