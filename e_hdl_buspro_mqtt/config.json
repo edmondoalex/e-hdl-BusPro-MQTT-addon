@@ -2,7 +2,7 @@
     "name":  "e-Control Hub",
     "slug":  "e_hdl_buspro_mqtt",
     "description":  "Ekonex multi-bus edge gateway. Active driver: HDL BusPro.",
-    "version":  "0.1.486",
+    "version":  "0.1.487",
     "startup":  "services",
     "boot":  "auto",
     "homeassistant_api":  true,

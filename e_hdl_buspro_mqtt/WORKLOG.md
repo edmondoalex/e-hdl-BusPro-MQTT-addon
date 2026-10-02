@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-10-02 (Netatmo setup documentation 0.1.487)
+- Aggiunti nella pagina Home + Control il link diretto a Netatmo Developer e la documentazione ufficiale Home Assistant.
+- Inserite istruzioni sintetiche: nome app, Redirect URI/Webhook URI vuoti e protezione/rotazione del Client Secret.
+- Version bump: 0.1.486 -> 0.1.487.
+
 ## 2026-10-02 (Netatmo compound handler recovery 0.1.485)
 - Riconosciuti sia handler config-flow semplici sia identificativi composti usati da Home Assistant per OAuth Netatmo.
 - Impedita la restituzione di un falso successo se Home Assistant mantiene comunque il lock del flusso.
