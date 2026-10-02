@@ -477,3 +477,12 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 - Correzione 0.1.491: il reset usa il canale di controllo interno con avvio differito, evitando il `403 Forbidden` del Supervisor; la sincronizzazione mantiene un esito persistente con il conteggio rilevato.
 - Correzione 0.1.494: catalogo, capability e comandi HDL usano ora un unico classificatore condiviso, eliminando la divergenza che causava HTTP 400 sui dispositivi privi del campo tecnico `type`; allineate anche versione del pacchetto e versione runtime. Resta eliminato il riavvio automatico dal reset Netatmo. Le 0.1.492/0.1.493 intermedie sono state superate prima della verifica funzionale.
 - Netatmo 0.1.495: rimosso il relay OAuth con marchio esterno; introdotto collegamento diretto Netatmo→e-Control con callback locale, archivio credenziali/token protetto, stato OAuth monouso e procedura UI verticale. Suite: 76 test superati. Il catalogo e i comandi diretti restano il passo successivo dopo il collaudo OAuth reale dell'account.
+
+## Handoff corrente — organizzazione multi-bus e Netatmo 0.1.498
+
+- Corretto il filtro Bus in `Dispositivi e presentazione`: mostra sempre HDL BusPro, Ksenia Smart Home, e-KNX Manager, BTicino MyHOME SCS, BTicino Home + Control / Netatmo, e-Modbus Manager e HA.
+- La voce HA resta esplicita perché identifica realmente il catalogo proveniente dall'integrazione Hassio; le altre UX continuano a non esporre il motore interno.
+- KNX, MyHOME SCS, Home + Control/Netatmo e Modbus alimentano l'organizzazione anche con dispositivi rilevati ma non ancora abilitati in e-Face, eliminando il blocco circolare configurazione/abilitazione.
+- Collaudo impianto: runtime e pacchetto installato `0.1.498`, servizio avviato, 199 dispositivi organizzabili; 21 Home + Control/Netatmo e 41 HA.
+- Test: `76 passed`, diff check superato; commit `c3cdc92` pubblicato su `origin/main` e add-on aggiornato sul NUC.
+- Compatibilità: nessuna modifica a identificativi, comandi, MQTT, Discovery o dati di presentazione esistenti.
