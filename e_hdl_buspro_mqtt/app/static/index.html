@@ -107,8 +107,8 @@
       #adminView>.adminNavRail{display:none!important}.adminContent.card{width:100%;box-sizing:border-box}
       @media(max-width:900px){#adminView.adminWorkspace{grid-template-columns:1fr}.adminNavRail{position:static;display:flex;max-height:none;overflow-x:auto;gap:5px;border-radius:14px}.adminNavBrand{min-width:165px;border:0;border-right:1px solid rgba(255,255,255,.07)}.adminNavRail button{width:auto;min-width:max-content}.adminContent.card{min-height:0}}
     </style>
-    <link rel="stylesheet" href="static/hub/hub.css?v=0.1.469" />
-    <script defer src="static/hub/hub-nav.js?v=0.1.469"></script>
+    <link rel="stylesheet" href="static/hub/hub.css?v=0.1.470" />
+    <script defer src="static/hub/hub-nav.js?v=0.1.470"></script>
   </head>
   <body>
     <header>
@@ -1946,8 +1946,9 @@
       (function organizeAdmin(){
         const pages=[
           {id:'devices',label:'Dispositivi HDL',icon:'⌁',hint:'Luci, cover, sensori ambientali e ingressi',items:['devices','covers','cover_groups','temperature','humidity','illuminance','air','presence','dry_contact']},
-          {id:'scenarios',label:'Scenari globali',icon:'✦',hint:'Configurazione e trigger utilizzabili da tutti i bus',items:['scenario_config','scenario_ha_triggers']},
-          {id:'entities',label:'Entità da Home Assistant',icon:'◆',hint:'Entità Home Assistant rese disponibili alle interfacce e-Control',items:['ha_devices']},
+          {id:'scenario_management',label:'Scenari multi-bus',icon:'✦',hint:'Crea e configura gli scenari utilizzabili da tutti i bus',items:['scenario_config'],openItems:true},
+          {id:'scenario_triggers',label:'Trigger Home Assistant',icon:'✦',hint:'Collega gli scenari ai trigger delle automazioni Home Assistant',items:['scenario_ha_triggers'],openItems:true},
+          {id:'entities',label:'Entità da Home Assistant',icon:'◆',hint:'Entità Home Assistant rese disponibili alle interfacce e-Control',items:['ha_devices'],openItems:true},
           {id:'exposure',label:'Esposizione UI',icon:'↗',hint:'eFace, Home2, e-Guard e interfacce collegate',items:['guard_cameras','hub_links','home2_order','pwa','proxy_targets']},
           {id:'device_organization',label:'Dispositivi e presentazione',icon:'▦',hint:'Classificazione multi-bus, ambienti, visibilità e icone',items:[]},
           {id:'organization',label:'Azioni Home',icon:'▦',hint:'Azioni disponibili nella Home globale',items:['home_actions']},
@@ -1969,7 +1970,7 @@
           pages.forEach((cfg,index)=>{
             const page=document.createElement('section');page.className='adminPage';page.dataset.page=cfg.id;page.hidden=index!==0;
             page.innerHTML='<div class="adminPageHead"><div class="adminEyebrow">'+(cfg.id==='devices'?'Driver HDL BusPro':'e-Control Hub')+'</div><h2>'+cfg.label+'</h2><p>'+cfg.hint+'</p></div>';
-            cfg.items.forEach(id=>{const node=host.querySelector('details.acc[data-acc="'+id+'"]');if(node)page.appendChild(node);});host.appendChild(page);pageNodes.push(page);
+            cfg.items.forEach(id=>{const node=host.querySelector('details.acc[data-acc="'+id+'"]');if(node){if(cfg.openItems)node.open=true;page.appendChild(node);}});host.appendChild(page);pageNodes.push(page);
             const button=document.createElement('button');button.type='button';button.dataset.page=cfg.id;button.innerHTML='<span>'+cfg.icon+'</span>'+cfg.label;if(index===0)button.classList.add('active');rail.appendChild(button);
           });
           const page=id=>pageNodes.find(x=>x.dataset.page===id);
@@ -1977,7 +1978,7 @@
           function tree(title,ids,open){const box=document.createElement('details');box.className='adminTree';box.open=!!open;box.innerHTML='<summary>'+title+'</summary><div class="adminTreeItems"></div>';const list=box.lastElementChild;ids.forEach(id=>{const node=button(id);if(node)list.appendChild(node);});rail.appendChild(box);return list;}
           const dashboard=document.createElement('a');dashboard.className='adminTreeLink';dashboard.href=new URL('home',window.location.href).toString();dashboard.textContent='⌂  Home e stato bus';rail.appendChild(dashboard);
           const uiTree=tree('UI generate',[],true);uiTree.insertAdjacentHTML('beforeend','<a class="adminTreeLink" href="home">Home</a><a class="adminTreeLink" href="home2">Home2</a><a class="adminTreeLink" href="e-face">e-Face</a><a class="adminTreeLink" href="lights">Luci</a><a class="adminTreeLink" href="covers">Cover</a><a class="adminTreeLink" href="extra">Extra</a>');
-          tree('Programmazione',['devices','scenarios','entities','exposure','device_organization','organization','rooms'],true);
+          tree('Programmazione',['devices','scenario_management','scenario_triggers','entities','exposure','device_organization','organization','rooms'],true);
           const busTree=tree('Bus e integrazioni',[],true);const hdl=document.createElement('div');hdl.className='adminTreePlanned';hdl.innerHTML='<b>HDL BusPro</b><em>ATTIVO</em>';busTree.appendChild(hdl);['KNX','BTicino','Tuya','Modbus','DALI'].forEach(name=>busTree.insertAdjacentHTML('beforeend','<div class="adminTreePlanned"><span>'+name+'</span><em>PIANIFICATO</em></div>'));busTree.insertAdjacentHTML('beforeend','<a class="adminTreeLink" href="ksenia"><span>Ksenia Smart Home</span><em>INTEGRAZIONE</em></a>');
           const systemTree=tree('Sistema',['maintenance','tools','info'],false);systemTree.insertAdjacentHTML('beforeend','<a class="adminTreeLink" href="admin-guide">Guida</a>');
           const groupsPanel=panelByTitle(aside,'h3','User UI: ordine gruppi');if(groupsPanel){groupsPanel.classList.add('adminMovedPanel');const title=groupsPanel.querySelector('h3');if(title)title.textContent='Ordine ambienti legacy';const help=groupsPanel.querySelector('.muted');if(help)help.innerHTML='Formato testuale storico della User UI, <b>non JSON</b>. Una riga per ambiente; usa <code># NOME PIANO</code> per le intestazioni. Rimane disponibile per compatibilità con gli impianti HDL esistenti.';page('rooms').appendChild(groupsPanel);}
@@ -1990,7 +1991,7 @@
           const commandBar=document.createElement('div');commandBar.className='flex adminMovedPanel';commandBar.innerHTML='<b>Discovery MQTT HDL</b><span class="spacer"></span>';const republish=document.getElementById('btnRepublish'),reset=document.getElementById('btnResetDiscovery');if(republish)commandBar.appendChild(republish);if(reset)commandBar.appendChild(reset);page('maintenance').prepend(commandBar);
           function openPage(id,scroll,updateHash=true){const btn=button(id);if(!btn)return;pageNodes.forEach(p=>p.hidden=p.dataset.page!==id);rail.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b===btn));if(updateHash&&history.replaceState)history.replaceState(null,'','#'+id);if(scroll)host.scrollIntoView({behavior:'smooth',block:'start'});}
           rail.addEventListener('click',e=>{const btn=e.target.closest('button[data-page]');if(btn)openPage(btn.dataset.page,true);});
-          function openRequested(){const parts=String(location.hash||'').slice(1).split('/'),requested=parts[0],section=parts[1]||'';if(!page(requested))return;openPage(requested,false,false);if(requested==='devices'&&section){const sensorIds=['temperature','humidity','illuminance','air','presence','dry_contact'];const targets=section==='all'?[...page('devices').querySelectorAll('details.acc')]:section==='sensors'?sensorIds.map(id=>page('devices').querySelector('details.acc[data-acc="'+id+'"]')).filter(Boolean):[page('devices').querySelector('details.acc[data-acc="'+section+'"]')].filter(Boolean);targets.forEach(d=>d.open=true);setTimeout(()=>{const first=targets[0];if(first)first.scrollIntoView({behavior:'smooth',block:'start'});},0);}}
+          function openRequested(){const parts=String(location.hash||'').slice(1).split('/'),legacy=parts[0],requested=legacy==='scenarios'?'scenario_management':legacy,section=parts[1]||'';if(!page(requested))return;openPage(requested,false,false);if(['scenario_management','scenario_triggers','entities'].includes(requested))page(requested).querySelectorAll('details.acc').forEach(d=>d.open=true);if(requested==='devices'&&section){const sensorIds=['temperature','humidity','illuminance','air','presence','dry_contact'];const targets=section==='all'?[...page('devices').querySelectorAll('details.acc')]:section==='sensors'?sensorIds.map(id=>page('devices').querySelector('details.acc[data-acc="'+id+'"]')).filter(Boolean):[page('devices').querySelector('details.acc[data-acc="'+section+'"]')].filter(Boolean);targets.forEach(d=>d.open=true);setTimeout(()=>{const first=targets[0];if(first)first.scrollIntoView({behavior:'smooth',block:'start'});},0);}}
           openRequested();window.addEventListener('hashchange',openRequested);
           if(err)host.prepend(err);
           document.addEventListener('click',event=>{const btn=event.target.closest('button');if(!btn||!/^modifica$/i.test(btn.textContent.trim()))return;setTimeout(()=>{const details=btn.closest('details.acc');if(!details)return;details.open=true;const target=details.querySelector('form')||details.querySelector('.accBody')||details;target.scrollIntoView({behavior:'smooth',block:'start'});const field=target.querySelector('input:not([type="hidden"]),select,textarea');if(field)field.focus({preventScroll:true});},0);});
@@ -7090,7 +7091,7 @@
         }
       } catch (e) {}
     </script>
-    <script src="static/hub/organization.js?v=0.1.469"></script>
+    <script src="static/hub/organization.js?v=0.1.470"></script>
   </body>
 </html>
 
