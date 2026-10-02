@@ -486,3 +486,10 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 - Collaudo impianto: runtime e pacchetto installato `0.1.498`, servizio avviato, 199 dispositivi organizzabili; 21 Home + Control/Netatmo e 41 HA.
 - Test: `76 passed`, diff check superato; commit `c3cdc92` pubblicato su `origin/main` e add-on aggiornato sul NUC.
 - Compatibilità: nessuna modifica a identificativi, comandi, MQTT, Discovery o dati di presentazione esistenti.
+
+## Correzione catalogo Netatmo 0.1.499
+
+- Unita la topologia Netatmo allo stato live: nomi di modulo, stanze e casa sostituiscono i MAC grezzi nell'interfaccia.
+- Classificazione corretta per tipo nativo: `NATherm1` e `NRV` climate, `NAMain`/`NAModule1` sensori, `NAPlug` gateway tecnico in sola lettura.
+- Risincronizzazione reale completata: 21 dispositivi aggiornati, zero orfani; nomi e stanze Netatmo verificati via API sul NUC.
+- Runtime installato e avviato in versione `0.1.499`; suite `78 passed`; commit `2d8de2f` pubblicato.
