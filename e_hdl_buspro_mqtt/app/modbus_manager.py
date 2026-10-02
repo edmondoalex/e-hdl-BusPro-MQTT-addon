@@ -189,6 +189,13 @@ class ModbusStore:
             result.append({"device_id": row["device_id"], "name": row["name"], "device_class": row["device_class"], "native_type": row["domain"], "native_id": row["entity_id"], "home_assistant_entity_id": row["entity_id"], "capabilities": row["capabilities"], "read_only": bool(row.get("read_only", True)), "available": available, "stale": not available, "state": deepcopy(state)})
         return result
 
+    def organization_catalog(self) -> list[dict[str, Any]]:
+        return [
+            {"device_id": row.get("device_id"), "name": row.get("name") or row.get("device_id"), "device_class": row.get("device_class") or row.get("domain") or "device"}
+            for row in self.load()["catalog"].values()
+            if isinstance(row, dict) and not row.get("orphaned")
+        ]
+
     def render_home_assistant(self) -> str:
         data = self.load(); lines = ["# Managed by e-Control Hub. Do not edit manually."]
         for connection in data["connections"].values():

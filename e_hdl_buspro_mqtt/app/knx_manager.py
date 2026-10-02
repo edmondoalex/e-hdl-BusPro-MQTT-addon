@@ -187,6 +187,13 @@ class KnxCatalogStore:
             })
         return rows
 
+    def organization_catalog(self) -> list[dict[str, Any]]:
+        return [
+            {"device_id": row.get("device_id"), "name": row.get("name") or row.get("device_id"), "device_class": row.get("device_class") or row.get("domain") or "device"}
+            for row in (self.load().get("devices") or {}).values()
+            if isinstance(row, dict) and not row.get("orphaned")
+        ]
+
 
 class HomeAssistantWebSocket:
     def __init__(self, token: str, url: str = "ws://supervisor/core/api/websocket"):

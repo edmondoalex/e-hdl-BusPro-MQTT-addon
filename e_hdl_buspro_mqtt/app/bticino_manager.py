@@ -328,6 +328,20 @@ class BticinoCatalogStore:
             })
         return rows
 
+    def organization_catalog(self, source: str) -> list[dict[str, Any]]:
+        """Return every detected device, including devices not enabled in e-Face yet."""
+        if source not in INTEGRATIONS:
+            return []
+        return [
+            {
+                "device_id": row.get("device_id"),
+                "name": row.get("name") or row.get("device_id"),
+                "device_class": row.get("device_class") or row.get("domain") or "device",
+            }
+            for row in self.load()["integrations"][source]["devices"].values()
+            if isinstance(row, dict) and not row.get("orphaned")
+        ]
+
 
 class BticinoManager:
     def __init__(self, path: str, token: str):

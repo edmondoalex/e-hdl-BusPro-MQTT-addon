@@ -138,6 +138,9 @@ class SmartHomeProducerTests(unittest.TestCase):
         self.assertIn("Scorciatoie", source)
         self.assertNotIn('data-field="shortcut"', source)
         self.assertIn("gestita esclusivamente da e-Face", source)
+        for label in ("HA", "e-KNX Manager", "BTicino MyHOME SCS", "BTicino Home + Control / Netatmo", "e-Modbus Manager"):
+            self.assertIn(label, source)
+        self.assertIn("sourceOrder", source)
         self.assertIn('data-page="device_organization"', source)
         self.assertNotIn('<table class="orgTable">', source)
 

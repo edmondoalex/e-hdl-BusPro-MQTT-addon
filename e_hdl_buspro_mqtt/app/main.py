@@ -88,7 +88,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.497"
+ADDON_VERSION = "0.1.498"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -504,6 +504,12 @@ def create_app() -> FastAPI:
         getattr(api.state, "ha_states", {}) or {},
         getattr(api.state, "ha_caps", {}) or {},
     )
+    api.state.organization_sources = {
+        "knx": knx_manager.store.organization_catalog,
+        "myhome_scs": lambda: bticino_manager.store.organization_catalog("myhome_scs"),
+        "home_plus_control": lambda: bticino_manager.store.organization_catalog("home_plus_control"),
+        "modbus": modbus_manager.store.organization_catalog,
+    }
 
     def _organization_devices() -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
@@ -518,7 +524,9 @@ def create_app() -> FastAPI:
                 "source": "ksenia", "device_id": dev.get("device_id"),
                 "name": dev.get("name") or dev.get("device_id"), "device_class": dev.get("device_class"),
             })
-        for source, provider in api.state.smart_home_sources.items():
+        organization_sources = dict(api.state.smart_home_sources)
+        organization_sources.update(api.state.organization_sources)
+        for source, provider in organization_sources.items():
             try:
                 source_devices = provider() or []
             except Exception:
