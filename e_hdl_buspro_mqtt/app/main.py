@@ -86,7 +86,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.485"
+ADDON_VERSION = "0.1.486"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -6581,6 +6581,13 @@ self.addEventListener('fetch', (event) => {{
             try:
                 if bticino_manager.ws is not None:
                     progress = await bticino_manager.ws.command("config_entries/flow/progress")
+                    _LOGGER.warning(
+                        "netatmo_flow_recovery progress=%s",
+                        [
+                            {"flow_id": row.get("flow_id"), "handler": row.get("handler")}
+                            for row in progress if isinstance(row, dict)
+                        ] if isinstance(progress, list) else type(progress).__name__,
+                    )
                     if isinstance(progress, list):
                         def _flow_matches(row: dict[str, Any]) -> bool:
                             handler = row.get("handler")
