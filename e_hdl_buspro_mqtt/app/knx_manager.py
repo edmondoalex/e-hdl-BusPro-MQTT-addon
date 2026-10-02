@@ -192,7 +192,12 @@ class HomeAssistantWebSocket:
     async def command(self, command_type: str, **payload: Any) -> Any:
         import websockets
 
-        async with websockets.connect(self.url, open_timeout=8, close_timeout=2) as ws:
+        async with websockets.connect(
+            self.url,
+            open_timeout=8,
+            close_timeout=2,
+            max_size=16 * 1024 * 1024,
+        ) as ws:
             hello = json.loads(await asyncio.wait_for(ws.recv(), timeout=8))
             if hello.get("type") != "auth_required":
                 raise RuntimeError("unexpected Home Assistant WebSocket greeting")

@@ -228,14 +228,14 @@ class OrganizationTests(unittest.TestCase):
         self.assertIn("id:'hdl_temperature'", index)
         self.assertIn("Strumenti avanzati · JSON scenario", index)
         self.assertNotIn("Scenari: configurazione JSON", index)
-        self.assertIn("organization.js?v=0.1.473", index)
+        self.assertIn("organization.js?v=0.1.474", index)
         self.assertIn("link('Home','home','mdi:home-analytics','home')+link('Home2'", nav)
         self.assertLess(index.index("Ksenia Smart Home</b>"), index.index("Home Assistant</b>"))
         for page in (root / "e_hdl_buspro_mqtt" / "app" / "static" / "user").glob("*.html"):
             source = page.read_text(encoding="utf-8")
             if "static/hub/hub-nav.js" in source:
-                self.assertIn("hub-nav.js?v=0.1.473", source, page.name)
-                self.assertIn("hub.css?v=0.1.473", source, page.name)
+                self.assertIn("hub-nav.js?v=0.1.474", source, page.name)
+                self.assertIn("hub.css?v=0.1.474", source, page.name)
 
     def test_home_reports_live_ksenia_status(self):
         root = Path(__file__).resolve().parents[1]
