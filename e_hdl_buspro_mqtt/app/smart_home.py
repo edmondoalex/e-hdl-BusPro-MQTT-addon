@@ -193,6 +193,12 @@ def build_smart_home(
                 if device.get(field):
                     row[field] = deepcopy(device[field])
             row.update(_organization_fields(record, floors, rooms, groups, row["device_class"]))
+            if bool(device.get("presentation_authoritative")):
+                for field in ("categories", "room_name", "icon_override", "icon_auto"):
+                    if device.get(field) not in (None, "", []):
+                        row[field] = deepcopy(device[field])
+                row["visual_category"] = (row.get("categories") or [""])[0]
+                row["icon"] = row.get("icon_override") or row.get("icon_auto") or row.get("icon")
             row.update(_semantic_fields(device_class, capabilities, read_only, available, row["orphaned"], row["categories"]))
             devices.append(row)
             emitted.add(key)

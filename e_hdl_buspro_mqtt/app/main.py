@@ -45,6 +45,7 @@ from .discovery import (
     temperature_discovery,
 )
 from .icons import ensure_mdi_icons, parse_mdi_icon, placeholder_svg
+from .ha_catalog import build_ha_catalog
 from .ksenia_consumer import ContractError, KseniaSmartHomeConsumer
 from .knx_manager import KnxManager, KnxNotConfigured
 from .organization import OrganizationStore, hdl_presentation_class
@@ -83,7 +84,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.477"
+ADDON_VERSION = "0.1.478"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -475,6 +476,11 @@ def create_app() -> FastAPI:
     api.state.smart_home_sources = {}
     api.state.smart_home_command_handlers = {}
     api.state.smart_home_sources["knx"] = lambda: knx_manager.store.catalog(getattr(api.state, "knx_states", {}) or {})
+    api.state.smart_home_sources["ha"] = lambda: build_ha_catalog(
+        store.list_ha_devices(),
+        getattr(api.state, "ha_states", {}) or {},
+        getattr(api.state, "ha_caps", {}) or {},
+    )
 
     def _organization_devices() -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
@@ -10015,10 +10021,10 @@ self.addEventListener('fetch', (event) => {{
     async def _smart_home_ksenia_command(item: dict[str, Any], action: str, value: Any):
         return await asyncio.to_thread(ksenia.execute, str(item.get("device_id") or ""), action, value)
 
-    async def _smart_home_knx_command(item: dict[str, Any], action: str, value: Any):
+    async def _smart_home_ha_command(item: dict[str, Any], action: str, value: Any):
         entity_id = str(item.get("home_assistant_entity_id") or "").strip().lower()
         if not entity_id or "." not in entity_id:
-            raise HTTPException(status_code=409, detail="KNX device has no Home Assistant mapping")
+            raise HTTPException(status_code=409, detail="device has no Home Assistant mapping")
         domain = entity_id.split(".", 1)[0]
         service = ""
         data: dict[str, Any] = {"entity_id": entity_id}
@@ -10065,12 +10071,13 @@ self.addEventListener('fetch', (event) => {{
         if not service:
             raise HTTPException(status_code=400, detail="unsupported KNX command")
         await asyncio.to_thread(_ha_request, "POST", f"/api/services/{domain}/{service}", payload=data, timeout_s=10)
-        return {"ok": True, "accepted": True, "confirmed": False, "source": "knx"}
+        return {"ok": True, "accepted": True, "confirmed": False, "source": str(item.get("source") or "ha")}
 
     api.state.smart_home_command_handlers.update({
         "hdl": _smart_home_hdl_command,
         "ksenia": _smart_home_ksenia_command,
-        "knx": _smart_home_knx_command,
+        "knx": _smart_home_ha_command,
+        "ha": _smart_home_ha_command,
     })
 
     @api.post("/api/control/ha/light/{entity_id}")
