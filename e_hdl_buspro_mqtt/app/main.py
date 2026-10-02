@@ -86,7 +86,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.484"
+ADDON_VERSION = "0.1.485"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -6582,11 +6582,17 @@ self.addEventListener('fetch', (event) => {{
                 if bticino_manager.ws is not None:
                     progress = await bticino_manager.ws.command("config_entries/flow/progress")
                     if isinstance(progress, list):
+                        def _flow_matches(row: dict[str, Any]) -> bool:
+                            handler = row.get("handler")
+                            if isinstance(handler, (list, tuple)):
+                                return domain in {str(part or "") for part in handler}
+                            return str(handler or "") == domain
+
                         active = next(
                             (
                                 row for row in progress
                                 if isinstance(row, dict)
-                                and str(row.get("handler") or "") == domain
+                                and _flow_matches(row)
                                 and str(row.get("flow_id") or "").strip()
                             ),
                             None,
@@ -6619,6 +6625,11 @@ self.addEventListener('fetch', (event) => {{
                 )
             if not isinstance(result, dict):
                 raise HTTPException(status_code=502, detail="Invalid integration provisioning response")
+            if result.get("type") == "abort" and result.get("reason") == "already_in_progress":
+                raise HTTPException(
+                    status_code=409,
+                    detail="Il flusso Netatmo è ancora occupato e non può essere recuperato automaticamente.",
+                )
         return {"ok": True, "source": clean, "flow": result}
 
     @api.post("/api/integrations/bticino/{source}/provision/{flow_id}")

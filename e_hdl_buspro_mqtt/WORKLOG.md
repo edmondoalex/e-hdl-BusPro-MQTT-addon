@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-10-02 (Netatmo compound handler recovery 0.1.485)
+- Riconosciuti sia handler config-flow semplici sia identificativi composti usati da Home Assistant per OAuth Netatmo.
+- Impedita la restituzione di un falso successo se Home Assistant mantiene comunque il lock del flusso.
+- Version bump: 0.1.484 -> 0.1.485.
+
 ## 2026-10-02 (Netatmo active-flow lookup 0.1.484)
 - Il recupero interroga l'elenco config-flow attivi di Home Assistant e usa l'ID reale, poiché l'abort `already_in_progress` può contenere un ID già scaduto.
 - Un DELETE già risolto (404) è tollerato e il nuovo avvio viene comunque tentato.
