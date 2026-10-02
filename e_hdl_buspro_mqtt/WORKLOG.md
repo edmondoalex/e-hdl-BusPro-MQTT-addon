@@ -1,5 +1,27 @@
 # WORKLOG
 
+## Tag operativi per collaudi futuri
+
+### TODO-KNX-COLLAUDO
+
+- Collegare un impianto KNX reale tramite interfaccia/router KNX/IP.
+- Importare un progetto ETS e verificare indirizzi di gruppo, DPT e associazioni.
+- Sincronizzare il catalogo KNX in e-Control e controllare identità stabile, rinomina e dispositivi orfani.
+- Abilitare un campione per ogni capability disponibile: luce, dimmer, cover, clima, switch e sensori.
+- Verificare collocazione, categorie, icone, stati realtime e comandi in e-Face.
+- Provare disconnessione, riconnessione, riavvio Home Assistant e riavvio e-Control.
+- Verificare diagnostica, backup/ripristino e assenza di duplicati con eventuali entità Home Assistant già configurate.
+
+### TODO-BTICINO-COLLAUDO
+
+- MyHOME SCS: collegare un gateway OpenWebNet reale e installare da e-Control il componente MyHOME verificato.
+- Riavviare Home Assistant da e-Control, completare il config flow e sincronizzare il catalogo `myhome_scs`.
+- Home + Control: collegare un account Netatmo/Legrand reale tramite il config flow ufficiale e sincronizzare `home_plus_control`.
+- Verificare che le due sorgenti restino separate nei conteggi, nei cataloghi, nella diagnostica e nel backup.
+- Abilitare dispositivi campione e controllare classificazione, stanze, gruppi, icone, realtime e comandi in e-Face.
+- Provare gateway/cloud offline, riconnessione, riavvii, rinomina entità e dispositivi rimossi/orfani.
+- Verificare assenza di duplicati con il catalogo Home Assistant generico e completare il collaudo backup/ripristino.
+
 ## 2026-10-02 (BTicino MyHOME SCS e Home + Control 0.1.481)
 - Separati i trasporti BTicino in `myhome_scs` (OpenWebNet locale) e `home_plus_control` (Netatmo cloud).
 - Aggiunti cataloghi persistenti indipendenti, rilevamento dal registry Home Assistant, opt-in verso e-Face e instradamento comandi.
