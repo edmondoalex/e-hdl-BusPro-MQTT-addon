@@ -86,7 +86,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.490"
+ADDON_VERSION = "0.1.491"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -6691,12 +6691,26 @@ self.addEventListener('fetch', (event) => {{
                         removed += 1
                     except Exception:
                         _LOGGER.warning("Unable to remove stale %s flow %s", domain, flow_id, exc_info=True)
-            # OAuth flows are not always exposed by the progress API. Restarting
-            # the integration service is the reliable final cleanup and leaves
-            # the saved e-Control application credentials untouched.
-            await asyncio.to_thread(_supervisor_request, "POST", "/core/restart", timeout_s=30)
         except Exception as exc:
             raise HTTPException(status_code=502, detail="Impossibile azzerare il tentativo di collegamento: " + str(exc))
+
+        # OAuth flows are not always exposed by the progress API. Restart through
+        # the internal control API after returning the HTTP confirmation, so the
+        # browser can retain a clear success message while services recycle.
+        async def _restart_integration_service() -> None:
+            await asyncio.sleep(1.0)
+            try:
+                await asyncio.to_thread(
+                    _ha_request,
+                    "POST",
+                    "/api/services/homeassistant/restart",
+                    payload={},
+                    timeout_s=20,
+                )
+            except Exception:
+                _LOGGER.warning("Delayed integration service restart disconnected or failed", exc_info=True)
+
+        asyncio.create_task(_restart_integration_service())
         return {
             "ok": True,
             "source": clean,
