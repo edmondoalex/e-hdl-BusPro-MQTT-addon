@@ -1,5 +1,10 @@
 # WORKLOG
 
+## 2026-10-02 (Stati integrazioni e logo Home Assistant coerenti)
+- Uniformati i badge del menu a `ATTIVO` e `INATTIVO`: rimossi `NUOVO` e `PIANIFICATO` dalla navigazione e dalle viste informative.
+- Home Assistant usa ora lo stesso riquadro logo degli altri bus e integrazioni.
+- Version bump: 0.1.479 -> 0.1.480.
+
 ## 2026-10-02 (Conteggi integrazioni verificabili)
 - Corretto `devices_by_bus.hdl_buspro`: il totale HDL non include più per errore le entità Home Assistant del ramo legacy.
 - Aggiunte metriche per sorgente con elementi rilevati/configurati, esportati Smart Home, visibili, sicurezza legacy ed esclusi.

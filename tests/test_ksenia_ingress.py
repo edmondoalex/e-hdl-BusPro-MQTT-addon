@@ -13,7 +13,7 @@ class KseniaIngressTests(unittest.TestCase):
         self.assertNotIn('../static/hub/', source)
         self.assertIn("fetch('api/integrations/ksenia'", source)
         self.assertIn('href="static/hub/hub.css?v=0.1.479"', source)
-        self.assertIn('src="static/hub/hub-nav.js?v=0.1.479"', source)
+        self.assertIn('src="static/hub/hub-nav.js?v=0.1.480"', source)
 
     def test_ksenia_page_is_allowed_on_user_port(self):
         main = (PAGE.parents[2] / "main.py").read_text(encoding="utf-8")

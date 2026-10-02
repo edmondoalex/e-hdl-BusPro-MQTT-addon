@@ -13,7 +13,7 @@
 <body><main>
   <section class="hero"><div class="muted">INTEGRAZIONE SMART HOME</div><h1>Ksenia</h1><div class="muted">Uscite, cover, sensori ambientali, termostati e scenari autorizzati dal catalogo Ksenia. Sicurezza esclusa.</div><div class="status" id="status"></div><div class="error" id="error"></div></section>
   <section class="panel"><div class="tabs" id="tabs"></div><div class="grid" id="grid"></div></section>
-</main><script src="static/hub/hub-nav.js?v=0.1.479"></script><script>
+</main><script src="static/hub/hub-nav.js?v=0.1.480"></script><script>
 const labels={all:'Panoramica',light:'Uscite e luci',switch:'Uscite e luci',cover:'Cover e varchi',sensor:'Sensori ambientali',binary_sensor:'Sensori ambientali',climate:'Termostati',scene:'Scenari Smart Home'};
 let snap=null,filter=(location.hash||'#all').slice(1);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function groupKey(c){if(['light','switch','dimmer'].includes(c))return'light';if(['cover','gate','garage_door','awning','shutter'].includes(c))return'cover';if(['environment_sensor','temperature_sensor','humidity_sensor','illuminance_sensor'].includes(c))return'sensor';if(c==='thermostat')return'climate';if(c==='scenario')return'scene';return c}

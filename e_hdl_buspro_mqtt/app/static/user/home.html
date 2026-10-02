@@ -72,7 +72,7 @@
       @media(max-width:700px){main{padding:18px 14px}.statusGrid{grid-template-columns:1fr 1fr}.logo{width:56px;height:56px}.controlCenter{padding:17px}}
     </style>
     <link rel="stylesheet" href="static/hub/hub.css?v=0.1.479" />
-    <script defer src="static/hub/hub-nav.js?v=0.1.479"></script>
+    <script defer src="static/hub/hub-nav.js?v=0.1.480"></script>
   </head>
   <body>
     <main>
@@ -183,7 +183,7 @@
         const countOf=(key,fallback=0)=>{const value=rawBusCounts[key];return Array.isArray(value)?value.length:(Number.isFinite(Number(value))?Number(value):fallback);};
         const busCounts={hdl_buspro:countOf('hdl_buspro'),home_assistant:countOf('home_assistant',haCount),knx:countOf('knx'),bticino:countOf('bticino'),tuya:countOf('tuya'),modbus:countOf('modbus'),dali:countOf('dali'),ksenia:countOf('ksenia')};
         const globalTotal=Object.values(busCounts).reduce((sum,n)=>sum+n,0);
-        [['busCountHdl',busCounts.hdl_buspro+' dispositivi'],['busCountKnx',busCounts.knx+' dispositivi · Pianificato'],['busCountBticino',busCounts.bticino+' dispositivi · Pianificato'],['busCountTuya',busCounts.tuya+' dispositivi · Pianificato'],['busCountModbus',busCounts.modbus+' dispositivi · Pianificato'],['busCountDali',busCounts.dali+' dispositivi · Pianificato']].forEach(([id,value])=>{const el=document.getElementById(id);if(el)el.textContent=value;});
+        [['busCountHdl',busCounts.hdl_buspro+' dispositivi'],['busCountKnx',busCounts.knx+' dispositivi · Inattivo'],['busCountBticino',busCounts.bticino+' dispositivi · Inattivo'],['busCountTuya',busCounts.tuya+' dispositivi · Inattivo'],['busCountModbus',busCounts.modbus+' dispositivi · Inattivo'],['busCountDali',busCounts.dali+' dispositivi · Inattivo']].forEach(([id,value])=>{const el=document.getElementById(id);if(el)el.textContent=value;});
         const lights=devices.filter(d=>['light','switch'].includes(type(d))).length;
         const covers=devices.filter(d=>type(d)==='cover').length;
         const sensors=Math.max(0,devices.length-lights-covers);
