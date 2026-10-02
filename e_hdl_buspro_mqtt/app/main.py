@@ -86,7 +86,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.487"
+ADDON_VERSION = "0.1.488"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -6638,6 +6638,41 @@ self.addEventListener('fetch', (event) => {{
                     detail="Il flusso Netatmo è ancora occupato e non può essere recuperato automaticamente.",
                 )
         return {"ok": True, "source": clean, "flow": result}
+
+    @api.get("/api/integrations/bticino/home_plus_control/credentials")
+    async def api_homeplus_credentials_status():
+        if bticino_manager.ws is None:
+            raise HTTPException(status_code=503, detail="Home Assistant API not available")
+        try:
+            rows = await bticino_manager.ws.command("application_credentials/list")
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+        matches = [row for row in rows if isinstance(row, dict) and row.get("domain") == "netatmo"] if isinstance(rows, list) else []
+        return {
+            "configured": bool(matches),
+            "count": len(matches),
+            "names": [str(row.get("name") or "Credenziale Netatmo") for row in matches],
+        }
+
+    @api.post("/api/integrations/bticino/home_plus_control/credentials")
+    async def api_homeplus_credentials_save(payload: dict[str, Any]):
+        if bticino_manager.ws is None:
+            raise HTTPException(status_code=503, detail="Home Assistant API not available")
+        client_id = str(payload.get("client_id") or "").strip()
+        client_secret = str(payload.get("client_secret") or "").strip()
+        if not 8 <= len(client_id) <= 256 or not 8 <= len(client_secret) <= 512:
+            raise HTTPException(status_code=400, detail="Client ID o Client Secret Netatmo non validi")
+        try:
+            created = await bticino_manager.ws.command(
+                "application_credentials/create",
+                domain="netatmo",
+                client_id=client_id,
+                client_secret=client_secret,
+                name="e-Control Hub",
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+        return {"ok": True, "configured": True, "credential_id": str((created or {}).get("id") or "")}
 
     @api.post("/api/integrations/bticino/{source}/provision/{flow_id}")
     async def api_bticino_provision_step(source: str, flow_id: str, payload: dict[str, Any]):

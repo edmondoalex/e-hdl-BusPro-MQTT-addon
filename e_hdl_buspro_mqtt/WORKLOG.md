@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-10-02 (Netatmo application credentials 0.1.488)
+- Aggiunti campi protetti Client ID e Client Secret nella pagina Home + Control.
+- Registrazione tramite WebSocket ufficiale Home Assistant `application_credentials/create`; il Secret non viene restituito alla UI o registrato nei log.
+- Stato credenziali esposto senza dati sensibili.
+- Version bump: 0.1.487 -> 0.1.488.
+
 ## 2026-10-02 (Netatmo setup documentation 0.1.487)
 - Aggiunti nella pagina Home + Control il link diretto a Netatmo Developer e la documentazione ufficiale Home Assistant.
 - Inserite istruzioni sintetiche: nome app, Redirect URI/Webhook URI vuoti e protezione/rotazione del Client Secret.
