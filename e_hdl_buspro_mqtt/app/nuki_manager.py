@@ -19,6 +19,16 @@ COMMAND_TOPICS = {"unlock": "unlock", "lock": "lock", "unlatch": "unlatch", "loc
 LOCK_STATES = {0: "uncalibrated", 1: "locked", 2: "unlocking", 3: "unlocked", 4: "locking", 5: "unlatched", 6: "unlocked", 7: "unlatching", 254: "motor_blocked", 255: "undefined"}
 
 
+def canonical_device_id(value: Any) -> str:
+    """Return the 8-char MQTT id from either MQTT id or Web API smartlockId."""
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    if raw.isdigit():
+        return f"{int(raw) & 0xFFFFFFFF:08X}"
+    return raw.upper()
+
+
 class NukiStore:
     def __init__(self, path: str):
         self.path = path
@@ -172,18 +182,21 @@ class NukiManager:
         locks = self._api("/smartlock")
         data = self.store.load(); count = 0
         for item in locks if isinstance(locks, list) else []:
-            did = str(item.get("smartlockId") or "");
+            cloud_id = str(item.get("smartlockId") or "")
+            did = canonical_device_id(cloud_id)
             if not did: continue
-            row = data["devices"].setdefault(did, {"device_id": did, "enabled": False, "read_only": True, "state": {}, "capabilities": list(COMMAND_TOPICS)})
-            row.update({"name": item.get("name") or f"Nuki {did}", "device_class": "lock", "web": True, "device_type": item.get("type")}); count += 1
+            legacy = data["devices"].pop(cloud_id, None) if cloud_id != did else None
+            row = data["devices"].setdefault(did, legacy or {"device_id": did, "enabled": False, "read_only": True, "state": {}, "capabilities": list(COMMAND_TOPICS)})
+            row["device_id"] = did
+            row.update({"name": item.get("name") or row.get("name") or f"Nuki {did}", "device_class": "lock", "web": True, "cloud_id": cloud_id, "device_type": item.get("type")}); count += 1
             try:
-                auths = self._api(f"/smartlock/{urllib.parse.quote(did)}/auth")
+                auths = self._api(f"/smartlock/{urllib.parse.quote(cloud_id)}/auth")
                 for auth in auths if isinstance(auths, list) else []:
                     aid = str(auth.get("id") or auth.get("authId") or "")
                     if aid: data["authorizations"][aid] = {"auth_id": aid, "name": auth.get("name") or aid, "enabled": auth.get("enabled", True), "allowed_from": auth.get("allowedFromDate"), "allowed_until": auth.get("allowedUntilDate")}
             except ValueError: pass
             try:
-                logs = self._api(f"/smartlock/{urllib.parse.quote(did)}/log?limit=50")
+                logs = self._api(f"/smartlock/{urllib.parse.quote(cloud_id)}/log?limit=50")
                 for log in logs if isinstance(logs, list) else []:
                     event_id = str(log.get("id") or "")
                     if event_id and not any(x.get("id") == event_id for x in data["events"]):

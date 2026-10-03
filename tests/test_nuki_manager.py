@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from e_hdl_buspro_mqtt.app.nuki_manager import NukiManager, NukiStore
+from e_hdl_buspro_mqtt.app.nuki_manager import NukiManager, NukiStore, canonical_device_id
 
 
 class FakeMqtt:
@@ -26,6 +26,12 @@ def test_persistence_and_secret_is_separate(tmp_path):
     assert store.load()["config"] == {"enabled": True, "mqtt_prefix": "doors", "cloud_enabled": True}
     assert store.token() == "secret"
     assert "secret" not in (tmp_path / "nuki.json").read_text(encoding="utf-8")
+
+
+def test_web_api_id_is_normalized_to_same_mqtt_device():
+    assert canonical_device_id("18211616620") == "3D7F376C"
+    assert canonical_device_id("22767029231") == "4D054BEF"
+    assert canonical_device_id("4ca6faf4") == "4CA6FAF4"
 
 
 def test_discovery_event_identity_and_command(tmp_path):
