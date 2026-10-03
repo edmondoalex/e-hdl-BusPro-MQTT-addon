@@ -15,7 +15,7 @@ class BticinoCatalogStoreTests(unittest.TestCase):
             store = BticinoCatalogStore(str(Path(tmp) / "bticino.json"))
             store.sync_direct_netatmo([
                 {"id": "bridge", "type": "NAPlug", "module_name": "Bridge casa"},
-                {"id": "thermostat", "type": "NATherm1", "module_name": "Termostato sala", "room_name": "Sala"},
+                {"id": "thermostat", "type": "NATherm1", "module_name": "Termostato sala", "room_name": "Sala", "reachable": True},
                 {"id": "valve", "type": "NRV", "module_name": "Valvola cucina", "room_id": "room-kitchen", "room_name": "Cucina"},
                 {"id": "weather", "type": "NAMain", "module_name": "Meteo esterno", "dashboard_data": {"Temperature": 18.2}},
             ])
@@ -23,6 +23,7 @@ class BticinoCatalogStoreTests(unittest.TestCase):
             self.assertEqual("gateway", rows["bridge"]["domain"])
             self.assertTrue(rows["bridge"]["read_only"])
             self.assertEqual("climate", rows["thermostat"]["domain"])
+            self.assertEqual("online", rows["thermostat"]["state"]["state"])
             self.assertEqual("climate", rows["valve"]["domain"])
             self.assertEqual("sensor", rows["weather"]["domain"])
             self.assertEqual("Valvola cucina", rows["valve"]["name"])
@@ -31,6 +32,18 @@ class BticinoCatalogStoreTests(unittest.TestCase):
             store.update("home_plus_control", rows["valve"]["device_id"], enabled=True, read_only=False)
             valve = next(item for item in store.catalog("home_plus_control", {}) if item["native_id"] == "valve")
             self.assertEqual("room-kitchen", valve["room_id"])
+
+    def test_direct_netatmo_climate_exposes_temperature_and_setpoint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = BticinoCatalogStore(str(Path(tmp) / "bticino.json"))
+            store.sync_direct_netatmo([{
+                "id": "thermostat", "type": "NATherm1", "room_id": "room-1",
+                "therm_measured_temperature": 20.5, "therm_setpoint_temperature": 21.0,
+            }])
+            row = next(iter(store.load()["integrations"]["home_plus_control"]["devices"].values()))
+            self.assertEqual("20.5", row["state"]["state"])
+            self.assertEqual(20.5, row["state"]["attributes"]["current_temperature"])
+            self.assertEqual(21.0, row["state"]["attributes"]["target_temperature"])
 
     def test_direct_catalog_recovers_room_from_legacy_state(self):
         with tempfile.TemporaryDirectory() as tmp:

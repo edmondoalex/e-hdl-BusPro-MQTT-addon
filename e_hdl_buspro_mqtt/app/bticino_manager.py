@@ -286,7 +286,22 @@ class BticinoCatalogStore:
                 if is_sensor or is_bridge:
                     capabilities = []
                 state_value = module.get("on")
-                state = {"state": "ON" if state_value is True else "OFF" if state_value is False else str(module.get("status") or "unknown"), "attributes": deepcopy(module)}
+                attributes = deepcopy(module)
+                if is_climate:
+                    measured = module.get("therm_measured_temperature")
+                    target = module.get("therm_setpoint_temperature")
+                    if target is None and isinstance(module.get("setpoint"), dict):
+                        target = module["setpoint"].get("setpoint_temp")
+                    if measured is not None:
+                        attributes["current_temperature"] = measured
+                    if target is not None:
+                        attributes["target_temperature"] = target
+                    climate_state = measured if measured is not None else module.get("status")
+                    if climate_state in (None, "", "unknown") and module.get("reachable") is True:
+                        climate_state = "online"
+                    state = {"state": str(climate_state or "unknown"), "attributes": attributes}
+                else:
+                    state = {"state": "ON" if state_value is True else "OFF" if state_value is False else str(module.get("status") or "unknown"), "attributes": attributes}
                 row = {
                     **old, "device_id": stable_id, "native_id": native_id,
                     "home_id": str(module.get("home_id") or ""), "room_id": str(module.get("room_id") or ""),
