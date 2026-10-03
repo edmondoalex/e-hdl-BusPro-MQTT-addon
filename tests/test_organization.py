@@ -262,9 +262,9 @@ class OrganizationTests(unittest.TestCase):
         self.assertIn("id:'hdl_temperature'", index)
         self.assertIn("Strumenti avanzati · JSON scenario", index)
         self.assertNotIn("Scenari: configurazione JSON", index)
-        self.assertIn("device-category-select.js?v=0.1.516", index)
-        self.assertIn("organization.js?v=0.1.516", index)
-        self.assertIn("hub-nav.js?v=0.1.516", index)
+        self.assertIn("device-category-select.js?v=0.1.517", index)
+        self.assertIn("organization.js?v=0.1.517", index)
+        self.assertIn("hub-nav.js?v=0.1.517", index)
 
         self.assertIn("integrationLink('Ferroli OMNIA','ferroli_omnia'", nav)
         self.assertIn("link('Home','home','mdi:home-analytics','home')+link('Home2'", nav)
@@ -289,6 +289,8 @@ class OrganizationTests(unittest.TestCase):
         self.assertIn('input[id$="_category"]', source)
         self.assertIn("Sensore temperatura", source)
         self.assertIn("input.replaceWith(select)", source)
+        self.assertIn("Nome originale: ${original}", source)
+        self.assertIn("title.textContent = custom || original", source)
 
     def test_home_reports_live_ksenia_status(self):
         root = Path(__file__).resolve().parents[1]

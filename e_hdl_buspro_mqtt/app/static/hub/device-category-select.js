@@ -30,6 +30,21 @@
       });
       input.replaceWith(select);
     });
+    root.querySelectorAll?.('form[data-bus-config]').forEach(form => {
+      const input = form.querySelector('input[name="name_override"]');
+      const row = form.closest('tr') || form.closest('.adminFutureCard');
+      const title = row?.querySelector('td:first-child > b') || row?.querySelector(':scope > .flex > div > b');
+      if (!input || !title) return;
+      const original = title.dataset.originalName || title.textContent.trim();
+      title.dataset.originalName = original;
+      const custom = input.value.trim();
+      title.textContent = custom || original;
+      let note = title.parentElement.querySelector(':scope > .busOriginalName');
+      if (custom && custom !== original) {
+        if (!note) { note = document.createElement('div'); note.className = 'muted busOriginalName'; title.after(note); }
+        note.textContent = `Nome originale: ${original}`;
+      } else note?.remove();
+    });
   }
   const start = () => {
     upgrade();
