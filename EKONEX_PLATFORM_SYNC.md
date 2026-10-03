@@ -1,5 +1,16 @@
 # Ekonex Platform Sync — HDL BusPro
 
+## Handoff corrente - nome personalizzato ESPHome 0.1.515
+
+- Il nome impostato con `Modifica` nel pannello ESPHome e' ora il nome principale anche in `Dispositivi e presentazione`, nell'ordinamento e nel filtro di ricerca.
+- La ricerca conserva anche nome originale e ID tecnico, quindi un dispositivo resta rintracciabile dopo la rinomina.
+- Dopo `Salva modifica` la vista organizzazione viene ricaricata nello stesso processo UI senza refresh manuale.
+- Compatibilita': identificativi tecnici e HDL invariati; cambia soltanto la presentazione degli override gia' persistiti.
+- Test: `95 passed`, compilazione Python, sintassi JavaScript e `git diff --check` superati.
+- Release `0.1.515`, commit runtime `93506fe` pubblicato su `origin/main`. Installazione NUC pendente per indisponibilita' del canale amministrativo autenticato nella sessione corrente.
+
+---
+
 ## Handoff corrente - ESPHome Device Builder 0.1.514
 
 - Integrato `ESPHome Device Builder` in e-Control con logo originale, pagina dedicata e badge menu per aggiornamenti del Builder e dei dispositivi.
