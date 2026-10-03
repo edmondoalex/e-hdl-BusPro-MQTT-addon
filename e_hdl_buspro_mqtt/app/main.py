@@ -89,7 +89,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.505"
+ADDON_VERSION = "0.1.506"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -6917,6 +6917,47 @@ self.addEventListener('fetch', (event) => {{
             return {"ok": True, "device": result}
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
+
+    def _device_policies() -> dict[str, dict[str, bool]]:
+        policies: dict[str, dict[str, bool]] = {}
+        for device_id, row in (knx_manager.store.load().get("devices") or {}).items():
+            policies[f"knx:{device_id}"] = {"eface": bool(row.get("enabled")), "commands": not bool(row.get("read_only", True))}
+        for source in ("myhome_scs", "home_plus_control"):
+            rows = (((bticino_manager.store.load().get("integrations") or {}).get(source) or {}).get("devices") or {})
+            for device_id, row in rows.items():
+                policies[f"{source}:{device_id}"] = {"eface": bool(row.get("enabled")), "commands": not bool(row.get("read_only", True))}
+        for device_id, row in (modbus_manager.store.load().get("catalog") or {}).items():
+            policies[f"modbus:{device_id}"] = {"eface": bool(row.get("enabled")), "commands": not bool(row.get("read_only", True))}
+        return policies
+
+    @api.get("/api/integrations/device-policies")
+    async def api_device_policies():
+        return {"items": _device_policies()}
+
+    @api.put("/api/integrations/{source}/devices/{device_id}/policy")
+    async def api_device_policy(source: str, device_id: str, payload: dict[str, Any]):
+        source = str(source or "").strip().lower()
+        enabled = bool(payload.get("eface")) if "eface" in payload else None
+        read_only = not bool(payload.get("commands")) if "commands" in payload else None
+        try:
+            if source == "knx":
+                row = knx_manager.store.update(device_id, enabled=enabled, read_only=read_only)
+            elif source in {"myhome_scs", "home_plus_control"}:
+                row = bticino_manager.store.update(source, device_id, enabled=enabled, read_only=read_only)
+            elif source == "modbus":
+                update = {}
+                if enabled is not None:
+                    update["enabled"] = enabled
+                if read_only is not None:
+                    update["read_only"] = read_only
+                row = modbus_manager.store.update_catalog(device_id, update)
+            else:
+                raise HTTPException(status_code=400, detail="La politica e-Face e comandi è gestita dal driver del bus")
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Dispositivo non trovato")
+        _sync_organization()
+        await _broadcast_devices()
+        return {"ok": True, "device": row, "policy": _device_policies().get(f"{source}:{device_id}")}
 
     @api.post("/api/integrations/ksenia/command/{device_id}")
     async def api_ksenia_command(device_id: str, payload: dict[str, Any]):

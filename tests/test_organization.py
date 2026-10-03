@@ -220,8 +220,11 @@ class OrganizationTests(unittest.TestCase):
         self.assertIn("api/integrations/'+encodeURIComponent(button.dataset.source)", index)
         self.assertIn("ID / indirizzo", index)
         self.assertIn("Consenti i comandi; disattiva per sola lettura", index)
-        self.assertIn("Con <b>Comandi</b> attivo puoi provare il dispositivo da qui", index)
+        self.assertIn("Pubblicazione e-Face e permesso Comandi si impostano", index)
         self.assertIn("Ambiente / modello", index)
+        self.assertIn("api/integrations/device-policies", script)
+        self.assertIn('data-policy="eface"', script)
+        self.assertIn('data-policy="commands"', script)
 
     def test_installer_navigation_separates_admin_from_user_previews(self):
         root = Path(__file__).resolve().parents[1]
