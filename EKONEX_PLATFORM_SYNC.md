@@ -1,5 +1,15 @@
 # Ekonex Platform Sync — HDL BusPro
 
+## Handoff corrente - categorie guidate e doppio nome 0.1.516
+
+- `Categoria` nei pannelli bus e integrazioni e' ora una tendina con i tipi supportati; `Automatica` conserva la classificazione rilevata e gli eventuali valori storici restano selezionabili.
+- In `Dispositivi e presentazione` il nome personalizzato e' mostrato come titolo e, quando differente, il nome originale compare subito sotto. Il filtro ricerca trova entrambi e anche l'ID tecnico.
+- Compatibilita': HDL non modificato; identificativi e valori persistiti invariati.
+- Test: `96 passed`, compilazione Python, sintassi JavaScript e `git diff --check` superati.
+- Release `0.1.516`, commit runtime `bdecb32` pubblicato su `origin/main`. Installazione NUC ancora da eseguire tramite canale amministrativo autenticato.
+
+---
+
 ## Handoff corrente - nome personalizzato ESPHome 0.1.515
 
 - Il nome impostato con `Modifica` nel pannello ESPHome e' ora il nome principale anche in `Dispositivi e presentazione`, nell'ordinamento e nel filtro di ricerca.
