@@ -562,3 +562,4 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 - Corretto il generatore Modbus comune: sezioni valide `switches` e raggruppamento unico di più dispositivi sullo stesso gateway.
 - Release `0.1.511`, commit `8cf2ef0`, `87 passed`; installazione NUC avviata e verificata. Pagina e logo HTTP 200, endpoint admin presente e validazione input attiva.
 - Nessuna configurazione fittizia salvata sull'impianto: IP e Slave ID saranno inseriti quando il gateway sarà installato. HDL invariato.
+- Correzione visibilità `0.1.512`: la voce Ferroli era stata inserita nel menu amministrativo legacy nascosto dal layout corrente. È ora presente nella navigazione laterale effettiva con logo e cache-buster dedicato; collaudo live conferma versione 0.1.512, link servito e asset aggiornato. Suite: `87 passed`; commit `c70291c`.
