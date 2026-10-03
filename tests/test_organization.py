@@ -262,8 +262,9 @@ class OrganizationTests(unittest.TestCase):
         self.assertIn("id:'hdl_temperature'", index)
         self.assertIn("Strumenti avanzati · JSON scenario", index)
         self.assertNotIn("Scenari: configurazione JSON", index)
-        self.assertIn("organization.js?v=0.1.514", index)
-        self.assertIn("hub-nav.js?v=0.1.514", index)
+        self.assertIn("organization.js?v=0.1.515", index)
+        self.assertIn("hub-nav.js?v=0.1.515", index)
+
         self.assertIn("integrationLink('Ferroli OMNIA','ferroli_omnia'", nav)
         self.assertIn("link('Home','home','mdi:home-analytics','home')+link('Home2'", nav)
         self.assertLess(index.index("Ksenia Smart Home</b>"), index.index("Integrazioni esterne</b>"))
@@ -272,6 +273,13 @@ class OrganizationTests(unittest.TestCase):
             if "static/hub/hub-nav.js" in source:
                 self.assertIn("hub-nav.js?v=0.1.484", source, page.name)
                 self.assertIn("hub.css?v=0.1.479", source, page.name)
+
+    def test_device_organization_uses_overridden_name_for_view_and_search(self):
+        source = (Path(__file__).resolve().parents[1] / "e_hdl_buspro_mqtt" / "app" / "static" / "hub" / "organization.js").read_text(encoding="utf-8")
+        self.assertIn("device.name_override||device.name||device.device_id", source)
+        self.assertIn("shownName=effectiveName(device)", source)
+        self.assertIn("`${shownName} ${device.name||''} ${device.device_id}", source)
+        self.assertIn("econtrol:organization-changed", source)
 
     def test_home_reports_live_ksenia_status(self):
         root = Path(__file__).resolve().parents[1]
