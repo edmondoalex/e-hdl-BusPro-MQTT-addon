@@ -50,8 +50,9 @@ from .icons import ensure_mdi_icons, parse_mdi_icon, placeholder_svg
 from .ha_catalog import build_ha_catalog
 from .bticino_manager import BticinoManager, INTEGRATIONS as BTICINO_INTEGRATIONS, MyHomeComponentInstaller
 from .ksenia_consumer import ContractError, KseniaSmartHomeConsumer
-from .knx_manager import KnxManager, KnxNotConfigured
+from .knx_manager import HomeAssistantWebSocket, KnxManager, KnxNotConfigured
 from .modbus_manager import ModbusManager
+from .esphome_manager import EspHomeManager
 from .netatmo_direct import NetatmoDirect
 from .organization import OrganizationStore, hdl_presentation_class
 from .smart_home import build_smart_home, hdl_device_kind, validate_command_request
@@ -89,7 +90,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.513"
+ADDON_VERSION = "0.1.514"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -455,6 +456,10 @@ def create_app() -> FastAPI:
     modbus_path = os.environ.get("ECONTROL_MODBUS_MANAGER", os.path.join(os.path.dirname(store.path), "modbus_manager.json"))
     modbus_manager = ModbusManager(modbus_path, str(os.environ.get("SUPERVISOR_TOKEN") or "").strip(), os.environ.get("HOME_ASSISTANT_CONFIG", "/config"))
     api.state.modbus_manager = modbus_manager
+    esphome_path = os.environ.get("ECONTROL_ESPHOME_MANAGER", os.path.join(os.path.dirname(store.path), "esphome_manager.json"))
+    esphome_manager = EspHomeManager(esphome_path, str(os.environ.get("SUPERVISOR_TOKEN") or "").strip())
+    api.state.esphome_manager = esphome_manager
+    esphome_ha_ws = HomeAssistantWebSocket(str(os.environ.get("SUPERVISOR_TOKEN") or "").strip()) if str(os.environ.get("SUPERVISOR_TOKEN") or "").strip() else None
 
     icons_dir = os.environ.get("BUSPRO_ICONS", "/data/icons")
     api.state.icons_dir = icons_dir
@@ -500,6 +505,7 @@ def create_app() -> FastAPI:
     api.state.smart_home_sources["myhome_scs"] = lambda: bticino_manager.store.catalog("myhome_scs", getattr(api.state, "ha_states", {}) or {})
     api.state.smart_home_sources["home_plus_control"] = lambda: bticino_manager.store.catalog("home_plus_control", getattr(api.state, "ha_states", {}) or {})
     api.state.smart_home_sources["modbus"] = lambda: modbus_manager.store.catalog(getattr(api.state, "ha_states", {}) or {})
+    api.state.smart_home_sources["esphome"] = lambda: esphome_manager.store.catalog(getattr(api.state, "ha_states", {}) or {})
     api.state.smart_home_sources["ha"] = lambda: build_ha_catalog(
         store.list_ha_devices(),
         getattr(api.state, "ha_states", {}) or {},
@@ -510,6 +516,7 @@ def create_app() -> FastAPI:
         "myhome_scs": lambda: bticino_manager.store.organization_catalog("myhome_scs"),
         "home_plus_control": lambda: bticino_manager.store.organization_catalog("home_plus_control"),
         "modbus": modbus_manager.store.organization_catalog,
+        "esphome": esphome_manager.store.organization_catalog,
     }
 
     def _organization_devices() -> list[dict[str, Any]]:
@@ -5288,6 +5295,19 @@ self.addEventListener('fetch', (event) => {{
                                 await modbus_manager.sync(states)
                             except Exception as exc:
                                 _LOGGER.debug("Modbus manager sync unavailable: %s", exc)
+                            if esphome_ha_ws is not None:
+                                try:
+                                    registry = await esphome_ha_ws.command("config/entity_registry/list")
+                                    esphome_manager.store.sync(registry if isinstance(registry, list) else [], states)
+                                    esphome_ids = set((esphome_manager.store.load().get("entities") or {}).keys())
+                                    esphome_states = {
+                                        str(item.get("entity_id") or "").strip().lower(): item
+                                        for item in states
+                                        if isinstance(item, dict) and str(item.get("entity_id") or "").strip().lower() in esphome_ids
+                                    }
+                                    api.state.ha_states = {**(getattr(api.state, "ha_states", {}) or {}), **esphome_states}
+                                except Exception as exc:
+                                    _LOGGER.debug("ESPHome catalog sync unavailable: %s", exc)
                             _sync_organization()
                     await asyncio.sleep(300)
                 except asyncio.CancelledError:
@@ -6327,6 +6347,7 @@ self.addEventListener('fetch', (event) => {{
         bticino_data = bticino_manager.store.load().get("integrations") or {}
         myhome_detected = len((bticino_data.get("myhome_scs") or {}).get("devices") or {})
         home_plus_detected = len((bticino_data.get("home_plus_control") or {}).get("devices") or {})
+        esphome_detected = len(esphome_manager.store.load().get("entities") or {})
         payload["devices_by_bus"] = {
             "hdl_buspro": hdl_detected,
             "ksenia": len(ksenia_snapshot.get("devices") or []),
@@ -6335,6 +6356,7 @@ self.addEventListener('fetch', (event) => {{
             "bticino": myhome_detected + home_plus_detected,
             "myhome_scs": myhome_detected,
             "home_plus_control": home_plus_detected,
+            "esphome": esphome_detected,
             "tuya": 0, "modbus": len(modbus_manager.store.load().get("catalog") or {}), "dali": 0,
         }
         payload["integration_metrics"] = {
@@ -6381,6 +6403,12 @@ self.addEventListener('fetch', (event) => {{
                 "exported": smart_counts.get("modbus", 0),
                 "visible": smart_visible.get("modbus", 0),
                 "excluded": max(0, len(modbus_manager.store.load().get("catalog") or {}) - smart_counts.get("modbus", 0)),
+            },
+            "esphome": {
+                "detected": esphome_detected,
+                "exported": smart_counts.get("esphome", 0),
+                "visible": smart_visible.get("esphome", 0),
+                "excluded": max(0, esphome_detected - smart_counts.get("esphome", 0)),
             },
         }
         return payload
@@ -6908,6 +6936,112 @@ self.addEventListener('fetch', (event) => {{
         result = await asyncio.to_thread(_supervisor_request, "POST", "/core/restart", timeout_s=30)
         return {"ok": True, "result": result}
 
+    @api.get("/api/integrations/esphome")
+    async def api_esphome():
+        try:
+            if esphome_ha_ws is not None:
+                try:
+                    states, registry = await asyncio.gather(
+                        asyncio.to_thread(_ha_request, "GET", "/api/states", payload=None, timeout_s=15),
+                        esphome_ha_ws.command("config/entity_registry/list"),
+                    )
+                    if isinstance(states, list) and isinstance(registry, list):
+                        esphome_manager.store.sync(registry, states)
+                        ids = set((esphome_manager.store.load().get("entities") or {}).keys())
+                        api.state.ha_states = {
+                            **(getattr(api.state, "ha_states", {}) or {}),
+                            **{str(row.get("entity_id") or "").lower(): row for row in states if isinstance(row, dict) and str(row.get("entity_id") or "").lower() in ids},
+                        }
+                        _sync_organization()
+                except Exception as exc:
+                    _LOGGER.debug("ESPHome entity refresh unavailable: %s", exc)
+            status, device_data = await asyncio.gather(esphome_manager.status(), esphome_manager.devices())
+            return {
+                "status": status,
+                "devices": device_data.get("configured") or [],
+                "importable": device_data.get("importable") or [],
+                "entities": esphome_manager.store.rows(getattr(api.state, "ha_states", {}) or {}),
+                "last_sync": esphome_manager.store.load().get("last_sync"),
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
+
+    @api.post("/api/integrations/esphome/builder/update")
+    async def api_esphome_builder_update():
+        try:
+            result = await esphome_manager.update_builder()
+            return {"ok": True, "accepted": True, "result": result}
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+
+    @api.get("/api/integrations/esphome/devices/{configuration}/config")
+    async def api_esphome_get_config(configuration: str):
+        try:
+            content = await esphome_manager.command("devices/get_config", {"configuration": configuration})
+            return {"configuration": configuration, "content": str(content or "")}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.put("/api/integrations/esphome/devices/{configuration}/config")
+    async def api_esphome_update_config(configuration: str, payload: dict[str, Any]):
+        content = payload.get("content")
+        expected = payload.get("expected")
+        if not isinstance(content, str) or not isinstance(expected, str):
+            raise HTTPException(status_code=400, detail="Contenuto o versione iniziale non validi")
+        try:
+            await esphome_manager.command("devices/update_config", {"configuration": configuration, "content": content, "expected": expected})
+            return {"ok": True, "configuration": configuration}
+        except Exception as exc:
+            raise HTTPException(status_code=409 if "changed" in str(exc).lower() else 400, detail=str(exc))
+
+    @api.post("/api/integrations/esphome/devices/{configuration}/validate")
+    async def api_esphome_validate(configuration: str):
+        try:
+            result = await esphome_manager.command("devices/validate", {"configuration": configuration}, timeout=180, stream=True)
+            return {"ok": True, **result}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.post("/api/integrations/esphome/devices/{configuration}/compile")
+    async def api_esphome_compile(configuration: str):
+        try:
+            return {"ok": True, "job": await esphome_manager.command("firmware/compile", {"configuration": configuration})}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.post("/api/integrations/esphome/devices/{configuration}/install")
+    async def api_esphome_install(configuration: str):
+        try:
+            return {"ok": True, "job": await esphome_manager.command("firmware/install", {"configuration": configuration, "port": "OTA"})}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.get("/api/integrations/esphome/jobs")
+    async def api_esphome_jobs(configuration: str = ""):
+        try:
+            args = {"configuration": configuration} if configuration else {}
+            return {"items": await esphome_manager.command("firmware/get_jobs", args)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.get("/api/integrations/esphome/jobs/{job_id}")
+    async def api_esphome_job(job_id: str):
+        try:
+            return await esphome_manager.command("firmware/get_job", {"job_id": job_id})
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+
+    @api.get("/api/integrations/esphome/devices/{configuration}/logs")
+    async def api_esphome_logs(configuration: str, seconds: int = 12):
+        seconds = max(3, min(30, int(seconds)))
+        try:
+            result = await esphome_manager.command("devices/logs", {"configuration": configuration, "port": "OTA", "no_states": False}, timeout=seconds, stream=True)
+            return {"ok": True, **result}
+        except asyncio.TimeoutError:
+            return {"ok": True, "events": [], "message": "Sessione log terminata"}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
     @api.get("/api/organization")
     async def api_organization():
         try:
@@ -6935,7 +7069,7 @@ self.addEventListener('fetch', (event) => {{
 
     @api.put("/api/integrations/{source}/devices/{device_id}/configuration")
     async def api_bus_device_configuration(source: str, device_id: str, payload: dict[str, Any]):
-        allowed = {"hdl", "ksenia", "ha", "knx", "myhome_scs", "home_plus_control", "modbus"}
+        allowed = {"hdl", "ksenia", "ha", "knx", "myhome_scs", "home_plus_control", "modbus", "esphome"}
         if source not in allowed:
             raise HTTPException(status_code=404, detail="Bus non supportato")
         clean = {"source": source, "device_id": device_id}
@@ -6960,6 +7094,8 @@ self.addEventListener('fetch', (event) => {{
                 policies[f"{source}:{device_id}"] = {"eface": bool(row.get("enabled")), "commands": not bool(row.get("read_only", True))}
         for device_id, row in (modbus_manager.store.load().get("catalog") or {}).items():
             policies[f"modbus:{device_id}"] = {"eface": bool(row.get("enabled")), "commands": not bool(row.get("read_only", True))}
+        for device_id, row in (esphome_manager.store.load().get("entities") or {}).items():
+            policies[f"esphome:{device_id}"] = {"eface": bool(row.get("enabled")), "commands": not bool(row.get("read_only", True))}
         return policies
 
     @api.get("/api/integrations/device-policies")
@@ -6983,6 +7119,8 @@ self.addEventListener('fetch', (event) => {{
                 if read_only is not None:
                     update["read_only"] = read_only
                 row = modbus_manager.store.update_catalog(device_id, update)
+            elif source == "esphome":
+                row = esphome_manager.store.update(device_id, enabled=enabled, read_only=read_only)
             else:
                 raise HTTPException(status_code=400, detail="La politica e-Face e comandi è gestita dal driver del bus")
         except KeyError:
@@ -7730,6 +7868,7 @@ self.addEventListener('fetch', (event) => {{
         state["_econtrol_knx"] = knx_manager.store.load()
         state["_econtrol_bticino"] = bticino_manager.store.load()
         state["_econtrol_modbus"] = modbus_manager.store.load()
+        state["_econtrol_esphome"] = esphome_manager.store.load()
         return {"text": json.dumps(state, ensure_ascii=False, indent=2)}
 
     @api.get("/api/backup/file")
@@ -7740,6 +7879,7 @@ self.addEventListener('fetch', (event) => {{
         state["_econtrol_knx"] = knx_manager.store.load()
         state["_econtrol_bticino"] = bticino_manager.store.load()
         state["_econtrol_modbus"] = modbus_manager.store.load()
+        state["_econtrol_esphome"] = esphome_manager.store.load()
         content = json.dumps(state, ensure_ascii=False, indent=2)
         ts = time.strftime("%Y%m%d-%H%M%S")
         headers = {"Content-Disposition": f'attachment; filename="buspro_backup_{ts}.json"'}
@@ -7827,6 +7967,7 @@ self.addEventListener('fetch', (event) => {{
             knx_state = state.pop("_econtrol_knx", None)
             bticino_state = state.pop("_econtrol_bticino", None)
             modbus_state = state.pop("_econtrol_modbus", None)
+            esphome_state = state.pop("_econtrol_esphome", None)
             if organization_state is not None:
                 organization_state = organization.validate_backup(organization_state)
             if knx_state is not None and (not isinstance(knx_state, dict) or knx_state.get("schema_version") != 1):
@@ -7835,6 +7976,8 @@ self.addEventListener('fetch', (event) => {{
                 raise ValueError("invalid BTicino manager backup")
             if modbus_state is not None and (not isinstance(modbus_state, dict) or modbus_state.get("schema_version") != 1):
                 raise ValueError("invalid Modbus manager backup")
+            if esphome_state is not None and (not isinstance(esphome_state, dict) or esphome_state.get("schema_version") != 1):
+                raise ValueError("invalid ESPHome manager backup")
             store.import_backup(state)
             if organization_state is not None:
                 organization.save(organization_state)
@@ -7844,6 +7987,8 @@ self.addEventListener('fetch', (event) => {{
                 bticino_manager.store.save(bticino_state)
             if modbus_state is not None:
                 modbus_manager.store.save(modbus_state)
+            if esphome_state is not None:
+                esphome_manager.store.save(esphome_state)
         except HTTPException:
             raise
         except Exception as e:
@@ -10705,11 +10850,14 @@ self.addEventListener('fetch', (event) => {{
         "myhome_scs": _smart_home_ha_command,
         "home_plus_control": _smart_home_netatmo_command,
         "modbus": _smart_home_ha_command,
+        "esphome": _smart_home_ha_command,
         "ha": _smart_home_ha_command,
     })
 
     def _admin_bus_command_item(source: str, device_id: str) -> dict[str, Any] | None:
         states = getattr(api.state, "ha_states", {}) or {}
+        if source == "esphome":
+            return next((row for row in esphome_manager.store.rows(states) if row.get("device_id") == device_id), None)
         if source in {"hdl", "ksenia", "ha"}:
             return next((row for row in (_smart_home_payload().get("devices") or []) if row.get("source") == source and row.get("device_id") == device_id), None)
         row: dict[str, Any] | None = None

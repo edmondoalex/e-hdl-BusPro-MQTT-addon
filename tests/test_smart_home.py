@@ -139,7 +139,7 @@ class SmartHomeProducerTests(unittest.TestCase):
         self.assertIn("Presentazione e permessi", source)
         self.assertNotIn('data-field="shortcut"', source)
         self.assertNotIn('data-field="icon_override"', source)
-        for label in ("HA", "e-KNX Manager", "BTicino MyHOME SCS", "BTicino Home + Control / Netatmo", "e-Modbus Manager"):
+        for label in ("Integrazioni esterne", "ESPHome Device Builder", "e-KNX Manager", "BTicino MyHOME SCS", "BTicino Home + Control / Netatmo", "e-Modbus Manager"):
             self.assertIn(label, source)
         self.assertIn("sourceOrder", source)
         self.assertIn('data-page="device_organization"', source)
