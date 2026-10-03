@@ -1,5 +1,17 @@
 # Ekonex Platform Sync — HDL BusPro
 
+## Handoff corrente - ESPHome Device Builder 0.1.514
+
+- Integrato `ESPHome Device Builder` in e-Control con logo originale, pagina dedicata e badge menu per aggiornamenti del Builder e dei dispositivi.
+- e-Control usa direttamente l'archivio autorevole `/config/esphome`: elenco nodi, editor YAML con controllo concorrenza, validazione, compilazione, installazione OTA, log e coda lavori non creano copie divergenti.
+- L'aggiornamento del Builder installato e' gestibile dalla stessa pagina; nelle superfici visibili non compaiono i nomi della piattaforma o del supervisore sottostante.
+- Le entita' ESPHome sono sincronizzate nel catalogo multi-bus con `source=esphome`, stato, capability, comandi, organizzazione, policy indipendenti e-Face/Comandi e backup/ripristino persistente.
+- Collaudo reale NUC: release `0.1.514` avviata, Builder `2026.9.1` attivo, 2 nodi online, 34 entita' organizzabili, 2 aggiornamenti dispositivo rilevati; lettura YAML e coda lavori verificate senza modificare configurazioni ne' inviare OTA/comandi.
+- Test locali: `94 passed`; compilazione Python, sintassi JavaScript inline/esterna e `git diff --check` superati. Commit runtime `d93f069` pubblicato su `origin/main`.
+- Backup preventivo completo `89eb93f2`. Compatibilita': HDL BusPro non modificato; cataloghi, identificativi e dati esistenti conservati.
+
+---
+
 ## Handoff corrente — configuratore Ferroli 0.1.513
 
 - La pagina parte da una sola pompa e offre `Aggiungi pompa`; ogni unità successiva può usare lo stesso gateway principale oppure un gateway Waveshare differente.
