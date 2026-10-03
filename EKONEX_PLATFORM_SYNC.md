@@ -107,6 +107,16 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 
 ## Handoff corrente
 
+### Policy e-Face e Comandi centralizzate - 2026-10-03
+
+- Release `0.1.507` pubblicata, installata e avviata sul NUC; commit `3b5d70c` e `53e0b3b` pubblicati su `origin/main`.
+- `Dispositivi e presentazione` gestisce ora nello stesso riquadro dispositivo piano, stanza, pagine, visibilita', pubblicazione `e-Face` e autorizzazione `Comandi`.
+- I pannelli dei singoli bus non duplicano piu' le due policy: mantengono stato, controlli di collaudo e configurazione tecnica `Modifica`, secondo il modello HDL senza modificare il pannello HDL.
+- Le policy sono lette e salvate nei cataloghi nativi KNX, MyHOME SCS, Home + Control/Netatmo e Modbus; `Comandi` resta indipendente dalla pubblicazione e-Face.
+- Collaudo live: versione `0.1.507`, cache-buster UI corretto, 21 policy Netatmo caricate, API meta/organizzazione/policy/snapshot/Home + Control tutte HTTP 200; log di avvio regolari e BusPro/MQTT/WebSocket operativi.
+- Test locali: `82 passed`; `git diff --check` superato. Nessun comando reale o setpoint Netatmo inviato durante questa verifica.
+- Compatibilita': HDL, identificativi, MQTT, Discovery, persistenza e contratti Smart Home esistenti invariati.
+
 ### Pannelli bus allineati al modello HDL - 2026-10-03
 
 - Release `0.1.505` pubblicata, installata e avviata; HDL usato esclusivamente come riferimento e non modificato.
