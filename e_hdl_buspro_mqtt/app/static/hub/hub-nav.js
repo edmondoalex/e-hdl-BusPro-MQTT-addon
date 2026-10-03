@@ -26,6 +26,7 @@
     const bar=document.createElement('div');bar.className='hub-mobilebar';bar.innerHTML='<button class="hub-menu-btn" type="button" aria-label="Apri menu" aria-expanded="false">☰</button><span class="hub-mobile-title">e-Control Hub</span>';
     const overlay=document.createElement('div');overlay.className='hub-overlay';
     document.body.prepend(overlay);document.body.prepend(side);document.body.prepend(bar);
+    const nukiLogo=document.getElementById('hubNukiBadge')?.closest('a')?.querySelector('img');if(nukiLogo)nukiLogo.src=url('static/hub/brands/nuki.svg');
     fetch(url('api/meta')).then(r=>r.ok?r.json():Promise.reject()).then(meta=>{const el=document.getElementById('hubVersion');if(el&&meta.version)el.textContent='v'+meta.version;}).catch(()=>{});
     Promise.all([
       fetch(url('api/integrations/knx'),{cache:'no-store'}).then(r=>r.ok?r.json():{}).catch(()=>({})),
