@@ -107,6 +107,15 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 
 ## Handoff corrente
 
+### Pannelli bus allineati al modello HDL - 2026-10-03
+
+- Release `0.1.505` pubblicata, installata e avviata; HDL usato esclusivamente come riferimento e non modificato.
+- Gli altri bus adottano una tabella comune Nome, identificativo utile/ambiente, Stato e Controlli, con comando immediato e Modifica; Home + Control non espone MAC/ID tecnici ma Ambiente e modello.
+- `e-Face` controlla esclusivamente la pubblicazione nelle pagine utente; `Comandi` abilita il test diretto dal pannello bus anche con e-Face disattivato.
+- Gli stati non mostrano piu' JSON grezzo ma sintesi operative (online, temperatura/setpoint quando disponibili, riscaldamento, batteria, moduli, posizione).
+- Aggiunto endpoint admin bus indipendente dal catalogo e-Face e compatibilita' automatica con record Netatmo storici che conservavano `room_id` negli attributi di stato.
+- Test: `82 passed`, compilazione Python, parsing JavaScript e diff check superati. Collaudo live sicuro su termostato non esposto a e-Face: comando diretto raggiunge il validatore Netatmo e rifiuta correttamente 42 °C senza modificare l'impianto; versione live `0.1.505`, stato started, nessun errore runtime.
+
 ### Pannelli operativi multi-bus e separazione presentazione - 2026-10-03
 
 - Release installata e collaudata: e-Control Hub `0.1.502`; commit pubblicati `1187028`, `f4ad0c8`, `3910cde`.
