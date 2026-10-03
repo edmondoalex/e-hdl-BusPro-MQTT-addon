@@ -32,6 +32,18 @@ class BticinoCatalogStoreTests(unittest.TestCase):
             valve = next(item for item in store.catalog("home_plus_control", {}) if item["native_id"] == "valve")
             self.assertEqual("room-kitchen", valve["room_id"])
 
+    def test_direct_catalog_recovers_room_from_legacy_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = BticinoCatalogStore(str(Path(tmp) / "bticino.json"))
+            store.sync_direct_netatmo([{"id": "valve", "type": "NRV", "home_id": "home", "room_id": "room", "module_name": "Valvola"}])
+            data = store.load()
+            device_id, row = next(iter(data["integrations"]["home_plus_control"]["devices"].items()))
+            row.pop("room_id", None)
+            row["state"]["attributes"]["room_id"] = "room"
+            store.save(data)
+            store.update("home_plus_control", device_id, enabled=True, read_only=False)
+            self.assertEqual("room", store.catalog("home_plus_control", {})[0]["room_id"])
+
     def test_sources_are_independent_and_opt_in(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = BticinoCatalogStore(str(Path(tmp) / "bticino.json"))

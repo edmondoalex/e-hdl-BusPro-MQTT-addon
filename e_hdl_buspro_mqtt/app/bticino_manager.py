@@ -317,6 +317,7 @@ class BticinoCatalogStore:
                 continue
             state = deepcopy(row.get("state") or {}) if row.get("direct") else states.get(str(row.get("entity_id") or "")) or {}
             raw_state = state.get("state") if isinstance(state, dict) else None
+            attributes = state.get("attributes") if isinstance(state, dict) and isinstance(state.get("attributes"), dict) else {}
             available = (bool(row.get("direct")) or raw_state not in {None, "unavailable", "unknown"}) and not row.get("orphaned")
             rows.append({
                 "device_id": row.get("device_id"),
@@ -324,8 +325,8 @@ class BticinoCatalogStore:
                 "device_class": row.get("device_class"),
                 "native_type": row.get("domain"),
                 "native_id": row.get("native_id") or row.get("entity_id"),
-                "home_id": row.get("home_id"),
-                "room_id": row.get("room_id"),
+                "home_id": row.get("home_id") or attributes.get("home_id"),
+                "room_id": row.get("room_id") or attributes.get("room_id"),
                 "home_assistant_entity_id": row.get("entity_id") if not row.get("direct") else None,
                 "capabilities": list(row.get("capabilities") or []),
                 "read_only": bool(row.get("read_only", True)),

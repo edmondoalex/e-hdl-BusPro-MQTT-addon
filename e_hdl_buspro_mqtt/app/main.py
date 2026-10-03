@@ -89,7 +89,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.504"
+ADDON_VERSION = "0.1.505"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -10650,10 +10650,13 @@ self.addEventListener('fetch', (event) => {{
             return None
         state = deepcopy(row.get("state") or {}) if row.get("direct") else deepcopy(states.get(str(row.get("entity_id") or "")) or {})
         raw_state = state.get("state") if isinstance(state, dict) else None
+        attributes = state.get("attributes") if isinstance(state, dict) and isinstance(state.get("attributes"), dict) else {}
         available = (bool(row.get("direct")) or raw_state not in {None, "unknown", "unavailable"}) and not row.get("orphaned")
         return {
             **deepcopy(row), "source": source, "device_id": device_id,
             "home_assistant_entity_id": None if row.get("direct") else row.get("entity_id"),
+            "home_id": row.get("home_id") or attributes.get("home_id"),
+            "room_id": row.get("room_id") or attributes.get("room_id"),
             "available": available, "state": state,
         }
 
