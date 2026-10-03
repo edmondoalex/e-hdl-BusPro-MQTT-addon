@@ -539,3 +539,12 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 - Aggiunto alla configurazione globale il campo persistente `Nome visualizzato`, separato dal nome originale del catalogo e dall'identificativo tecnico.
 - Un valore personalizzato viene pubblicato a e-Face e sopravvive a riavvii e risincronizzazioni; lasciandolo vuoto si continua a seguire il nome originale.
 - Installazione reale verificata in versione `0.1.500`; campo servito nella UI e catalogo Netatmo aggiornato; suite `79 passed`; commit `c3eb664`.
+
+## Handoff corrente — comando Netatmo 0.1.509
+
+- Risolto alla radice l'HTTP 400 dei comandi clima: l'organizzazione sovrascriveva il `room_id` nativo Netatmo con l'identificativo della stanza di presentazione.
+- Il catalogo conserva ora separatamente `command_home_id` e `command_room_id`; piano e stanza scelti dall'utente restano esclusivamente dati di presentazione.
+- Suite completa: `84 passed`; compilazione Python e `git diff --check` superati.
+- Commit `7b78509` pubblicato e add-on `0.1.509` installato sul NUC.
+- Collaudo reale: comando `temperature` sulla Veranda da 8,0 a 8,5 °C accettato e confermato da Netatmo (`status: ok`); lo stato di ritorno espone 22,5 °C misurati e setpoint 8,5 °C.
+- Compatibilità: nessuna modifica a HDL, identificativi pubblici, assegnazioni di piano/stanza o permessi e-Face.
