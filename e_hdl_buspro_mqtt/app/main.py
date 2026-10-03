@@ -89,7 +89,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.509"
+ADDON_VERSION = "0.1.510"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -5298,6 +5298,27 @@ self.addEventListener('fetch', (event) => {{
 
         api.state.knx_sync_task = asyncio.create_task(_knx_sync_loop(), name="knx-manager-sync")
 
+        async def _netatmo_direct_sync_loop() -> None:
+            """Keep direct Netatmo state current when it changes outside e-Control."""
+            await asyncio.sleep(10)
+            while True:
+                try:
+                    if bool(netatmo_direct.status().get("connected")):
+                        modules = await asyncio.to_thread(netatmo_direct.discover)
+                        bticino_manager.store.sync_direct_netatmo(modules)
+                        _sync_organization()
+                        await _broadcast_devices()
+                    await asyncio.sleep(30)
+                except asyncio.CancelledError:
+                    return
+                except Exception as exc:
+                    _LOGGER.debug("Netatmo direct state refresh unavailable: %s", exc)
+                    await asyncio.sleep(30)
+
+        api.state.netatmo_sync_task = asyncio.create_task(
+            _netatmo_direct_sync_loop(), name="netatmo-direct-sync"
+        )
+
         def _parse_dt(val: str | None) -> datetime | None:
             if not val:
                 return None
@@ -5671,6 +5692,9 @@ self.addEventListener('fetch', (event) => {{
         knx_sync = getattr(api.state, "knx_sync_task", None)
         if knx_sync is not None:
             knx_sync.cancel()
+        netatmo_sync = getattr(api.state, "netatmo_sync_task", None)
+        if netatmo_sync is not None:
+            netatmo_sync.cancel()
 
         gw: BusproGateway | None = api.state.gateway
         if gw is not None:
