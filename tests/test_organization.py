@@ -217,6 +217,9 @@ class OrganizationTests(unittest.TestCase):
             self.assertIn(field, index)
         self.assertIn("busOperationalPanel", index)
         self.assertIn("data-bus-command", index)
+        self.assertIn("api/integrations/'+encodeURIComponent(button.dataset.source)", index)
+        self.assertIn("ID / indirizzo", index)
+        self.assertIn("Consenti i comandi; disattiva per sola lettura", index)
 
     def test_installer_navigation_separates_admin_from_user_previews(self):
         root = Path(__file__).resolve().parents[1]

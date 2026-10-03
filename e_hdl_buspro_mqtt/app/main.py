@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio 
+from copy import deepcopy
 import base64
 import html
 import json
@@ -88,7 +89,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.502"
+ADDON_VERSION = "0.1.503"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -10633,6 +10634,46 @@ self.addEventListener('fetch', (event) => {{
         "modbus": _smart_home_ha_command,
         "ha": _smart_home_ha_command,
     })
+
+    def _admin_bus_command_item(source: str, device_id: str) -> dict[str, Any] | None:
+        states = getattr(api.state, "ha_states", {}) or {}
+        if source in {"hdl", "ksenia", "ha"}:
+            return next((row for row in (_smart_home_payload().get("devices") or []) if row.get("source") == source and row.get("device_id") == device_id), None)
+        row: dict[str, Any] | None = None
+        if source == "knx":
+            row = (knx_manager.store.load().get("devices") or {}).get(device_id)
+        elif source == "modbus":
+            row = (modbus_manager.store.load().get("catalog") or {}).get(device_id)
+        elif source in {"myhome_scs", "home_plus_control"}:
+            row = (((bticino_manager.store.load().get("integrations") or {}).get(source) or {}).get("devices") or {}).get(device_id)
+        if not isinstance(row, dict):
+            return None
+        state = deepcopy(row.get("state") or {}) if row.get("direct") else deepcopy(states.get(str(row.get("entity_id") or "")) or {})
+        raw_state = state.get("state") if isinstance(state, dict) else None
+        available = (bool(row.get("direct")) or raw_state not in {None, "unknown", "unavailable"}) and not row.get("orphaned")
+        return {
+            **deepcopy(row), "source": source, "device_id": device_id,
+            "home_assistant_entity_id": None if row.get("direct") else row.get("entity_id"),
+            "available": available, "state": state,
+        }
+
+    @api.post("/api/integrations/{source}/devices/{device_id}/command")
+    async def admin_bus_device_command(source: str, device_id: str, payload: dict[str, Any]):
+        source = str(source or "").strip().lower()
+        action = str(payload.get("action") or "").strip().lower()
+        item = _admin_bus_command_item(source, str(device_id or "").strip())
+        try:
+            action = validate_command_request(item, action)
+        except ValueError as exc:
+            detail = str(exc)
+            raise HTTPException(status_code=404 if "not catalogued" in detail else 400, detail=detail)
+        handler = api.state.smart_home_command_handlers.get(source)
+        if handler is None:
+            raise HTTPException(status_code=404, detail="Bus non supportato")
+        try:
+            return await handler(item, action, payload.get("value"))
+        except ContractError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
 
     @api.post("/api/control/ha/light/{entity_id}")
     async def control_ha_light(entity_id: str, payload: dict[str, Any]):
