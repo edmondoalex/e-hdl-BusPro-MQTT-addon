@@ -289,7 +289,8 @@ class BticinoCatalogStore:
                 state = {"state": "ON" if state_value is True else "OFF" if state_value is False else str(module.get("status") or "unknown"), "attributes": deepcopy(module)}
                 row = {
                     **old, "device_id": stable_id, "native_id": native_id,
-                    "home_id": str(module.get("home_id") or ""), "name": str(module.get("module_name") or module.get("name") or native_id),
+                    "home_id": str(module.get("home_id") or ""), "room_id": str(module.get("room_id") or ""),
+                    "name": str(module.get("module_name") or module.get("name") or native_id),
                     "group": str(module.get("room_name") or module.get("home_name") or "Netatmo"),
                     "domain": domain, "device_class": domain, "capabilities": capabilities,
                     "manufacturer": "Netatmo / BTicino", "model": str(module.get("type") or ""),
@@ -324,6 +325,7 @@ class BticinoCatalogStore:
                 "native_type": row.get("domain"),
                 "native_id": row.get("native_id") or row.get("entity_id"),
                 "home_id": row.get("home_id"),
+                "room_id": row.get("room_id"),
                 "home_assistant_entity_id": row.get("entity_id") if not row.get("direct") else None,
                 "capabilities": list(row.get("capabilities") or []),
                 "read_only": bool(row.get("read_only", True)),

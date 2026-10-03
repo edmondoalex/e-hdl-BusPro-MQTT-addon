@@ -211,6 +211,12 @@ class OrganizationTests(unittest.TestCase):
         self.assertIn('data-category="${value}"', script)
         self.assertIn('id="orgSearch"', script)
         self.assertNotIn("multiple size=\"3\"", script)
+        for source in ("ksenia", "knx", "myhome_scs", "home_plus_control", "modbus"):
+            self.assertIn(source, index)
+        for field in ("name_override", "icon_override", "device_class_override", "dimmable_override", "rgb_group", "rgb_channel"):
+            self.assertIn(field, index)
+        self.assertIn("busOperationalPanel", index)
+        self.assertIn("data-bus-command", index)
 
     def test_installer_navigation_separates_admin_from_user_previews(self):
         root = Path(__file__).resolve().parents[1]

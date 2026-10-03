@@ -16,7 +16,7 @@ class BticinoCatalogStoreTests(unittest.TestCase):
             store.sync_direct_netatmo([
                 {"id": "bridge", "type": "NAPlug", "module_name": "Bridge casa"},
                 {"id": "thermostat", "type": "NATherm1", "module_name": "Termostato sala", "room_name": "Sala"},
-                {"id": "valve", "type": "NRV", "module_name": "Valvola cucina", "room_name": "Cucina"},
+                {"id": "valve", "type": "NRV", "module_name": "Valvola cucina", "room_id": "room-kitchen", "room_name": "Cucina"},
                 {"id": "weather", "type": "NAMain", "module_name": "Meteo esterno", "dashboard_data": {"Temperature": 18.2}},
             ])
             rows = {row["native_id"]: row for row in store.load()["integrations"]["home_plus_control"]["devices"].values()}
@@ -27,6 +27,10 @@ class BticinoCatalogStoreTests(unittest.TestCase):
             self.assertEqual("sensor", rows["weather"]["domain"])
             self.assertEqual("Valvola cucina", rows["valve"]["name"])
             self.assertEqual("Cucina", rows["valve"]["group"])
+            self.assertEqual("room-kitchen", rows["valve"]["room_id"])
+            store.update("home_plus_control", rows["valve"]["device_id"], enabled=True, read_only=False)
+            valve = next(item for item in store.catalog("home_plus_control", {}) if item["native_id"] == "valve")
+            self.assertEqual("room-kitchen", valve["room_id"])
 
     def test_sources_are_independent_and_opt_in(self):
         with tempfile.TemporaryDirectory() as tmp:

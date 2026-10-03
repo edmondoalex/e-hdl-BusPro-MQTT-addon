@@ -28,13 +28,30 @@ class NetatmoDirectTests(unittest.TestCase):
                 "modules": [{"id": "09:00", "type": "NRV", "module_name": "Valvola cucina"}],
                 "rooms": [{"id": "room-1", "name": "Cucina", "module_ids": ["09:00"]}],
             }]}}
-            status = {"body": {"home": {"modules": [{"id": "09:00", "type": "NRV", "reachable": True}]}}}
+            status = {"body": {"home": {
+                "rooms": [{"id": "room-1", "therm_measured_temperature": 20.5, "therm_setpoint_temperature": 21.0}],
+                "modules": [{"id": "09:00", "type": "NRV", "reachable": True}],
+            }}}
             with patch.object(manager, "_api", side_effect=[topology, status]):
                 rows = manager.discover()
             self.assertEqual("Valvola cucina", rows[0]["module_name"])
             self.assertEqual("Cucina", rows[0]["room_name"])
             self.assertEqual("room-1", rows[0]["room_id"])
             self.assertTrue(rows[0]["reachable"])
+            self.assertEqual(20.5, rows[0]["therm_measured_temperature"])
+
+    def test_set_room_temperature_uses_direct_netatmo_endpoint(self):
+        with tempfile.TemporaryDirectory() as folder:
+            manager = NetatmoDirect(str(Path(folder) / "netatmo.json"))
+            with patch.object(manager, "_api", return_value={"status": "ok"}) as request:
+                result = manager.set_room_temperature(home_id="home-1", room_id="room-1", temperature=21.5)
+            self.assertEqual({"status": "ok"}, result)
+            path, payload = request.call_args.args
+            self.assertEqual("/api/setroomthermpoint", path)
+            self.assertEqual("manual", payload["mode"])
+            self.assertEqual(21.5, payload["temp"])
+            with self.assertRaises(ValueError):
+                manager.set_room_temperature(home_id="home-1", room_id="room-1", temperature=42)
     def test_direct_oauth_never_uses_external_engine_relay(self):
         with tempfile.TemporaryDirectory() as folder:
             manager = NetatmoDirect(str(Path(folder) / "netatmo.json"))

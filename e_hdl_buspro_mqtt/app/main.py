@@ -88,7 +88,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.500"
+ADDON_VERSION = "0.1.501"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -10606,12 +10606,30 @@ self.addEventListener('fetch', (event) => {{
         await asyncio.to_thread(_ha_request, "POST", f"/api/services/{domain}/{service}", payload=data, timeout_s=10)
         return {"ok": True, "accepted": True, "confirmed": False, "source": str(item.get("source") or "ha")}
 
+    async def _smart_home_netatmo_command(item: dict[str, Any], action: str, value: Any):
+        if action != "temperature":
+            raise HTTPException(status_code=400, detail="Comando Netatmo non supportato")
+        try:
+            result = await asyncio.to_thread(
+                netatmo_direct.set_room_temperature,
+                home_id=str(item.get("home_id") or ""),
+                room_id=str(item.get("room_id") or ""),
+                temperature=float(value),
+            )
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        modules = await asyncio.to_thread(netatmo_direct.discover)
+        bticino_manager.store.sync_direct_netatmo(modules)
+        _sync_organization()
+        await _broadcast_devices()
+        return {"ok": True, "accepted": True, "confirmed": True, "source": "home_plus_control", "result": result}
+
     api.state.smart_home_command_handlers.update({
         "hdl": _smart_home_hdl_command,
         "ksenia": _smart_home_ksenia_command,
         "knx": _smart_home_ha_command,
         "myhome_scs": _smart_home_ha_command,
-        "home_plus_control": _smart_home_ha_command,
+        "home_plus_control": _smart_home_netatmo_command,
         "modbus": _smart_home_ha_command,
         "ha": _smart_home_ha_command,
     })

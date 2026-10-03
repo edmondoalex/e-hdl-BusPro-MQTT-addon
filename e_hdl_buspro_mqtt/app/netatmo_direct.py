@@ -148,11 +148,13 @@ class NetatmoDirect:
                 if isinstance(item, dict) and item.get("id")
             }
             rooms: dict[str, str] = {}
+            live_rooms: dict[str, dict[str, Any]] = {}
             module_rooms: dict[str, str] = {}
             for room in [*(home.get("rooms") or []), *(live_home.get("rooms") or [])]:
                 if not isinstance(room, dict) or not room.get("id"):
                     continue
                 room_id, room_name = str(room["id"]), str(room.get("name") or "")
+                live_rooms[room_id] = {**live_rooms.get(room_id, {}), **room}
                 if room_name:
                     rooms[room_id] = room_name
                 for module_id in room.get("module_ids") or []:
@@ -164,7 +166,22 @@ class NetatmoDirect:
                 merged = {**(topology_modules.get(module_id) or {}), **module}
                 room_id = str(merged.get("room_id") or module_rooms.get(module_id) or "")
                 rows.append({
-                    **merged, "home_id": str(home["id"]), "home_name": str(home.get("name") or ""),
+                    **merged, **live_rooms.get(room_id, {}), "id": module_id,
+                    "home_id": str(home["id"]), "home_name": str(home.get("name") or ""),
                     "room_id": room_id, "room_name": rooms.get(room_id, ""),
                 })
         return rows
+
+    def set_room_temperature(self, *, home_id: str, room_id: str, temperature: float, duration: int = 3600) -> dict[str, Any]:
+        if not home_id or not room_id:
+            raise ValueError("Dispositivo Netatmo privo di home_id o room_id")
+        value = float(temperature)
+        if value < 5 or value > 35:
+            raise ValueError("La temperatura deve essere compresa tra 5 e 35 °C")
+        return self._api("/api/setroomthermpoint", {
+            "home_id": home_id,
+            "room_id": room_id,
+            "mode": "manual",
+            "temp": value,
+            "endtime": int(time.time()) + max(300, min(int(duration), 86400)),
+        })
