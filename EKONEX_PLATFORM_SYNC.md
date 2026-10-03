@@ -1,5 +1,17 @@
 # Ekonex Platform Sync — HDL BusPro
 
+## Handoff corrente — configuratore Ferroli 0.1.513
+
+- La pagina parte da una sola pompa e offre `Aggiungi pompa`; ogni unità successiva può usare lo stesso gateway principale oppure un gateway Waveshare differente.
+- Sullo stesso gateway gli Slave ID devono essere distinti; su gateway differenti possono coincidere. Il backend supporta fino a 16 unità e raggruppa le connessioni per IP/porta.
+- Configurazione autorevole persistita in `/data/modbus_manager.json`: nomi, Slave ID, gateway, IP, porte e abilitazione comandi vengono ricaricati nella UI dopo refresh, riavvio e aggiornamento e sono inclusi nell'export/import backup generale.
+- Una nuova preparazione sostituisce atomicamente il set Ferroli gestito: pompe e gateway rimossi non restano appesi. HDL e gli altri driver non sono stati modificati.
+- Profilo prudenziale invariato: vengono create automaticamente soltanto le tre funzioni verificate Zona 1, Zona 2 e ACS; l'estensione richiede la mappa registri ufficiale completa.
+- Versione candidata locale `0.1.513`; suite `92 passed`, compilazione Python, sintassi JavaScript inline/esterna e `git diff --check` superati.
+- Stato: modifiche locali non committate; nessun push, installazione o deploy eseguito. Prossimo gate: autorizzazione esplicita a commit/pubblicazione/installazione e successivo collaudo con gateway fisico.
+
+---
+
 ## Ultimo allineamento
 
 - Data: 2026-09-30

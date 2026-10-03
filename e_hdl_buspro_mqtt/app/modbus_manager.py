@@ -137,7 +137,7 @@ class ModbusStore:
 
     @staticmethod
     def empty() -> dict[str, Any]:
-        return {"schema_version": SCHEMA_VERSION, "connections": {}, "profiles": {}, "devices": {}, "catalog": {}, "last_sync": None, "last_apply": None}
+        return {"schema_version": SCHEMA_VERSION, "connections": {}, "profiles": {}, "devices": {}, "catalog": {}, "ferroli_omnia": None, "last_sync": None, "last_apply": None}
 
     def load(self) -> dict[str, Any]:
         with self._lock:
@@ -150,6 +150,7 @@ class ModbusStore:
                 return self.empty()
             for key in ("connections", "profiles", "devices", "catalog"):
                 data.setdefault(key, {})
+            data.setdefault("ferroli_omnia", None)
             return data
 
     def save(self, data: dict[str, Any]) -> None:
@@ -193,32 +194,54 @@ class ModbusStore:
             return deepcopy(row)
 
     def provision_ferroli_omnia(self, raw: dict[str, Any]) -> dict[str, Any]:
-        """Create one gateway and one or two OMNIA units as a single transaction."""
-        connection = validate_connection({
-            "id": "ferroli_omnia_gateway",
-            "name": "Gateway Ferroli OMNIA",
-            "type": "tcp",
-            "host": raw.get("host"),
-            "port": raw.get("port", 502),
-            "timeout": raw.get("timeout", 5),
-            "message_wait_milliseconds": raw.get("message_wait_milliseconds", 30),
-            "enabled": True,
-        })
+        """Create one or more OMNIA units, sharing gateways when requested."""
+        primary_host = raw.get("host")
+        primary_port = raw.get("port", 502)
         pumps_raw = raw.get("pumps") or []
-        if not isinstance(pumps_raw, list) or not 1 <= len(pumps_raw) <= 2:
-            raise ValueError("configure one or two Ferroli pumps")
+        if not isinstance(pumps_raw, list) or not 1 <= len(pumps_raw) <= 16:
+            raise ValueError("configure between one and sixteen Ferroli pumps")
+        connections: dict[tuple[str, int], dict[str, Any]] = {}
         pumps: list[dict[str, Any]] = []
-        slaves: set[int] = set()
+        slaves_by_connection: dict[str, set[int]] = {}
+        pump_ids: set[str] = set()
         for index, item in enumerate(pumps_raw, 1):
             if not isinstance(item, dict):
                 raise ValueError("invalid Ferroli pump")
+            gateway_mode = str(item.get("gateway_mode") or "same").strip().lower()
+            if index == 1:
+                gateway_mode = "primary"
+            if gateway_mode not in {"primary", "same", "different"}:
+                raise ValueError("invalid Ferroli gateway mode")
+            host = primary_host if gateway_mode in {"primary", "same"} else item.get("host")
+            port = primary_port if gateway_mode in {"primary", "same"} else item.get("port", 502)
+            probe = validate_connection({
+                "id": "ferroli_omnia_gateway_probe", "name": "Gateway Ferroli OMNIA",
+                "type": "tcp", "host": host, "port": port,
+                "timeout": raw.get("timeout", 5),
+                "message_wait_milliseconds": raw.get("message_wait_milliseconds", 30),
+                "enabled": True,
+            })
+            gateway_key = (probe["host"].lower(), probe["port"])
+            connection = connections.get(gateway_key)
+            if connection is None:
+                number = len(connections) + 1
+                connection = {**probe,
+                    "id": "ferroli_omnia_gateway" if number == 1 else f"ferroli_omnia_gateway_{number}",
+                    "name": "Gateway Ferroli OMNIA" if number == 1 else f"Gateway Ferroli OMNIA {number}",
+                }
+                connections[gateway_key] = connection
             slave = int(_number(item.get("slave", index), "slave", 1, 247))
-            if slave in slaves:
-                raise ValueError("Ferroli pumps require different slave IDs")
-            slaves.add(slave)
+            connection_slaves = slaves_by_connection.setdefault(connection["id"], set())
+            if slave in connection_slaves:
+                raise ValueError("Ferroli pumps on the same gateway require different slave IDs")
+            connection_slaves.add(slave)
             name = str(item.get("name") or f"Ferroli OMNIA {index}").strip()
+            pump_id = _slug(item.get("id") or name)
+            if pump_id in pump_ids:
+                raise ValueError("Ferroli pumps require different names")
+            pump_ids.add(pump_id)
             pumps.append({
-                "id": _slug(item.get("id") or name), "name": name,
+                "id": pump_id, "name": name,
                 "connection_id": connection["id"], "profile_id": "ferroli_omnia_m_3_2",
                 "slave": slave, "enabled": True,
             })
@@ -231,13 +254,43 @@ class ModbusStore:
         profile["registers"] = [validate_register(item) for item in profile["registers"]]
         with self._lock:
             data = self.load()
-            data["connections"][connection["id"]] = connection
+            old_ferroli_devices = {
+                device_id for device_id, device in data["devices"].items()
+                if device.get("profile_id") == profile["id"]
+            }
+            for device_id in old_ferroli_devices:
+                data["devices"].pop(device_id, None)
+            active_connection_ids = {connection["id"] for connection in connections.values()}
+            for connection_id in list(data["connections"]):
+                if connection_id.startswith("ferroli_omnia_gateway") and connection_id not in active_connection_ids:
+                    data["connections"].pop(connection_id, None)
+            for connection in connections.values():
+                data["connections"][connection["id"]] = connection
             data["profiles"][profile["id"]] = profile
             for pump in pumps:
                 data["devices"][pump["id"]] = pump
+            connection_by_id = {connection["id"]: connection for connection in connections.values()}
+            primary_connection_id = pumps[0]["connection_id"]
+            data["ferroli_omnia"] = {
+                "host": connection_by_id[primary_connection_id]["host"],
+                "port": connection_by_id[primary_connection_id]["port"],
+                "commands_enabled": commands_enabled,
+                "pumps": [
+                    {
+                        "name": pump["name"], "slave": pump["slave"],
+                        "gateway_mode": "primary" if index == 0 else ("same" if pump["connection_id"] == primary_connection_id else "different"),
+                        **({
+                            "host": connection_by_id[pump["connection_id"]]["host"],
+                            "port": connection_by_id[pump["connection_id"]]["port"],
+                        } if index > 0 and pump["connection_id"] != primary_connection_id else {}),
+                    }
+                    for index, pump in enumerate(pumps)
+                ],
+            }
             self.save(data)
         return {
-            "connection": deepcopy(connection), "profile": deepcopy(profile),
+            "connection": deepcopy(next(iter(connections.values()))),
+            "connections": deepcopy(list(connections.values())), "profile": deepcopy(profile),
             "pumps": deepcopy(pumps), "commands_enabled": commands_enabled,
         }
 

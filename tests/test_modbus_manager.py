@@ -7,6 +7,13 @@ from e_hdl_buspro_mqtt.app.modbus_manager import ModbusManager, ModbusStore, fer
 
 
 class ModbusValidationTests(unittest.TestCase):
+    def test_ferroli_ui_adds_pumps_and_selects_gateway_mode(self):
+        index = (Path(__file__).resolve().parents[1] / "e_hdl_buspro_mqtt" / "app" / "static" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('id="ferroliAddPump"', index)
+        self.assertIn('value="same">Stesso gateway della prima pompa', index)
+        self.assertIn('value="different">Gateway differente', index)
+        self.assertIn("hydrateFerroliForm()", index)
+
     def test_connection_types_and_serial_safety(self):
         self.assertEqual(502, validate_connection({"name": "PDC", "type": "tcp", "host": "192.168.1.4"})["port"])
         serial = validate_connection({"name": "RS485", "type": "serial", "port": "/dev/ttyUSB0", "baudrate": 19200, "parity": "E"})
@@ -105,6 +112,80 @@ class ModbusStoreTests(unittest.TestCase):
                     "host": "192.168.1.60",
                     "pumps": [{"name": "A", "slave": 1}, {"name": "B", "slave": 1}],
                 })
+
+    def test_ferroli_omnia_supports_added_pumps_on_different_gateways(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ModbusStore(str(Path(tmp) / "modbus.json"))
+            result = store.provision_ferroli_omnia({
+                "host": "192.168.1.60", "port": 502,
+                "pumps": [
+                    {"name": "OMNIA Casa", "slave": 1, "gateway_mode": "primary"},
+                    {"name": "OMNIA Uffici", "slave": 2, "gateway_mode": "same"},
+                    {"name": "OMNIA Magazzino", "slave": 1, "gateway_mode": "different", "host": "192.168.1.61", "port": 1502},
+                ],
+            })
+            self.assertEqual(2, len(result["connections"]))
+            self.assertEqual(
+                ["ferroli_omnia_gateway", "ferroli_omnia_gateway", "ferroli_omnia_gateway_2"],
+                [pump["connection_id"] for pump in result["pumps"]],
+            )
+            yaml = store.render_home_assistant()
+            self.assertIn('host: "192.168.1.60"', yaml)
+            self.assertIn('host: "192.168.1.61"', yaml)
+            self.assertIn("port: 1502", yaml)
+
+    def test_ferroli_omnia_allows_same_slave_on_different_gateways(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ModbusStore(str(Path(tmp) / "modbus.json"))
+            result = store.provision_ferroli_omnia({
+                "host": "192.168.1.60",
+                "pumps": [
+                    {"name": "OMNIA 1", "slave": 1},
+                    {"name": "OMNIA 2", "slave": 1, "gateway_mode": "different", "host": "192.168.1.61"},
+                ],
+            })
+            self.assertEqual(2, len(result["connections"]))
+
+    def test_ferroli_omnia_rejects_missing_second_gateway_and_duplicate_names(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ModbusStore(str(Path(tmp) / "modbus.json"))
+            with self.assertRaisesRegex(ValueError, "host is required"):
+                store.provision_ferroli_omnia({
+                    "host": "192.168.1.60",
+                    "pumps": [{"name": "A", "slave": 1}, {"name": "B", "slave": 1, "gateway_mode": "different"}],
+                })
+            with self.assertRaisesRegex(ValueError, "different names"):
+                store.provision_ferroli_omnia({
+                    "host": "192.168.1.60",
+                    "pumps": [{"name": "OMNIA", "slave": 1}, {"name": "OMNIA", "slave": 2}],
+                })
+
+    def test_ferroli_omnia_configuration_survives_restart_and_replaces_removed_pumps(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = str(Path(tmp) / "modbus.json")
+            store = ModbusStore(path)
+            store.provision_ferroli_omnia({
+                "host": "192.168.1.60", "commands_enabled": True,
+                "pumps": [
+                    {"name": "OMNIA Casa", "slave": 1},
+                    {"name": "OMNIA Uffici", "slave": 1, "gateway_mode": "different", "host": "192.168.1.61"},
+                ],
+            })
+            restarted = ModbusStore(path)
+            saved = restarted.load()["ferroli_omnia"]
+            self.assertEqual("192.168.1.60", saved["host"])
+            self.assertTrue(saved["commands_enabled"])
+            self.assertEqual("different", saved["pumps"][1]["gateway_mode"])
+            self.assertEqual("192.168.1.61", saved["pumps"][1]["host"])
+
+            restarted.provision_ferroli_omnia({
+                "host": "192.168.1.60",
+                "pumps": [{"name": "OMNIA Casa", "slave": 4}],
+            })
+            current = ModbusStore(path).load()
+            self.assertEqual(["OMNIA Casa"], [row["name"] for row in current["devices"].values() if row["profile_id"] == "ferroli_omnia_m_3_2"])
+            self.assertNotIn("ferroli_omnia_gateway_2", current["connections"])
+            self.assertEqual(4, current["ferroli_omnia"]["pumps"][0]["slave"])
 
     def test_ferroli_omnia_commands_require_explicit_opt_in(self):
         with tempfile.TemporaryDirectory() as tmp:
