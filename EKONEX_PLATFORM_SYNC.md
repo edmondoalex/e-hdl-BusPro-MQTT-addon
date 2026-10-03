@@ -7,6 +7,7 @@
 - Corretto il falso `online` dei dispositivi Bridge senza `lastKnownState`: ora risultano non raggiungibili e i comandi restano disabilitati.
 - Verifica sui dati reali: Portoncino Scala 41%, Porta Sala 80%, Porta Ufficio 28%; vecchio Portoncino privo di telemetria marcato non raggiungibile.
 - Test: `104 passed`, compilazione Python, sintassi JavaScript e `git diff --check` superati. HDL invariato; nessun comando serratura inviato.
+- Pubblicata e installata `0.1.530`; runtime verificato con batterie 41%, 80% e 28%, UI aggiornata e vecchio Portoncino correttamente non raggiungibile dopo sync Bridge.
 
 ## Handoff corrente - correzione pairing Nuki Bridge 0.1.529
 
