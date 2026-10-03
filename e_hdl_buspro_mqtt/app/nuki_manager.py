@@ -120,10 +120,13 @@ class NukiStore:
         self.save(data); return deepcopy(row)
 
     def rows(self, *, include_cloud_only: bool = False) -> list[dict[str, Any]]:
-        now = time.time(); result = []
-        for row in self.load()["devices"].values():
+        now = time.time(); result = []; data = self.load()
+        cloud_authoritative = bool(data["config"].get("cloud_enabled") and self.token())
+        for row in data["devices"].values():
             state = row.get("state") or {}; raw_state = state.get("state") or state.get("lockState") or "unknown"
-            if not include_cloud_only and not state and not row.get("last_seen"):
+            if cloud_authoritative and not row.get("web"):
+                continue
+            if not cloud_authoritative and not include_cloud_only and not state and not row.get("last_seen"):
                 continue
             lock_state = LOCK_STATES.get(int(raw_state), raw_state) if str(raw_state).isdigit() else raw_state
             recent = now - float(row.get("last_seen") or 0) < 180
@@ -182,11 +185,12 @@ class NukiManager:
         except urllib.error.HTTPError as exc: raise ValueError(f"Nuki Web API HTTP {exc.code}") from exc
     def sync_cloud(self) -> dict[str, Any]:
         locks = self._api("/smartlock")
-        data = self.store.load(); count = 0
+        data = self.store.load(); count = 0; current_cloud_ids: set[str] = set()
         for item in locks if isinstance(locks, list) else []:
             cloud_id = str(item.get("smartlockId") or "")
             did = canonical_device_id(cloud_id)
             if not did: continue
+            current_cloud_ids.add(cloud_id)
             legacy = data["devices"].pop(cloud_id, None) if cloud_id != did else None
             row = data["devices"].setdefault(did, legacy or {"device_id": did, "enabled": False, "read_only": True, "state": {}, "capabilities": list(COMMAND_TOPICS)})
             row["device_id"] = did
@@ -204,6 +208,12 @@ class NukiManager:
                     if event_id and not any(x.get("id") == event_id for x in data["events"]):
                         data["events"].append({"id": event_id, "device_id": did, "timestamp": log.get("date"), "action": log.get("action"), "action_name": ACTION_NAMES.get(log.get("action"), f"Azione {log.get('action')}"), "trigger": log.get("trigger"), "auth_id": log.get("authId"), "person": log.get("name") or "Origine non identificata", "state": log.get("state")})
             except ValueError: pass
+        for did, row in list(data["devices"].items()):
+            if row.get("web") and str(row.get("cloud_id") or "") not in current_cloud_ids:
+                if row.get("state") or row.get("last_seen"):
+                    row.pop("web", None); row.pop("cloud_id", None); row.pop("device_type", None)
+                else:
+                    del data["devices"][did]
         data["events"] = sorted(data["events"], key=lambda x: str(x.get("timestamp") or ""), reverse=True)[:1000]
         self.store.save(data); return {"devices": count, "authorizations": len(data["authorizations"]), "events": len(data["events"])}
     def snapshot(self) -> dict[str, Any]:
