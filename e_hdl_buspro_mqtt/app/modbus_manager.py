@@ -20,6 +20,39 @@ DATA_TYPES = {"int16", "uint16", "int32", "uint32", "int64", "uint64", "float16"
 ENTITY_TYPES = {"binary_sensor", "sensor", "switch"}
 
 
+def ferroli_omnia_m32_profile(*, commands_enabled: bool = False) -> dict[str, Any]:
+    """Conservative built-in profile from the verified OMNIA M 3.2 register excerpt.
+
+    PLC register numbers are converted to zero-based protocol addresses. Until the
+    complete manufacturer map is archived, only the three confirmed power words
+    are included and they default to read-only sensors.
+    """
+    entity_type = "switch" if commands_enabled else "sensor"
+    return {
+        "id": "ferroli_omnia_m_3_2",
+        "name": "Ferroli OMNIA M 3.2",
+        "manufacturer": "Ferroli",
+        "model": "OMNIA M 3.2",
+        "category": "heat_pump",
+        "version": 1,
+        "registers": [
+            {
+                "key": key, "name": name, "entity_type": entity_type,
+                "address": plc_address - 40001, "register_type": "holding",
+                "data_type": "uint16", "scale": 1, "offset": 0,
+                "scan_interval": 15, "unit": "", "device_class": "",
+                "writable": commands_enabled, "min": 0, "max": 1,
+                "swap": "none", "precision": 0,
+            }
+            for key, name, plc_address in (
+                ("power_z2", "Alimentazione zona 2", 40015),
+                ("power_z1", "Alimentazione zona 1", 40016),
+                ("power_dhw", "Alimentazione ACS", 40017),
+            )
+        ],
+    }
+
+
 def _slug(value: str) -> str:
     clean = re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
     if not clean:
@@ -159,6 +192,55 @@ class ModbusStore:
             data["devices"][device_id] = row; self.save(data)
             return deepcopy(row)
 
+    def provision_ferroli_omnia(self, raw: dict[str, Any]) -> dict[str, Any]:
+        """Create one gateway and one or two OMNIA units as a single transaction."""
+        connection = validate_connection({
+            "id": "ferroli_omnia_gateway",
+            "name": "Gateway Ferroli OMNIA",
+            "type": "tcp",
+            "host": raw.get("host"),
+            "port": raw.get("port", 502),
+            "timeout": raw.get("timeout", 5),
+            "message_wait_milliseconds": raw.get("message_wait_milliseconds", 30),
+            "enabled": True,
+        })
+        pumps_raw = raw.get("pumps") or []
+        if not isinstance(pumps_raw, list) or not 1 <= len(pumps_raw) <= 2:
+            raise ValueError("configure one or two Ferroli pumps")
+        pumps: list[dict[str, Any]] = []
+        slaves: set[int] = set()
+        for index, item in enumerate(pumps_raw, 1):
+            if not isinstance(item, dict):
+                raise ValueError("invalid Ferroli pump")
+            slave = int(_number(item.get("slave", index), "slave", 1, 247))
+            if slave in slaves:
+                raise ValueError("Ferroli pumps require different slave IDs")
+            slaves.add(slave)
+            name = str(item.get("name") or f"Ferroli OMNIA {index}").strip()
+            pumps.append({
+                "id": _slug(item.get("id") or name), "name": name,
+                "connection_id": connection["id"], "profile_id": "ferroli_omnia_m_3_2",
+                "slave": slave, "enabled": True,
+            })
+        commands_enabled = bool(raw.get("commands_enabled", False))
+        profile = {
+            **ferroli_omnia_m32_profile(commands_enabled=commands_enabled),
+            "commands_enabled": commands_enabled,
+            "documentation_status": "partial_verified_registers",
+        }
+        profile["registers"] = [validate_register(item) for item in profile["registers"]]
+        with self._lock:
+            data = self.load()
+            data["connections"][connection["id"]] = connection
+            data["profiles"][profile["id"]] = profile
+            for pump in pumps:
+                data["devices"][pump["id"]] = pump
+            self.save(data)
+        return {
+            "connection": deepcopy(connection), "profile": deepcopy(profile),
+            "pumps": deepcopy(pumps), "commands_enabled": commands_enabled,
+        }
+
     def sync_catalog(self, registry: list[dict[str, Any]], states: dict[str, dict[str, Any]]) -> dict[str, Any]:
         with self._lock:
             data = self.load(); catalog = data["catalog"]; seen = set()
@@ -203,21 +285,24 @@ class ModbusStore:
             lines += [f"- name: {json.dumps(connection['id'])}", f"  type: {connection['type']}"]
             for key in ("host", "port", "baudrate", "bytesize", "method", "parity", "stopbits", "delay", "message_wait_milliseconds", "timeout"):
                 if key in connection: lines.append(f"  {key}: {json.dumps(connection[key])}")
+            grouped: dict[str, list[tuple[dict[str, Any], dict[str, Any]]]] = {}
             for device in data["devices"].values():
                 if not device.get("enabled") or device["connection_id"] != connection["id"]: continue
-                profile = data["profiles"][device["profile_id"]]; grouped: dict[str, list[dict[str, Any]]] = {}
-                for register in profile["registers"]: grouped.setdefault(register["entity_type"] + "s", []).append(register)
-                for platform, registers in grouped.items():
-                    lines.append(f"  {platform}:")
-                    for register in registers:
-                        unique = f"econtrol_modbus_{device['id']}_{register['key']}"
-                        access_key = "write_type" if register["entity_type"] == "switch" else "input_type"
-                        lines += [f"    - name: {json.dumps(device['name'] + ' ' + register['name'])}", f"      unique_id: {json.dumps(unique)}", f"      slave: {device['slave']}", f"      address: {register['address']}", f"      {access_key}: {register['register_type']}", f"      scan_interval: {register['scan_interval']}"]
-                        if register["entity_type"] == "sensor":
-                            lines += [f"      data_type: {register['data_type']}", f"      scale: {register['scale']}", f"      offset: {register['offset']}", f"      precision: {register['precision']}"]
-                            if register["unit"]: lines.append(f"      unit_of_measurement: {json.dumps(register['unit'])}")
-                            if register["device_class"]: lines.append(f"      device_class: {json.dumps(register['device_class'])}")
-                            if register["swap"] != "none": lines.append(f"      swap: {register['swap']}")
+                profile = data["profiles"][device["profile_id"]]
+                for register in profile["registers"]:
+                    platform = {"sensor": "sensors", "binary_sensor": "binary_sensors", "switch": "switches"}[register["entity_type"]]
+                    grouped.setdefault(platform, []).append((device, register))
+            for platform, entries in grouped.items():
+                lines.append(f"  {platform}:")
+                for device, register in entries:
+                    unique = f"econtrol_modbus_{device['id']}_{register['key']}"
+                    access_key = "write_type" if register["entity_type"] == "switch" else "input_type"
+                    lines += [f"    - name: {json.dumps(device['name'] + ' ' + register['name'])}", f"      unique_id: {json.dumps(unique)}", f"      slave: {device['slave']}", f"      address: {register['address']}", f"      {access_key}: {register['register_type']}", f"      scan_interval: {register['scan_interval']}"]
+                    if register["entity_type"] == "sensor":
+                        lines += [f"      data_type: {register['data_type']}", f"      scale: {register['scale']}", f"      offset: {register['offset']}", f"      precision: {register['precision']}"]
+                        if register["unit"]: lines.append(f"      unit_of_measurement: {json.dumps(register['unit'])}")
+                        if register["device_class"]: lines.append(f"      device_class: {json.dumps(register['device_class'])}")
+                        if register["swap"] != "none": lines.append(f"      swap: {register['swap']}")
         return "\n".join(lines) + "\n"
 
 

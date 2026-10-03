@@ -89,7 +89,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.510"
+ADDON_VERSION = "0.1.511"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -6870,6 +6870,14 @@ self.addEventListener('fetch', (event) => {{
         try: row = modbus_manager.store.put_device(payload)
         except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc))
         return {"ok": True, "device": row}
+
+    @api.post("/api/integrations/modbus/ferroli-omnia/setup")
+    async def api_modbus_ferroli_omnia_setup(payload: dict[str, Any]):
+        try:
+            result = modbus_manager.store.provision_ferroli_omnia(payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        return {"ok": True, "result": result, "apply_required": True}
 
     @api.post("/api/integrations/modbus/apply")
     async def api_modbus_apply():

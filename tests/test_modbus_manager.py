@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from e_hdl_buspro_mqtt.app.modbus_manager import ModbusManager, ModbusStore, validate_connection, validate_register
+from e_hdl_buspro_mqtt.app.modbus_manager import ModbusManager, ModbusStore, ferroli_omnia_m32_profile, validate_connection, validate_register
 
 
 class ModbusValidationTests(unittest.TestCase):
@@ -79,6 +79,47 @@ class ModbusStoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             data = self._configured(tmp).load()
             self.assertEqual(data, json.loads(json.dumps(data)))
+
+    def test_ferroli_omnia_profile_defaults_to_safe_read_only_addresses(self):
+        profile = ferroli_omnia_m32_profile()
+        self.assertEqual([14, 15, 16], [row["address"] for row in profile["registers"]])
+        self.assertTrue(all(row["entity_type"] == "sensor" for row in profile["registers"]))
+        self.assertTrue(all(not row["writable"] for row in profile["registers"]))
+
+    def test_ferroli_omnia_provisions_two_unique_slaves(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ModbusStore(str(Path(tmp) / "modbus.json"))
+            result = store.provision_ferroli_omnia({
+                "host": "192.168.1.60", "port": 502,
+                "pumps": [{"name": "OMNIA 1", "slave": 1}, {"name": "OMNIA 2", "slave": 2}],
+            })
+            self.assertFalse(result["commands_enabled"])
+            self.assertEqual({1, 2}, {row["slave"] for row in result["pumps"]})
+            yaml = store.render_home_assistant()
+            self.assertIn('host: "192.168.1.60"', yaml)
+            self.assertIn("address: 14", yaml)
+            self.assertIn("input_type: holding", yaml)
+            self.assertEqual(1, yaml.count("  sensors:"))
+            with self.assertRaisesRegex(ValueError, "different slave IDs"):
+                store.provision_ferroli_omnia({
+                    "host": "192.168.1.60",
+                    "pumps": [{"name": "A", "slave": 1}, {"name": "B", "slave": 1}],
+                })
+
+    def test_ferroli_omnia_commands_require_explicit_opt_in(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ModbusStore(str(Path(tmp) / "modbus.json"))
+            store.provision_ferroli_omnia({
+                "host": "192.168.1.60", "commands_enabled": True,
+                "pumps": [{"name": "OMNIA", "slave": 7}],
+            })
+            profile = store.load()["profiles"]["ferroli_omnia_m_3_2"]
+            self.assertTrue(profile["commands_enabled"])
+            self.assertTrue(all(row["entity_type"] == "switch" for row in profile["registers"]))
+            yaml = store.render_home_assistant()
+            self.assertIn("write_type: holding", yaml)
+            self.assertIn("  switches:", yaml)
+            self.assertNotIn("  switchs:", yaml)
 
 
 if __name__ == "__main__":
