@@ -89,7 +89,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.511"
+ADDON_VERSION = "0.1.512"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
