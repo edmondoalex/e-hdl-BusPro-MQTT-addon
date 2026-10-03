@@ -1,5 +1,14 @@
 # Ekonex Platform Sync — HDL BusPro
 
+## Handoff corrente - Nuki Bridge locale 0.1.528
+
+- La pagina Nuki configura autonomamente anche installazioni nuove: rilevamento Bridge, host/porta manuali, pairing tramite pulsante fisico, token locale protetto e importazione serrature.
+- Stati e comandi del Bridge funzionano in LAN senza Web API e senza configurazioni Home Assistant; MQTT locale resta disponibile in parallelo per le serrature compatibili e la Web API rimane opzionale per metadati e registro accessi.
+- Il Bridge viene interrogato periodicamente e la pagina Nuki si aggiorna ogni 5 secondi senza refresh manuale, sospendendo il ridisegno mentre l'utente compila un campo.
+- Compatibilita': pannello e identificativi HDL invariati; ID Nuki normalizzati e policy e-Face/Comandi persistenti conservate.
+- Verifiche locali: `104 passed`, compilazione Python, sintassi JavaScript e `git diff --check` superati; discovery reale ha rilevato il Bridge `192.168.3.22:8080`.
+- Prossimo passo: pubblicare/installare `0.1.528`, verificare le nuove route sul runtime e completare il pairing reale premendo il pulsante fisico del Bridge dalla pagina Nuki.
+
 ## Handoff corrente - nomi visibili nei pannelli bus 0.1.517
 
 - Nei pannelli di tutti i bus il nome personalizzato e' ora visibile anche a sezione `Modifica` chiusa; quando differente, sotto compare `Nome originale: ...`.

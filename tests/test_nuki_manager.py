@@ -23,7 +23,7 @@ class FakeMqtt:
 def test_persistence_and_secret_is_separate(tmp_path):
     store = NukiStore(str(tmp_path / "nuki.json"))
     store.configure({"enabled": True, "mqtt_prefix": "doors", "cloud_enabled": True, "api_token": "secret"})
-    assert store.load()["config"] == {"enabled": True, "mqtt_prefix": "doors", "cloud_enabled": True}
+    assert store.load()["config"] == {"enabled": True, "mqtt_prefix": "doors", "cloud_enabled": True, "bridge_enabled": False, "bridge_host": "", "bridge_port": 8080}
     assert store.token() == "secret"
     assert "secret" not in (tmp_path / "nuki.json").read_text(encoding="utf-8")
 
@@ -84,3 +84,46 @@ def test_disabled_integration_does_not_listen_and_reset_is_empty(tmp_path):
     assert snapshot["config"]["enabled"] is False
     assert snapshot["devices"] == []
     assert snapshot["status"]["token_configured"] is False
+
+
+def test_bridge_secret_sync_and_local_command(tmp_path):
+    mqtt = FakeMqtt()
+    manager = NukiManager(str(tmp_path / "nuki.json"), mqtt)
+    manager.store.configure({"bridge_enabled": True, "bridge_host": "192.168.1.50", "bridge_token": "local-secret"})
+    assert manager.store.bridge_token() == "local-secret"
+    assert "local-secret" not in (tmp_path / "nuki.json").read_text(encoding="utf-8")
+    calls = []
+
+    def bridge(path, params=None, authenticated=True):
+        calls.append((path, params, authenticated))
+        if path == "/list":
+            return [{"nukiId": 555225940, "deviceType": 0, "name": "Porta Ufficio", "lastKnownState": {"state": 1, "batteryCritical": False}}]
+        return {"success": True}
+
+    manager._bridge = bridge
+    assert manager.sync_bridge()["devices"] == 1
+    row = manager.snapshot()["devices"][0]
+    assert row["device_id"] == "21181354"
+    assert row["name"] == "Porta Ufficio"
+    assert row["available"] is True
+    manager.store.update_device("21181354", {"read_only": False})
+    result = manager.command("21181354", "unlock")
+    assert result["source"] == "nuki_bridge"
+    assert calls[-1][0] == "/lockAction"
+    assert calls[-1][1] == {"nukiId": 555225940, "deviceType": 0, "action": 1}
+    assert mqtt.published == []
+
+
+def test_bridge_pairing_persists_token_and_imports_devices(tmp_path):
+    manager = NukiManager(str(tmp_path / "nuki.json"), FakeMqtt())
+
+    def bridge(path, params=None, authenticated=True):
+        if path == "/auth": return {"token": "paired-token"}
+        if path == "/list": return []
+        raise AssertionError(path)
+
+    manager._bridge = bridge
+    assert manager.pair_bridge("192.168.1.50", 8080) == {"devices": 0}
+    assert manager.store.bridge_token() == "paired-token"
+    assert manager.store.load()["config"]["bridge_enabled"] is True
+    manager.stop()

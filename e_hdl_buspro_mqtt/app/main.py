@@ -91,7 +91,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.527"
+ADDON_VERSION = "0.1.528"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -7194,6 +7194,34 @@ self.addEventListener('fetch', (event) => {{
             _sync_organization()
             await _broadcast_devices()
             await hub.broadcast("nuki", nuki_manager.snapshot())
+            return {"ok": True, **result}
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.get("/api/integrations/nuki/bridges")
+    async def api_nuki_bridges():
+        try:
+            return {"items": await asyncio.to_thread(nuki_manager.discover_bridges)}
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.post("/api/integrations/nuki/bridge/pair")
+    async def api_nuki_bridge_pair(payload: dict[str, Any]):
+        host = str(payload.get("host") or "").strip()
+        if not host:
+            raise HTTPException(status_code=400, detail="Indirizzo del Nuki Bridge obbligatorio")
+        try:
+            result = await asyncio.to_thread(nuki_manager.pair_bridge, host, int(payload.get("port") or 8080))
+            _sync_organization(); await _broadcast_devices(); await hub.broadcast("nuki", nuki_manager.snapshot())
+            return {"ok": True, **result}
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.post("/api/integrations/nuki/bridge/sync")
+    async def api_nuki_bridge_sync():
+        try:
+            result = await asyncio.to_thread(nuki_manager.sync_bridge)
+            _sync_organization(); await _broadcast_devices(); await hub.broadcast("nuki", nuki_manager.snapshot())
             return {"ok": True, **result}
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
