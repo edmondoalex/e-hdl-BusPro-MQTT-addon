@@ -262,7 +262,7 @@ class OrganizationTests(unittest.TestCase):
         self.assertIn("id:'hdl_temperature'", index)
         self.assertIn("Strumenti avanzati · JSON scenario", index)
         self.assertNotIn("Scenari: configurazione JSON", index)
-        self.assertIn("organization.js?v=0.1.479", index)
+        self.assertIn("organization.js?v=0.1.507", index)
         self.assertIn("link('Home','home','mdi:home-analytics','home')+link('Home2'", nav)
         self.assertLess(index.index("Ksenia Smart Home</b>"), index.index("Integrazioni esterne</b>"))
         for page in (root / "e_hdl_buspro_mqtt" / "app" / "static" / "user").glob("*.html"):
