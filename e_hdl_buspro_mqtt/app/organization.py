@@ -347,7 +347,7 @@ class OrganizationStore:
             for key, source in list(devices.items()):
                 if str(source.get("source") or "").lower() != "nuki": continue
                 raw_id = str(source.get("device_id") or "").strip()
-                if not raw_id.isdigit(): continue
+                if not raw_id.isdigit() or raw_id.upper() in active: continue
                 canonical_id = f"{int(raw_id) & 0xFFFFFFFF:08X}"
                 target_key = canonical_key("nuki", canonical_id)
                 target = devices.get(target_key)

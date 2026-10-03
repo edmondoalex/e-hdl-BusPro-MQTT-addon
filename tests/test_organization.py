@@ -64,6 +64,14 @@ class OrganizationTests(unittest.TestCase):
         self.assertTrue(data["devices"]["nuki:4D054BEF"]["favorite"])
         self.assertEqual(["security"], data["devices"]["nuki:4D054BEF"]["categories"])
 
+    def test_nuki_numeric_only_canonical_hex_id_is_not_treated_as_cloud_alias(self):
+        self.store.sync_devices([
+            {"source":"nuki","device_id":"21181354","name":"Porta Ufficio","device_class":"lock"},
+        ])
+        data = self.store.reconcile_nuki_devices({"21181354"})
+        self.assertIn("nuki:21181354", data["devices"])
+        self.assertEqual("Porta Ufficio", data["devices"]["nuki:21181354"]["name"])
+
     def test_ksenia_survives_rename_restart_refresh_and_offline(self):
         device_id = "ksn_00000000000000000000000000000001"
         self.store.sync_devices([{"source":"ksenia","device_id":device_id,"name":"Prima","device_class":"light"}])
@@ -275,9 +283,9 @@ class OrganizationTests(unittest.TestCase):
         self.assertIn("id:'hdl_temperature'", index)
         self.assertIn("Strumenti avanzati · JSON scenario", index)
         self.assertNotIn("Scenari: configurazione JSON", index)
-        self.assertIn("device-category-select.js?v=0.1.531", index)
-        self.assertIn("organization.js?v=0.1.531", index)
-        self.assertIn("hub-nav.js?v=0.1.531", index)
+        self.assertIn("device-category-select.js?v=0.1.532", index)
+        self.assertIn("organization.js?v=0.1.532", index)
+        self.assertIn("hub-nav.js?v=0.1.532", index)
 
         self.assertIn("integrationLink('Ferroli OMNIA','ferroli_omnia'", nav)
         self.assertIn("link('Home','home','mdi:home-analytics','home')+link('Home2'", nav)
