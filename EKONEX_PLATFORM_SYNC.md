@@ -107,6 +107,15 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 
 ## Handoff corrente
 
+### Salvataggio immediato e stato Comfort Netatmo - 2026-10-03
+
+- Release `0.1.508` pubblicata, installata e avviata sul NUC; commit `4772286` pubblicato su `origin/main`.
+- Piano, stanza, pagine e visibilita' vengono ora applicati automaticamente a ogni modifica; il pulsante Salva resta disponibile come conferma manuale.
+- Normalizzato lo stato climate Netatmo diretto: temperatura misurata e setpoint sono esposti con chiavi stabili; un dispositivo raggiungibile senza misura mostra `online` invece di `unknown`.
+- Sincronizzazione live riuscita: 21 dispositivi rilevati; Veranda espone 20,2 °C, setpoint 8 °C, raggiungibile e organizzazione Comfort persistente.
+- Test: `83 passed`, compilazione Python, sintassi JavaScript e `git diff --check` superati; log runtime regolari, BusPro/MQTT/WebSocket operativi.
+- Nessun comando o setpoint e' stato inviato durante il collaudo.
+
 ### Policy e-Face e Comandi centralizzate - 2026-10-03
 
 - Release `0.1.507` pubblicata, installata e avviata sul NUC; commit `3b5d70c` e `53e0b3b` pubblicati su `origin/main`.
