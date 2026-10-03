@@ -118,12 +118,34 @@ class NukiStore:
 
 
 class NukiManager:
-    def __init__(self, path: str, mqtt: Any): self.store, self.mqtt = NukiStore(path), mqtt
+    def __init__(self, path: str, mqtt: Any):
+        self.store, self.mqtt = NukiStore(path), mqtt
+        self._started = False
     def start(self) -> None:
+        if not self.store.load()["config"].get("enabled"):
+            self._started = False
+            return
         prefix = self.store.load()["config"].get("mqtt_prefix") or "nuki"
         self.mqtt.set_message_handler(lambda topic, payload, retained: self.store.ingest(topic, payload))
         self.mqtt.subscribe(f"{prefix}/#", qos=1); self.mqtt.connect()
-    def stop(self) -> None: self.mqtt.disconnect()
+        self._started = True
+    def stop(self) -> None:
+        if self._started:
+            prefix = self.store.load()["config"].get("mqtt_prefix") or "nuki"
+            self.mqtt.unsubscribe(f"{prefix}/#")
+            self.mqtt.disconnect()
+        self._started = False
+    def configure(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.stop()
+        self.store.configure(payload)
+        self.start()
+        return self.snapshot()
+    def reset(self) -> dict[str, Any]:
+        self.stop()
+        for path in (self.store.path, self.store.path + ".bak", self.store.secret_path):
+            try: os.unlink(path)
+            except FileNotFoundError: pass
+        return self.snapshot()
     def command(self, device_id: str, action: str) -> dict[str, Any]:
         row = next((x for x in self.store.rows() if x["device_id"] == device_id), None)
         if not row: raise KeyError(device_id)
@@ -165,4 +187,4 @@ class NukiManager:
         self.store.save(data); return {"devices": count, "authorizations": len(data["authorizations"]), "events": len(data["events"])}
     def snapshot(self) -> dict[str, Any]:
         data = self.store.load(); status = self.mqtt.status()
-        return {"status": {"configured": bool(data["config"].get("enabled")), "mqtt_connected": status.connected, "mqtt_error": status.last_error, "cloud_enabled": bool(data["config"].get("cloud_enabled")), "token_configured": bool(self.store.token()), "devices": len(data["devices"])}, "config": data["config"], "devices": self.store.rows(), "authorizations": list(data["authorizations"].values()), "events": data["events"][:200], "rules": data["rules"]}
+        return {"status": {"configured": bool(data["config"].get("enabled")), "mqtt_connected": bool(self._started and status.connected), "mqtt_error": status.last_error if self._started else None, "cloud_enabled": bool(data["config"].get("cloud_enabled")), "token_configured": bool(self.store.token()), "devices": len(data["devices"])}, "config": data["config"], "devices": self.store.rows(), "authorizations": list(data["authorizations"].values()), "events": data["events"][:200], "rules": data["rules"]}

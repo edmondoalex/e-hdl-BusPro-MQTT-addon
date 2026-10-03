@@ -13,6 +13,7 @@ class FakeMqtt:
 
     def set_message_handler(self, handler): self.handler = handler
     def subscribe(self, topic, *, qos=0): self.subscriptions.append((topic, qos))
+    def unsubscribe(self, topic): self.subscriptions = [item for item in self.subscriptions if item[0] != topic]
     def connect(self): pass
     def disconnect(self): pass
     def publish(self, topic, payload, *, qos=0, retain=False): self.published.append((topic, payload, qos))
@@ -49,6 +50,20 @@ def test_discovery_event_identity_and_command(tmp_path):
 def test_start_subscribes_without_home_assistant(tmp_path):
     mqtt = FakeMqtt()
     manager = NukiManager(str(tmp_path / "nuki.json"), mqtt)
+    manager.store.configure({"enabled": True})
     manager.start()
     assert mqtt.subscriptions == [("nuki/#", 1)]
     assert callable(mqtt.handler)
+
+
+def test_disabled_integration_does_not_listen_and_reset_is_empty(tmp_path):
+    mqtt = FakeMqtt()
+    manager = NukiManager(str(tmp_path / "nuki.json"), mqtt)
+    manager.start()
+    assert mqtt.subscriptions == []
+    manager.configure({"enabled": True, "api_token": "secret"})
+    manager.store.ingest("nuki/123/state", "locked")
+    snapshot = manager.reset()
+    assert snapshot["config"]["enabled"] is False
+    assert snapshot["devices"] == []
+    assert snapshot["status"]["token_configured"] is False

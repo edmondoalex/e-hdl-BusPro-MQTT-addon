@@ -91,7 +91,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.521"
+ADDON_VERSION = "0.1.522"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -7173,12 +7173,19 @@ self.addEventListener('fetch', (event) => {{
     @api.put("/api/integrations/nuki/config")
     async def api_nuki_config(payload: dict[str, Any]):
         try:
-            nuki_manager.store.configure(payload)
-            result = nuki_manager.snapshot()
+            result = nuki_manager.configure(payload)
             await hub.broadcast("nuki", result)
             return result
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.post("/api/integrations/nuki/reset")
+    async def api_nuki_reset():
+        result = nuki_manager.reset()
+        _sync_organization()
+        await _broadcast_devices()
+        await hub.broadcast("nuki", result)
+        return {"ok": True, **result}
 
     @api.post("/api/integrations/nuki/sync")
     async def api_nuki_sync():
