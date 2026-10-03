@@ -225,7 +225,7 @@ class NukiManager:
                 return list((json.loads(response.read().decode("utf-8")) or {}).get("bridges") or [])
         except (urllib.error.URLError, ValueError, json.JSONDecodeError) as exc:
             raise ValueError(f"Rilevamento Nuki Bridge non riuscito: {exc}") from exc
-    def _bridge(self, path: str, params: dict[str, Any] | None = None, *, authenticated: bool = True) -> Any:
+    def _bridge(self, path: str, params: dict[str, Any] | None = None, *, authenticated: bool = True, timeout: int = 10) -> Any:
         cfg = self.store.load()["config"]; host = str(cfg.get("bridge_host") or "").strip()
         if not host: raise ValueError("Nuki Bridge non configurato")
         query = dict(params or {})
@@ -235,12 +235,19 @@ class NukiManager:
             query["token"] = token
         endpoint = f"http://{host}:{int(cfg.get('bridge_port') or 8080)}{path}?{urllib.parse.urlencode(query)}"
         try:
-            with urllib.request.urlopen(endpoint, timeout=10) as response: return json.loads(response.read().decode("utf-8"))
+            with urllib.request.urlopen(endpoint, timeout=timeout) as response: return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            messages = {
+                403: "Autorizzazione HTTP disabilitata sul Nuki Bridge. Abilitala nelle impostazioni del Bridge e riprova.",
+                404: "Pairing non completato: premi Associa Bridge e poi il pulsante fisico del Bridge entro 30 secondi.",
+                503: "Nuki Bridge temporaneamente occupato. Attendi alcuni secondi, premi Associa Bridge e poi il pulsante fisico.",
+            }
+            raise ValueError(messages.get(exc.code, f"Nuki Bridge HTTP {exc.code}")) from exc
         except urllib.error.URLError as exc: raise ValueError(f"Nuki Bridge non raggiungibile: {exc.reason}") from exc
     def pair_bridge(self, host: str, port: int = 8080) -> dict[str, Any]:
         self.store.configure({"bridge_host": host, "bridge_port": port, "bridge_enabled": True})
-        result = self._bridge("/auth", authenticated=False); token = str(result.get("token") or "")
-        if not token: raise ValueError("Pairing rifiutato: premi il pulsante del Bridge e riprova")
+        result = self._bridge("/auth", authenticated=False, timeout=35); token = str(result.get("token") or "")
+        if not token: raise ValueError("Pairing non completato: premi Associa Bridge e poi il pulsante fisico entro 30 secondi")
         self.store.configure({"bridge_token": token})
         result = self.sync_bridge(); self._start_bridge_poll()
         return result

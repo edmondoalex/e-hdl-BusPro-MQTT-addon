@@ -1,5 +1,11 @@
 # Ekonex Platform Sync — HDL BusPro
 
+## Handoff corrente - correzione pairing Nuki Bridge 0.1.529
+
+- Corretta la sequenza guidata: `Associa Bridge` apre la finestra Nuki e indica di premere subito dopo il pulsante fisico entro 30 secondi.
+- Timeout `/auth` portato a 35 secondi; gli errori Bridge 403, 404 e 503 ora producono istruzioni specifiche invece di `Not Found`.
+- Test: `104 passed`, compilazione Python, sintassi JavaScript e `git diff --check` superati. Nessun comando serratura inviato.
+
 ## Handoff corrente - Nuki Bridge locale 0.1.528
 
 - La pagina Nuki configura autonomamente anche installazioni nuove: rilevamento Bridge, host/porta manuali, pairing tramite pulsante fisico, token locale protetto e importazione serrature.

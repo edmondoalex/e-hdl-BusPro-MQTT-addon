@@ -94,7 +94,7 @@ def test_bridge_secret_sync_and_local_command(tmp_path):
     assert "local-secret" not in (tmp_path / "nuki.json").read_text(encoding="utf-8")
     calls = []
 
-    def bridge(path, params=None, authenticated=True):
+    def bridge(path, params=None, authenticated=True, **kwargs):
         calls.append((path, params, authenticated))
         if path == "/list":
             return [{"nukiId": 555225940, "deviceType": 0, "name": "Porta Ufficio", "lastKnownState": {"state": 1, "batteryCritical": False}}]
@@ -117,7 +117,7 @@ def test_bridge_secret_sync_and_local_command(tmp_path):
 def test_bridge_pairing_persists_token_and_imports_devices(tmp_path):
     manager = NukiManager(str(tmp_path / "nuki.json"), FakeMqtt())
 
-    def bridge(path, params=None, authenticated=True):
+    def bridge(path, params=None, authenticated=True, **kwargs):
         if path == "/auth": return {"token": "paired-token"}
         if path == "/list": return []
         raise AssertionError(path)
