@@ -89,7 +89,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.508"
+ADDON_VERSION = "0.1.509"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -10654,8 +10654,8 @@ self.addEventListener('fetch', (event) => {{
         try:
             result = await asyncio.to_thread(
                 netatmo_direct.set_room_temperature,
-                home_id=str(item.get("home_id") or ""),
-                room_id=str(item.get("room_id") or ""),
+                home_id=str(item.get("command_home_id") or ""),
+                room_id=str(item.get("command_room_id") or ""),
                 temperature=float(value),
             )
         except (TypeError, ValueError) as exc:

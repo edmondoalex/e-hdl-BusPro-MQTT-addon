@@ -179,6 +179,23 @@ class SmartHomeProducerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "capability"):
             validate_command_request(item, "disarm")
 
+    def test_native_command_location_is_not_replaced_by_presentation_room(self):
+        payload = build_smart_home(
+            hdl_devices=[], ksenia_snapshot={}, states={}, hdl_available=False,
+            organization={"schema_version":1,"floors":[],"rooms":[{"id":"room-ui","name":"Ufficio","floor_id":"floor-ui"}],"groups":[],"devices":{
+                "home_plus_control:thermostat": {"floor_id":"","room_id":"room-ui","group_ids":[],"categories":["comfort"],"orders":{"comfort":0},"visible":True}
+            }},
+            additional_sources={"home_plus_control":[{
+                "device_id":"thermostat","name":"Veranda","device_class":"climate","native_type":"climate",
+                "capabilities":["temperature"],"read_only":False,"available":True,"stale":False,"state":{"state":"20.2"},
+                "command_home_id":"home-native","command_room_id":"room-native",
+            }]},
+        )
+        row = payload["devices"][0]
+        self.assertEqual("room-ui", row["room_id"])
+        self.assertEqual("home-native", row["command_home_id"])
+        self.assertEqual("room-native", row["command_room_id"])
+
     def test_contract_has_no_bus_transport_details(self):
         forbidden = {"command_topic", "state_topic", "mqtt_topic", "subnet_id", "channel"}
         for item in self.payload()["devices"]:

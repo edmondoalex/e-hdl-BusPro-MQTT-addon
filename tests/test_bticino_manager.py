@@ -32,6 +32,7 @@ class BticinoCatalogStoreTests(unittest.TestCase):
             store.update("home_plus_control", rows["valve"]["device_id"], enabled=True, read_only=False)
             valve = next(item for item in store.catalog("home_plus_control", {}) if item["native_id"] == "valve")
             self.assertEqual("room-kitchen", valve["room_id"])
+            self.assertEqual("room-kitchen", valve["command_room_id"])
 
     def test_direct_netatmo_climate_exposes_temperature_and_setpoint(self):
         with tempfile.TemporaryDirectory() as tmp:

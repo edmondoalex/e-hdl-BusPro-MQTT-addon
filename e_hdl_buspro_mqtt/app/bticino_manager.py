@@ -342,6 +342,8 @@ class BticinoCatalogStore:
                 "native_id": row.get("native_id") or row.get("entity_id"),
                 "home_id": row.get("home_id") or attributes.get("home_id"),
                 "room_id": row.get("room_id") or attributes.get("room_id"),
+                "command_home_id": row.get("home_id") or attributes.get("home_id"),
+                "command_room_id": row.get("room_id") or attributes.get("room_id"),
                 "home_assistant_entity_id": row.get("entity_id") if not row.get("direct") else None,
                 "capabilities": list(row.get("capabilities") or []),
                 "read_only": bool(row.get("read_only", True)),

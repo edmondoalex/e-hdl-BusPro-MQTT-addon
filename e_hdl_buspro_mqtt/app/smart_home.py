@@ -200,6 +200,9 @@ def build_smart_home(
             for field in ("home_assistant_entity_id", "home_assistant_entity_ids"):
                 if device.get(field):
                     row[field] = deepcopy(device[field])
+            for field in ("command_home_id", "command_room_id"):
+                if device.get(field):
+                    row[field] = str(device[field])
             row.update(_organization_fields(record, floors, rooms, groups, row["device_class"]))
             row["name"] = str(record.get("name_override") or row["name"])
             row["device_class"] = str(record.get("device_class_override") or row["device_class"])
