@@ -1,5 +1,13 @@
 # Ekonex Platform Sync — HDL BusPro
 
+## Handoff corrente - nomi visibili nei pannelli bus 0.1.517
+
+- Nei pannelli di tutti i bus il nome personalizzato e' ora visibile anche a sezione `Modifica` chiusa; quando differente, sotto compare `Nome originale: ...`.
+- Tendine Categoria multi-bus e doppio nome in `Dispositivi e presentazione` restano inclusi.
+- Test: `96 passed`, sintassi JavaScript e `git diff --check` superati. Commit `ebb0886` pubblicato; sorgente `0.1.517` copiata e verificata sul NUC.
+
+---
+
 ## Handoff corrente - categorie guidate e doppio nome 0.1.516
 
 - `Categoria` e' ora una tendina in tutti i pannelli bus e integrazioni, inclusi i form tecnici HDL gia' esistenti; `Automatica` conserva la classificazione rilevata e gli eventuali valori storici restano selezionabili.
