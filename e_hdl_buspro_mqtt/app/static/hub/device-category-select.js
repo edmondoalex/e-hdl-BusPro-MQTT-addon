@@ -54,6 +54,7 @@
       document.head.appendChild(style);
     }
     upgrade();
+    document.addEventListener('econtrol:organization-changed', () => upgrade());
     new MutationObserver(records => records.forEach(record => record.addedNodes.forEach(node => {
       if (node.nodeType === Node.ELEMENT_NODE) upgrade(node);
     }))).observe(document.body, {childList: true, subtree: true});
