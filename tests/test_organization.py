@@ -262,8 +262,9 @@ class OrganizationTests(unittest.TestCase):
         self.assertIn("id:'hdl_temperature'", index)
         self.assertIn("Strumenti avanzati · JSON scenario", index)
         self.assertNotIn("Scenari: configurazione JSON", index)
-        self.assertIn("organization.js?v=0.1.515", index)
-        self.assertIn("hub-nav.js?v=0.1.515", index)
+        self.assertIn("device-category-select.js?v=0.1.516", index)
+        self.assertIn("organization.js?v=0.1.516", index)
+        self.assertIn("hub-nav.js?v=0.1.516", index)
 
         self.assertIn("integrationLink('Ferroli OMNIA','ferroli_omnia'", nav)
         self.assertIn("link('Home','home','mdi:home-analytics','home')+link('Home2'", nav)
@@ -278,8 +279,15 @@ class OrganizationTests(unittest.TestCase):
         source = (Path(__file__).resolve().parents[1] / "e_hdl_buspro_mqtt" / "app" / "static" / "hub" / "organization.js").read_text(encoding="utf-8")
         self.assertIn("device.name_override||device.name||device.device_id", source)
         self.assertIn("shownName=effectiveName(device)", source)
-        self.assertIn("`${shownName} ${device.name||''} ${device.device_id}", source)
+        self.assertIn("`${shownName} ${originalName} ${device.device_id}", source)
+        self.assertIn("Nome originale: ${esc(originalName)}", source)
         self.assertIn("econtrol:organization-changed", source)
+
+    def test_bus_device_category_is_upgraded_to_supported_select(self):
+        source = (Path(__file__).resolve().parents[1] / "e_hdl_buspro_mqtt" / "app" / "static" / "hub" / "device-category-select.js").read_text(encoding="utf-8")
+        self.assertIn('input[name="device_class_override"]', source)
+        self.assertIn("Sensore temperatura", source)
+        self.assertIn("input.replaceWith(select)", source)
 
     def test_home_reports_live_ksenia_status(self):
         root = Path(__file__).resolve().parents[1]
