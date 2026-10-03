@@ -554,3 +554,11 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 - Aggiunto aggiornamento automatico ogni 30 secondi dello stato Netatmo diretto, seguito da sincronizzazione organizzazione e pubblicazione WebSocket verso e-Face.
 - Collaudo reale: un setpoint modificato esternamente è passato in e-Control/e-Face da 8,5 a 10 °C senza usare `Rileva e sincronizza`.
 - Release `0.1.510` installata e avviata; `84 passed`; commit `3cc6b5f` pubblicato. HDL non modificato.
+
+### Integrazione dedicata Ferroli OMNIA 0.1.511
+
+- Aggiunta in e-Control la pagina `Ferroli OMNIA` con logo, configurazione guidata del gateway Waveshare e supporto a una o due OMNIA M 3.2 con Slave ID distinti.
+- Profilo iniziale prudenziale: registri PLC 40015/40016/40017 convertiti negli offset 14/15/16 e pubblicati in sola lettura; la scrittura richiede una scelta esplicita dopo il collaudo.
+- Corretto il generatore Modbus comune: sezioni valide `switches` e raggruppamento unico di più dispositivi sullo stesso gateway.
+- Release `0.1.511`, commit `8cf2ef0`, `87 passed`; installazione NUC avviata e verificata. Pagina e logo HTTP 200, endpoint admin presente e validazione input attiva.
+- Nessuna configurazione fittizia salvata sull'impianto: IP e Slave ID saranno inseriti quando il gateway sarà installato. HDL invariato.
