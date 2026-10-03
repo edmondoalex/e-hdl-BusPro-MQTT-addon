@@ -2,11 +2,11 @@
 
 ## Handoff corrente - categorie guidate e doppio nome 0.1.516
 
-- `Categoria` nei pannelli bus e integrazioni e' ora una tendina con i tipi supportati; `Automatica` conserva la classificazione rilevata e gli eventuali valori storici restano selezionabili.
+- `Categoria` e' ora una tendina in tutti i pannelli bus e integrazioni, inclusi i form tecnici HDL gia' esistenti; `Automatica` conserva la classificazione rilevata e gli eventuali valori storici restano selezionabili.
 - In `Dispositivi e presentazione` il nome personalizzato e' mostrato come titolo e, quando differente, il nome originale compare subito sotto. Il filtro ricerca trova entrambi e anche l'ID tecnico.
 - Compatibilita': HDL non modificato; identificativi e valori persistiti invariati.
 - Test: `96 passed`, compilazione Python, sintassi JavaScript e `git diff --check` superati.
-- Release `0.1.516`, commit runtime `bdecb32` pubblicato su `origin/main`. Installazione NUC ancora da eseguire tramite canale amministrativo autenticato.
+- Release `0.1.516`, commit runtime `bdecb32` e completamento multi-bus `4eb46c7` pubblicati su `origin/main`. Sorgente add-on sul NUC sincronizzata e verificata byte per byte; ricostruzione runtime ancora da eseguire tramite canale amministrativo autenticato.
 
 ---
 
