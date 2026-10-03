@@ -16,6 +16,7 @@ import urllib.request
 ACTION_NAMES = {1: "Sblocco", 2: "Blocco", 3: "Apertura", 4: "Lock 'n' Go", 5: "Lock 'n' Go con apertura", 240: "Porta aperta", 241: "Porta chiusa", 242: "Sensore porta bloccato"}
 TRIGGER_NAMES = {0: "Sistema", 1: "Manuale", 2: "Pulsante", 3: "Fob", 4: "Tastierino", 5: "Auto Unlock", 6: "Web API", 7: "App", 8: "HomeKit", 9: "MQTT", 10: "Matter"}
 COMMAND_TOPICS = {"unlock": "unlock", "lock": "lock", "unlatch": "unlatch", "lockngo": "lockNgo", "lockngo_unlatch": "lockNgoUnlatch"}
+LOCK_STATES = {0: "uncalibrated", 1: "locked", 2: "unlocking", 3: "unlocked", 4: "locking", 5: "unlatched", 6: "unlocked", 7: "unlatching", 254: "motor_blocked", 255: "undefined"}
 
 
 class NukiStore:
@@ -96,6 +97,8 @@ class NukiStore:
         device_id, field = parts[1], "/".join(parts[2:])
         row = data["devices"].setdefault(device_id, {"device_id": device_id, "name": f"Nuki {device_id}", "device_class": "lock", "capabilities": list(COMMAND_TOPICS), "enabled": False, "read_only": True, "state": {}, "last_seen": 0})
         row["last_seen"] = int(time.time()); row["state"][field] = payload
+        if field in {"name", "deviceName"} and str(payload or "").strip():
+            row["name"] = str(payload).strip()
         if field == "lockActionEvent":
             values = [x.strip() for x in payload.split(",")]
             if len(values) >= 5:
@@ -109,8 +112,11 @@ class NukiStore:
     def rows(self) -> list[dict[str, Any]]:
         now = time.time(); result = []
         for row in self.load()["devices"].values():
-            state = row.get("state") or {}; lock_state = state.get("state") or state.get("lockState") or "unknown"
-            result.append({**deepcopy(row), "source": "nuki", "native_type": "smart_lock", "native_id": row.get("device_id"), "available": now - float(row.get("last_seen") or 0) < 180, "stale": now - float(row.get("last_seen") or 0) >= 180, "state": {"state": lock_state, "attributes": deepcopy(state)}})
+            state = row.get("state") or {}; raw_state = state.get("state") or state.get("lockState") or "unknown"
+            lock_state = LOCK_STATES.get(int(raw_state), raw_state) if str(raw_state).isdigit() else raw_state
+            recent = now - float(row.get("last_seen") or 0) < 180
+            available = str(state.get("connected") or "").strip().lower() == "true" or recent
+            result.append({**deepcopy(row), "source": "nuki", "native_type": "smart_lock", "native_id": row.get("device_id"), "available": available, "stale": not available, "state": {"state": lock_state, "attributes": deepcopy(state)}})
         return result
 
     def catalog(self) -> list[dict[str, Any]]: return [row for row in self.rows() if row.get("enabled")]

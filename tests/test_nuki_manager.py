@@ -33,11 +33,13 @@ def test_discovery_event_identity_and_command(tmp_path):
     manager = NukiManager(str(tmp_path / "nuki.json"), mqtt)
     manager.store.configure({"enabled": True})
     manager.store.ingest("nuki/123/state", "locked")
+    manager.store.ingest("nuki/123/name", "Porta principale")
     data = manager.store.load()
     data["authorizations"]["42"] = {"auth_id": "42", "name": "Mario"}
     manager.store.save(data)
     manager.store.ingest("nuki/123/lockActionEvent", "1,4,42,7,0")
     snapshot = manager.snapshot()
+    assert snapshot["devices"][0]["name"] == "Porta principale"
     assert snapshot["devices"][0]["state"]["state"] == "locked"
     assert snapshot["events"][0]["person"] == "Mario"
     assert snapshot["events"][0]["code_id"] == 7
