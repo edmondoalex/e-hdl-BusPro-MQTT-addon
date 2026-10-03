@@ -97,15 +97,21 @@ def test_bridge_secret_sync_and_local_command(tmp_path):
     def bridge(path, params=None, authenticated=True, **kwargs):
         calls.append((path, params, authenticated))
         if path == "/list":
-            return [{"nukiId": 555225940, "deviceType": 0, "name": "Porta Ufficio", "lastKnownState": {"state": 1, "batteryCritical": False}}]
+            return [
+                {"nukiId": 555225940, "deviceType": 0, "name": "Porta Ufficio", "lastKnownState": {"state": 1, "batteryCritical": False, "batteryChargeState": 28}},
+                {"nukiId": 941005117, "deviceType": 0, "name": "Porta non raggiungibile"},
+            ]
         return {"success": True}
 
     manager._bridge = bridge
-    assert manager.sync_bridge()["devices"] == 1
-    row = manager.snapshot()["devices"][0]
+    assert manager.sync_bridge()["devices"] == 2
+    rows = {row["device_id"]: row for row in manager.snapshot()["devices"]}
+    row = rows["21181354"]
     assert row["device_id"] == "21181354"
     assert row["name"] == "Porta Ufficio"
     assert row["available"] is True
+    assert row["state"]["attributes"]["batteryChargeState"] == "28"
+    assert rows["3816993D"]["available"] is False
     manager.store.update_device("21181354", {"read_only": False})
     result = manager.command("21181354", "unlock")
     assert result["source"] == "nuki_bridge"

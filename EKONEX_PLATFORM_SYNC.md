@@ -1,5 +1,13 @@
 # Ekonex Platform Sync — HDL BusPro
 
+## Handoff corrente - stati e batteria Nuki 0.1.530
+
+- Ogni scheda Nuki mostra in modo esplicito stato serratura, livello/stato batteria, stato porta, connessione e trasporto locale.
+- La percentuale batteria viene mostrata quando fornita da MQTT o Bridge; sui modelli senza percentuale vengono mostrati `OK`, `Critica` o `Non disponibile`.
+- Corretto il falso `online` dei dispositivi Bridge senza `lastKnownState`: ora risultano non raggiungibili e i comandi restano disabilitati.
+- Verifica sui dati reali: Portoncino Scala 41%, Porta Sala 80%, Porta Ufficio 28%; vecchio Portoncino privo di telemetria marcato non raggiungibile.
+- Test: `104 passed`, compilazione Python, sintassi JavaScript e `git diff --check` superati. HDL invariato; nessun comando serratura inviato.
+
 ## Handoff corrente - correzione pairing Nuki Bridge 0.1.529
 
 - Corretta la sequenza guidata: `Associa Bridge` apre la finestra Nuki e indica di premere subito dopo il pulsante fisico entro 30 secondi.

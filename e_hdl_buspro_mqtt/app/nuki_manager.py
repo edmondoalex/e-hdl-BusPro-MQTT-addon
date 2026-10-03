@@ -258,9 +258,11 @@ class NukiManager:
             if not did: continue
             row = data["devices"].setdefault(did, {"device_id": did, "enabled": False, "read_only": True, "capabilities": list(COMMAND_TOPICS), "state": {}})
             known = item.get("lastKnownState") if isinstance(item.get("lastKnownState"), dict) else {}
-            row.update({"name": item.get("name") or row.get("name") or f"Nuki {did}", "bridge_id": bridge_id, "device_type": item.get("deviceType", 0), "device_class": "lock", "last_seen": int(time.time())})
+            row.update({"name": item.get("name") or row.get("name") or f"Nuki {did}", "bridge_id": bridge_id, "device_type": item.get("deviceType", 0), "device_class": "lock"})
             for key, value in known.items(): row["state"][key] = str(value).lower() if isinstance(value, bool) else str(value)
-            row["state"]["connected"] = "true"; count += 1
+            row["state"]["connected"] = "true" if known else "false"
+            row["last_seen"] = int(time.time()) if known else 0
+            count += 1
         self.store.save(data); return {"devices": count}
     def _api(self, path: str) -> Any:
         token = self.store.token()

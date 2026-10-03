@@ -17,9 +17,24 @@
     if (device.bridge_id !== undefined && device.bridge_id !== null) return 'Bridge locale';
     return device.web ? 'Web API' : 'Locale';
   }
+  function yes(value) { return String(value ?? '').toLowerCase() === 'true'; }
+  function batteryText(device) {
+    const attrs = device.state?.attributes || {};
+    const level = Number.parseInt(attrs.batteryChargeState, 10);
+    const charging = yes(attrs.batteryCharging);
+    if (Number.isFinite(level)) return `${level}%${charging ? ' · in carica' : ''}`;
+    if (yes(attrs.batteryCritical)) return 'Critica';
+    if (attrs.batteryCritical !== undefined) return `OK${charging ? ' · in carica' : ''}`;
+    return 'Non disponibile';
+  }
+  function doorText(device) {
+    const attrs = device.state?.attributes || {};
+    const value = String(attrs.doorsensorState || attrs.doorState || '').toLowerCase();
+    return ({0:'Non disponibile',1:'Chiusa',2:'Aperta',3:'Sconosciuta',4:'Calibrazione'})[value] || (value || 'Non disponibile');
+  }
   function deviceCard(device) {
     const actions = [['unlock','Sblocca'],['lock','Blocca'],['unlatch','Apri porta'],['lockngo','Lock n Go']];
-    return `<article class="adminFutureCard"><div class="flex"><div><b>${esc(device.name)}</b><div class="muted">ID ${esc(device.device_id)} · ${esc(stateText(device))} · ${device.available?'online':'non raggiungibile'} · ${esc(transport(device))}</div></div><span class="spacer"></span><label><input type="checkbox" data-policy="eface" data-id="${esc(device.device_id)}" ${device.enabled?'checked':''}> e-Face</label><label><input type="checkbox" data-policy="commands" data-id="${esc(device.device_id)}" ${device.read_only?'':'checked'}> Comandi</label></div><div class="flex" style="margin-top:12px">${actions.map(([action,label])=>`<button class="btn secondary small" data-command="${action}" data-id="${esc(device.device_id)}" ${device.read_only||!device.available?'disabled':''}>${label}</button>`).join('')}</div></article>`;
+    return `<article class="adminFutureCard"><div class="flex"><div><b>${esc(device.name)}</b><div class="muted">ID ${esc(device.device_id)} · ${esc(transport(device))}</div></div><span class="spacer"></span><label><input type="checkbox" data-policy="eface" data-id="${esc(device.device_id)}" ${device.enabled?'checked':''}> e-Face</label><label><input type="checkbox" data-policy="commands" data-id="${esc(device.device_id)}" ${device.read_only?'':'checked'}> Comandi</label></div><div class="adminFutureGrid" style="margin-top:12px;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px"><div><span class="muted">Stato</span><br><b>${esc(stateText(device))}</b></div><div><span class="muted">Batteria</span><br><b>${esc(batteryText(device))}</b></div><div><span class="muted">Porta</span><br><b>${esc(doorText(device))}</b></div><div><span class="muted">Connessione</span><br><b>${device.available?'Online':'Non raggiungibile'}</b></div></div><div class="flex" style="margin-top:12px">${actions.map(([action,label])=>`<button class="btn secondary small" data-command="${action}" data-id="${esc(device.device_id)}" ${device.read_only||!device.available?'disabled':''}>${label}</button>`).join('')}</div></article>`;
   }
   function eventRow(event) {
     const stamp = event.timestamp ? new Date(typeof event.timestamp === 'number' ? event.timestamp * 1000 : event.timestamp).toLocaleString('it-IT') : '—';
