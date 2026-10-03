@@ -82,6 +82,15 @@ class OrganizationTests(unittest.TestCase):
         self.assertEqual("Nuovo nome originale", row["name"])
         self.assertEqual("Nome personalizzato", row["name_override"])
 
+    def test_bus_configuration_fields_are_persistent(self):
+        self.store.sync_devices([{"source":"knx","device_id":"light-1","name":"Luce","device_class":"light"}])
+        row = self.store.assign({"source":"knx","device_id":"light-1","name_override":"Luce sala","device_class_override":"dimmer","icon_override":"mdi:ceiling-light","dimmable_override":True,"rgb_group":"RGB sala","rgb_channel":"2"})
+        self.assertEqual("Luce sala", row["name_override"])
+        self.assertEqual("dimmer", row["device_class_override"])
+        self.assertTrue(row["dimmable_override"])
+        self.assertEqual("RGB sala", row["rgb_group"])
+        self.assertEqual("2", row["rgb_channel"])
+
     def test_invalid_icon_and_references_are_rejected(self):
         self.store.sync_devices([{"source":"hdl","device_id":"1.2.3","name":"Luce","device_class":"light"}])
         with self.assertRaises(ValueError):
@@ -193,13 +202,15 @@ class OrganizationTests(unittest.TestCase):
         self.assertIn("api/organization", script)
         self.assertIn("@media(max-width:850px)", script)
         self.assertIn("data-field=", script)
-        for field in ("visible", "icon_override"):
+        for field in ("visible", "floor_id", "room_id"):
             self.assertIn(f'data-field="{field}"', script)
+        for field in ("icon_override", "name_override", "group_ids"):
+            self.assertNotIn(f'data-field="{field}"', script)
         for field in ("order", "favorite", "shortcut"):
             self.assertNotIn(f'data-field="{field}"', script)
         self.assertIn('data-category="${value}"', script)
         self.assertIn('id="orgSearch"', script)
-        self.assertIn("multiple size=\"3\"", script)
+        self.assertNotIn("multiple size=\"3\"", script)
 
     def test_installer_navigation_separates_admin_from_user_previews(self):
         root = Path(__file__).resolve().parents[1]

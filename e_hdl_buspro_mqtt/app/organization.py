@@ -279,6 +279,10 @@ class OrganizationStore:
                 "device_id": device_id,
                 "name": _clean_optional_text(raw.get("name"), "device.name", 160),
                 "name_override": _clean_optional_text(raw.get("name_override"), "device.name_override", 160),
+                "device_class_override": _clean_optional_text(raw.get("device_class_override"), "device.device_class_override", 80).lower(),
+                "dimmable_override": raw.get("dimmable_override") if isinstance(raw.get("dimmable_override"), bool) else None,
+                "rgb_group": _clean_optional_text(raw.get("rgb_group"), "device.rgb_group", 80),
+                "rgb_channel": _clean_optional_text(raw.get("rgb_channel"), "device.rgb_channel", 40),
                 "device_class": _clean_optional_text(raw.get("device_class"), "device.device_class", 80).lower(),
                 "floor_id": floor_id,
                 "room_id": room_id,
@@ -314,6 +318,10 @@ class OrganizationStore:
                 })
                 current.setdefault("floor_id", "")
                 current.setdefault("name_override", "")
+                current.setdefault("device_class_override", "")
+                current.setdefault("dimmable_override", None)
+                current.setdefault("rgb_group", "")
+                current.setdefault("rgb_channel", "")
                 current.setdefault("room_id", "")
                 current.setdefault("group_ids", [])
                 current.setdefault("icon_override", "")
@@ -436,7 +444,7 @@ class OrganizationStore:
             if key not in data["devices"]:
                 raise ValueError("unknown device")
             item = data["devices"][key]
-            for field in ("name_override", "floor_id", "room_id", "group_ids", "icon_override", "categories", "orders", "visible", "favorite", "shortcut"):
+            for field in ("name_override", "device_class_override", "dimmable_override", "rgb_group", "rgb_channel", "floor_id", "room_id", "group_ids", "icon_override", "categories", "orders", "visible", "favorite", "shortcut"):
                 if field in payload:
                     item[field] = payload[field]
             saved = self.save(data)

@@ -135,9 +135,9 @@ class SmartHomeProducerTests(unittest.TestCase):
         self.assertNotIn("0 = prima posizione", source)
         self.assertIn("Pagine in cui compare", source)
         self.assertNotIn('data-field="favorite"', source)
-        self.assertIn("Scorciatoie", source)
+        self.assertIn("assegna esclusivamente piano, stanza, pagine e visibilità", source)
         self.assertNotIn('data-field="shortcut"', source)
-        self.assertIn("gestita esclusivamente da e-Face", source)
+        self.assertNotIn('data-field="icon_override"', source)
         for label in ("HA", "e-KNX Manager", "BTicino MyHOME SCS", "BTicino Home + Control / Netatmo", "e-Modbus Manager"):
             self.assertIn(label, source)
         self.assertIn("sourceOrder", source)

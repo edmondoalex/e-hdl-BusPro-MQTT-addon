@@ -6900,6 +6900,23 @@ self.addEventListener('fetch', (event) => {{
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
+    @api.put("/api/integrations/{source}/devices/{device_id}/configuration")
+    async def api_bus_device_configuration(source: str, device_id: str, payload: dict[str, Any]):
+        allowed = {"hdl", "ksenia", "ha", "knx", "myhome_scs", "home_plus_control", "modbus"}
+        if source not in allowed:
+            raise HTTPException(status_code=404, detail="Bus non supportato")
+        clean = {"source": source, "device_id": device_id}
+        for field in ("name_override", "device_class_override", "dimmable_override", "rgb_group", "rgb_channel", "icon_override"):
+            if field in payload:
+                clean[field] = payload[field]
+        try:
+            result = organization.assign(clean)
+            await hub.broadcast("organization", {"device": result})
+            await _broadcast_devices()
+            return {"ok": True, "device": result}
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
     @api.post("/api/integrations/ksenia/command/{device_id}")
     async def api_ksenia_command(device_id: str, payload: dict[str, Any]):
         try:

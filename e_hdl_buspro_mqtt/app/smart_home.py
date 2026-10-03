@@ -143,6 +143,10 @@ def build_smart_home(
         }
         row.update(_organization_fields(record, floors, rooms, groups, row["device_class"]))
         row["name"] = str(record.get("name_override") or row["name"])
+        row["device_class"] = str(record.get("device_class_override") or row["device_class"])
+        if record.get("dimmable_override") is not None and row["device_class"] in {"light", "dimmer"}:
+            row["capabilities"] = ["on", "off", "level"] if record["dimmable_override"] else ["on", "off"]
+        row["rgb_group"], row["rgb_channel"] = str(record.get("rgb_group") or ""), str(record.get("rgb_channel") or "")
         row.update(_semantic_fields(row["device_class"], capabilities, read_only, row["available"], row["orphaned"], row["categories"]))
         devices.append(row)
         emitted.add(row["id"])
@@ -167,6 +171,8 @@ def build_smart_home(
                 row[field] = deepcopy(device[field])
         row.update(_organization_fields(record, floors, rooms, groups, row["device_class"]))
         row["name"] = str(record.get("name_override") or row["name"])
+        row["device_class"] = str(record.get("device_class_override") or row["device_class"])
+        row["rgb_group"], row["rgb_channel"] = str(record.get("rgb_group") or ""), str(record.get("rgb_channel") or "")
         row.update(_semantic_fields(row["device_class"], row["capabilities"], row["read_only"], row["available"], row["orphaned"], row["categories"]))
         devices.append(row)
         emitted.add(row["id"])
@@ -196,13 +202,17 @@ def build_smart_home(
                     row[field] = deepcopy(device[field])
             row.update(_organization_fields(record, floors, rooms, groups, row["device_class"]))
             row["name"] = str(record.get("name_override") or row["name"])
+            row["device_class"] = str(record.get("device_class_override") or row["device_class"])
+            if record.get("dimmable_override") is not None and row["device_class"] in {"light", "dimmer"}:
+                row["capabilities"] = ["on", "off", "level"] if record["dimmable_override"] else ["on", "off"]
+            row["rgb_group"], row["rgb_channel"] = str(record.get("rgb_group") or ""), str(record.get("rgb_channel") or "")
             if bool(device.get("presentation_authoritative")):
                 for field in ("categories", "room_name", "icon_override", "icon_auto"):
                     if device.get(field) not in (None, "", []):
                         row[field] = deepcopy(device[field])
                 row["visual_category"] = (row.get("categories") or [""])[0]
                 row["icon"] = row.get("icon_override") or row.get("icon_auto") or row.get("icon")
-            row.update(_semantic_fields(device_class, capabilities, read_only, available, row["orphaned"], row["categories"]))
+            row.update(_semantic_fields(row["device_class"], row["capabilities"], read_only, available, row["orphaned"], row["categories"]))
             devices.append(row)
             emitted.add(key)
     for key, record in records.items():
