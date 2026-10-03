@@ -220,6 +220,8 @@ class OrganizationTests(unittest.TestCase):
         self.assertIn("api/integrations/'+encodeURIComponent(button.dataset.source)", index)
         self.assertIn("ID / indirizzo", index)
         self.assertIn("Consenti i comandi; disattiva per sola lettura", index)
+        self.assertIn("Con <b>Comandi</b> attivo puoi provare il dispositivo da qui", index)
+        self.assertIn("Ambiente / modello", index)
 
     def test_installer_navigation_separates_admin_from_user_previews(self):
         root = Path(__file__).resolve().parents[1]
