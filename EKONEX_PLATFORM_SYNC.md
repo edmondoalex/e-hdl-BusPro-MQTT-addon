@@ -107,6 +107,18 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 
 ## Handoff corrente
 
+### Pannelli operativi multi-bus e separazione presentazione - 2026-10-03
+
+- Release installata e collaudata: e-Control Hub `0.1.502`; commit pubblicati `1187028`, `f4ad0c8`, `3910cde`.
+- `Dispositivi e presentazione` gestisce esclusivamente piano, stanza, pagine e visibilita'; nome, icona, categoria e opzioni tecniche sono stati spostati nei pannelli delle singole integrazioni.
+- Pannello operativo comune applicato a Ksenia, KNX, MyHOME SCS, Home + Control/Netatmo, Modbus e Integrazioni esterne: stato, comandi capability-based, rinomina, icona, categoria e, quando compatibili, dimmer e gruppo/canale RGB.
+- Home + Control usa ora il comando diretto Netatmo per il setpoint stanza; il catalogo conserva `home_id` e `room_id` e fonde temperatura/setpoint live della stanza con il modulo fisico.
+- I comandi non sono mostrati finche' il dispositivo non e' abilitato e controllabile; il backend continua a rifiutare dispositivi assenti, read-only, non disponibili o capability non dichiarate.
+- Compatibilita': HDL, identificativi, MQTT, Discovery, route e persistenza preesistenti conservati; e-Face continua a consumare lo stesso contratto Smart Home v1 arricchito dagli override operativi.
+- Test locali: `81 passed`; compilazione Python, parsing JavaScript, JSON e `git diff --check` superati.
+- Collaudo impianto reale: `0.1.502` started, nessun update pendente e nessun errore runtime; Admin, e-Face, Luci, Extra, snapshot, organizzazione, KNX, Modbus e Home + Control rispondono; catalogo operativo 180 dispositivi (`hdl=130`, `ksenia=9`, `ha=41`) e 21 dispositivi Netatmo rilevati.
+- Limiti hardware: KNX e Modbus non hanno hardware di campo disponibile; i relativi flussi sono verificati con test e smoke API ma i comandi fisici richiederanno il futuro collaudo sugli impianti reali. Nessun setpoint Netatmo reale e' stato alterato durante il collaudo.
+
 ### Credenziali applicative Netatmo in e-Control - 2026-10-02
 
 - Release `0.1.488` installata e avviata; commit `af1bdce` pubblicato.
