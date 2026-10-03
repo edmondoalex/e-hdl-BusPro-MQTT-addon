@@ -286,6 +286,7 @@ class OrganizationTests(unittest.TestCase):
     def test_bus_device_category_is_upgraded_to_supported_select(self):
         source = (Path(__file__).resolve().parents[1] / "e_hdl_buspro_mqtt" / "app" / "static" / "hub" / "device-category-select.js").read_text(encoding="utf-8")
         self.assertIn('input[name="device_class_override"]', source)
+        self.assertIn('input[id$="_category"]', source)
         self.assertIn("Sensore temperatura", source)
         self.assertIn("input.replaceWith(select)", source)
 

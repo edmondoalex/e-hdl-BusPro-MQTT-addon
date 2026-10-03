@@ -10,15 +10,22 @@
     ['presence', 'Presenza / movimento'], ['dry_contact', 'Contatto pulito'],
     ['binary_sensor', 'Sensore binario'], ['sensor', 'Sensore generico'], ['scenario', 'Scenario'],
   ];
+  const hdlCategories = [
+    ['Luci', 'Luce'], ['Switch', 'Interruttore / relè'], ['Curtain', 'Tenda'],
+    ['Cover', 'Oscurante'], ['Sensori', 'Sensore generico'], ['BinarySensor', 'Sensore binario'],
+    ['Climate', 'Termostato'], ['Fan', 'Ventilazione'], ['Temperature', 'Sensore temperatura'],
+    ['Humidity', 'Sensore umidità'], ['Illuminance', 'Sensore luminosità'],
+    ['Presence', 'Presenza / movimento'], ['DryContact', 'Contatto pulito'], ['Scenario', 'Scenario'],
+  ];
   function upgrade(root = document) {
-    root.querySelectorAll?.('input[name="device_class_override"]').forEach(input => {
+    root.querySelectorAll?.('input[name="device_class_override"], input[id$="_category"]').forEach(input => {
       const selected = String(input.value || '').trim(), select = document.createElement('select');
-      select.name = input.name; select.title = 'Categoria dispositivo';
-      const choices = [...categories];
+      select.name = input.name; select.id = input.id; select.title = 'Categoria dispositivo';
+      const choices = input.name === 'device_class_override' ? [...categories] : [...hdlCategories];
       if (selected && !choices.some(([value]) => value === selected)) choices.push([selected, selected]);
       choices.forEach(([value, label]) => {
         const option = document.createElement('option'); option.value = value;
-        option.textContent = value ? `${label} (${value})` : `Automatica: ${input.placeholder || 'categoria rilevata'}`;
+        option.textContent = value ? label : `Automatica: ${input.placeholder || 'categoria rilevata'}`;
         option.selected = value === selected; select.appendChild(option);
       });
       input.replaceWith(select);
