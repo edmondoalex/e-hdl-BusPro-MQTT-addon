@@ -5,8 +5,8 @@
   const apiUrl = path => new URL(path, window.location.href).toString();
   const categories = ['lights','extra','covers','comfort','sensors'];
   const labels = {lights:'Luci',extra:'Extra',covers:'Oscuranti',comfort:'Comfort',sensors:'Sensori'};
-  const sourceLabels = {hdl:'HDL BusPro',ksenia:'Ksenia Smart Home',knx:'e-KNX Manager',myhome_scs:'BTicino MyHOME SCS',home_plus_control:'BTicino Home + Control / Netatmo',modbus:'e-Modbus Manager',esphome:'ESPHome Device Builder',ha:'Integrazioni esterne'};
-  const sourceOrder = ['hdl','ksenia','knx','myhome_scs','home_plus_control','modbus','esphome','ha'];
+  const sourceLabels = {hdl:'HDL BusPro',ksenia:'Ksenia Smart Home',knx:'e-KNX Manager',myhome_scs:'BTicino MyHOME SCS',home_plus_control:'BTicino Home + Control / Netatmo',modbus:'e-Modbus Manager',esphome:'ESPHome Device Builder',nuki:'Nuki Smart Access',ha:'Integrazioni esterne'};
+  const sourceOrder = ['hdl','ksenia','knx','myhome_scs','home_plus_control','modbus','esphome','nuki','ha'];
   async function json(path, options) { const response=await fetch(apiUrl(path),options), data=await response.json().catch(()=>({})); if(!response.ok)throw new Error(data.detail||`HTTP ${response.status}`); return data; }
   const option = (rows,selected,empty) => `<option value="">${esc(empty)}</option>`+rows.map(row=>`<option value="${esc(row.id)}"${row.id===selected?' selected':''}>${esc(row.name)}</option>`).join('');
   const multiOptions = (rows,selected) => { const active=new Set(selected||[]); return rows.map(row=>`<option value="${esc(row.id)}"${active.has(row.id)?' selected':''}>${esc(row.name)}</option>`).join(''); };

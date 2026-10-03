@@ -16,6 +16,7 @@ VISUAL_CATEGORIES = {
     "thermostat": "comfort", "temperature_sensor": "sensors", "humidity_sensor": "sensors",
     "illuminance_sensor": "sensors", "environment_sensor": "sensors", "presence": "sensors", "dry_contact": "sensors",
     "scenario": "scenarios",
+    "lock": "locks", "smart_lock": "locks", "opener": "locks",
 }
 
 

@@ -53,6 +53,7 @@ from .ksenia_consumer import ContractError, KseniaSmartHomeConsumer
 from .knx_manager import HomeAssistantWebSocket, KnxManager, KnxNotConfigured
 from .modbus_manager import ModbusManager
 from .esphome_manager import EspHomeManager
+from .nuki_manager import NukiManager
 from .netatmo_direct import NetatmoDirect
 from .organization import OrganizationStore, hdl_presentation_class
 from .smart_home import build_smart_home, hdl_device_kind, validate_command_request
@@ -90,7 +91,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.519"
+ADDON_VERSION = "0.1.520"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -497,6 +498,16 @@ def create_app() -> FastAPI:
     )
     ksenia = KseniaSmartHomeConsumer(ksenia_mqtt)
     api.state.ksenia = ksenia
+    nuki_mqtt = MqttClient(
+        host=settings.mqtt.host, port=settings.mqtt.port,
+        username=settings.mqtt.username, password=settings.mqtt.password,
+        client_id=f"{settings.mqtt.client_id}_nuki",
+    )
+    nuki_manager = NukiManager(
+        os.environ.get("ECONTROL_NUKI_MANAGER", os.path.join(os.path.dirname(store.path), "nuki_manager.json")),
+        nuki_mqtt,
+    )
+    api.state.nuki_manager = nuki_manager
     # Driver adapters register catalog providers and command handlers here.  The
     # Smart Home contract and endpoint never need source-specific routing changes.
     api.state.smart_home_sources = {}
@@ -506,6 +517,7 @@ def create_app() -> FastAPI:
     api.state.smart_home_sources["home_plus_control"] = lambda: bticino_manager.store.catalog("home_plus_control", getattr(api.state, "ha_states", {}) or {})
     api.state.smart_home_sources["modbus"] = lambda: modbus_manager.store.catalog(getattr(api.state, "ha_states", {}) or {})
     api.state.smart_home_sources["esphome"] = lambda: esphome_manager.store.catalog(getattr(api.state, "ha_states", {}) or {})
+    api.state.smart_home_sources["nuki"] = nuki_manager.store.catalog
     api.state.smart_home_sources["ha"] = lambda: build_ha_catalog(
         store.list_ha_devices(),
         getattr(api.state, "ha_states", {}) or {},
@@ -517,6 +529,7 @@ def create_app() -> FastAPI:
         "home_plus_control": lambda: bticino_manager.store.organization_catalog("home_plus_control"),
         "modbus": modbus_manager.store.organization_catalog,
         "esphome": esphome_manager.store.organization_catalog,
+        "nuki": nuki_manager.store.organization_catalog,
     }
 
     def _organization_devices() -> list[dict[str, Any]]:
@@ -5077,6 +5090,7 @@ self.addEventListener('fetch', (event) => {{
         # It subscribes only to the two contract bootstrap topics, command results,
         # and the exact availability/state topics declared by the producer catalog.
         ksenia.start()
+        nuki_manager.start()
 
         async def _ha_poll_loop() -> None:
             if not _ha_enabled():
@@ -5702,6 +5716,7 @@ self.addEventListener('fetch', (event) => {{
         finally:
             mqtt.disconnect()
             ksenia.stop()
+            nuki_manager.stop()
 
         poll = getattr(api.state, "poll_task", None)
         if poll is not None:
@@ -7069,7 +7084,7 @@ self.addEventListener('fetch', (event) => {{
 
     @api.put("/api/integrations/{source}/devices/{device_id}/configuration")
     async def api_bus_device_configuration(source: str, device_id: str, payload: dict[str, Any]):
-        allowed = {"hdl", "ksenia", "ha", "knx", "myhome_scs", "home_plus_control", "modbus", "esphome"}
+        allowed = {"hdl", "ksenia", "ha", "knx", "myhome_scs", "home_plus_control", "modbus", "esphome", "nuki"}
         if source not in allowed:
             raise HTTPException(status_code=404, detail="Bus non supportato")
         clean = {"source": source, "device_id": device_id}
@@ -7096,6 +7111,8 @@ self.addEventListener('fetch', (event) => {{
             policies[f"modbus:{device_id}"] = {"eface": bool(row.get("enabled")), "commands": not bool(row.get("read_only", True))}
         for device_id, row in (esphome_manager.store.load().get("entities") or {}).items():
             policies[f"esphome:{device_id}"] = {"eface": bool(row.get("enabled")), "commands": not bool(row.get("read_only", True))}
+        for device_id, row in (nuki_manager.store.load().get("devices") or {}).items():
+            policies[f"nuki:{device_id}"] = {"eface": bool(row.get("enabled")), "commands": not bool(row.get("read_only", True))}
         return policies
 
     @api.get("/api/integrations/device-policies")
@@ -7121,6 +7138,13 @@ self.addEventListener('fetch', (event) => {{
                 row = modbus_manager.store.update_catalog(device_id, update)
             elif source == "esphome":
                 row = esphome_manager.store.update(device_id, enabled=enabled, read_only=read_only)
+            elif source == "nuki":
+                update = {}
+                if enabled is not None:
+                    update["enabled"] = enabled
+                if read_only is not None:
+                    update["read_only"] = read_only
+                row = nuki_manager.store.update_device(device_id, update)
             else:
                 raise HTTPException(status_code=400, detail="La politica e-Face e comandi è gestita dal driver del bus")
         except KeyError:
@@ -7141,6 +7165,36 @@ self.addEventListener('fetch', (event) => {{
             )
         except ContractError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.get("/api/integrations/nuki")
+    async def api_nuki_snapshot():
+        return nuki_manager.snapshot()
+
+    @api.put("/api/integrations/nuki/config")
+    async def api_nuki_config(payload: dict[str, Any]):
+        try:
+            nuki_manager.store.configure(payload)
+            result = nuki_manager.snapshot()
+            await hub.broadcast("nuki", result)
+            return result
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.post("/api/integrations/nuki/sync")
+    async def api_nuki_sync():
+        try:
+            result = await asyncio.to_thread(nuki_manager.sync_cloud)
+            _sync_organization()
+            await _broadcast_devices()
+            await hub.broadcast("nuki", nuki_manager.snapshot())
+            return {"ok": True, **result}
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.get("/api/integrations/nuki/events")
+    async def api_nuki_events():
+        snapshot = nuki_manager.snapshot()
+        return {"items": snapshot.get("events") or []}
 
     @api.get("/api/eface/snapshot")
     async def api_eface_snapshot():
@@ -7869,6 +7923,7 @@ self.addEventListener('fetch', (event) => {{
         state["_econtrol_bticino"] = bticino_manager.store.load()
         state["_econtrol_modbus"] = modbus_manager.store.load()
         state["_econtrol_esphome"] = esphome_manager.store.load()
+        state["_econtrol_nuki"] = nuki_manager.store.load()
         return {"text": json.dumps(state, ensure_ascii=False, indent=2)}
 
     @api.get("/api/backup/file")
@@ -7880,6 +7935,7 @@ self.addEventListener('fetch', (event) => {{
         state["_econtrol_bticino"] = bticino_manager.store.load()
         state["_econtrol_modbus"] = modbus_manager.store.load()
         state["_econtrol_esphome"] = esphome_manager.store.load()
+        state["_econtrol_nuki"] = nuki_manager.store.load()
         content = json.dumps(state, ensure_ascii=False, indent=2)
         ts = time.strftime("%Y%m%d-%H%M%S")
         headers = {"Content-Disposition": f'attachment; filename="buspro_backup_{ts}.json"'}
@@ -7968,6 +8024,7 @@ self.addEventListener('fetch', (event) => {{
             bticino_state = state.pop("_econtrol_bticino", None)
             modbus_state = state.pop("_econtrol_modbus", None)
             esphome_state = state.pop("_econtrol_esphome", None)
+            nuki_state = state.pop("_econtrol_nuki", None)
             if organization_state is not None:
                 organization_state = organization.validate_backup(organization_state)
             if knx_state is not None and (not isinstance(knx_state, dict) or knx_state.get("schema_version") != 1):
@@ -7978,6 +8035,8 @@ self.addEventListener('fetch', (event) => {{
                 raise ValueError("invalid Modbus manager backup")
             if esphome_state is not None and (not isinstance(esphome_state, dict) or esphome_state.get("schema_version") != 1):
                 raise ValueError("invalid ESPHome manager backup")
+            if nuki_state is not None and (not isinstance(nuki_state, dict) or nuki_state.get("schema_version") != 1):
+                raise ValueError("invalid Nuki manager backup")
             store.import_backup(state)
             if organization_state is not None:
                 organization.save(organization_state)
@@ -7989,6 +8048,8 @@ self.addEventListener('fetch', (event) => {{
                 modbus_manager.store.save(modbus_state)
             if esphome_state is not None:
                 esphome_manager.store.save(esphome_state)
+            if nuki_state is not None:
+                nuki_manager.store.save(nuki_state)
         except HTTPException:
             raise
         except Exception as e:
@@ -10773,6 +10834,12 @@ self.addEventListener('fetch', (event) => {{
     async def _smart_home_ksenia_command(item: dict[str, Any], action: str, value: Any):
         return await asyncio.to_thread(ksenia.execute, str(item.get("device_id") or ""), action, value)
 
+    async def _smart_home_nuki_command(item: dict[str, Any], action: str, value: Any):
+        try:
+            return await asyncio.to_thread(nuki_manager.command, str(item.get("device_id") or ""), action)
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
     async def _smart_home_ha_command(item: dict[str, Any], action: str, value: Any):
         entity_id = str(item.get("home_assistant_entity_id") or "").strip().lower()
         if not entity_id or "." not in entity_id:
@@ -10851,6 +10918,7 @@ self.addEventListener('fetch', (event) => {{
         "home_plus_control": _smart_home_netatmo_command,
         "modbus": _smart_home_ha_command,
         "esphome": _smart_home_ha_command,
+        "nuki": _smart_home_nuki_command,
         "ha": _smart_home_ha_command,
     })
 
@@ -10858,6 +10926,8 @@ self.addEventListener('fetch', (event) => {{
         states = getattr(api.state, "ha_states", {}) or {}
         if source == "esphome":
             return next((row for row in esphome_manager.store.rows(states) if row.get("device_id") == device_id), None)
+        if source == "nuki":
+            return next((row for row in nuki_manager.store.rows() if row.get("device_id") == device_id), None)
         if source in {"hdl", "ksenia", "ha"}:
             return next((row for row in (_smart_home_payload().get("devices") or []) if row.get("source") == source and row.get("device_id") == device_id), None)
         row: dict[str, Any] | None = None

@@ -108,7 +108,7 @@
       @media(max-width:900px){#adminView.adminWorkspace{grid-template-columns:1fr}.adminNavRail{position:static;display:flex;max-height:none;overflow-x:auto;gap:5px;border-radius:14px}.adminNavBrand{min-width:165px;border:0;border-right:1px solid rgba(255,255,255,.07)}.adminNavRail button{width:auto;min-width:max-content}.adminContent.card{min-height:0}}
     </style>
     <link rel="stylesheet" href="static/hub/hub.css?v=0.1.479" />
-    <script defer src="static/hub/hub-nav.js?v=0.1.519"></script>
+    <script defer src="static/hub/hub-nav.js?v=0.1.520"></script>
   </head>
   <body>
     <header>
@@ -1967,6 +1967,7 @@
           {id:'homeplus_diagnostics',label:'Diagnostica Home + Control',icon:'H+',hint:'Stato account, API cloud e sincronizzazione Netatmo',items:[]},
           {id:'ferroli_omnia',label:'Ferroli OMNIA',icon:'FO',hint:'Configurazione guidata delle pompe di calore Ferroli OMNIA M 3.2',items:[]},
           {id:'esphome_builder',label:'ESPHome Device Builder',icon:'ESP',hint:'Configura, compila, aggiorna e controlla i dispositivi ESPHome',items:[]},
+          {id:'nuki',label:'Nuki Smart Access',icon:'N',hint:'Serrature, opener, tastierini, persone e registro accessi Nuki',items:[]},
           {id:'modbus_overview',label:'Panoramica Modbus',icon:'MB',hint:'Stato del motore, connessioni, profili ed entità Modbus',items:[]},
           {id:'modbus_connections',label:'Connessioni Modbus',icon:'MB',hint:'Configura TCP, RTU su RS-485, RTU-over-TCP o UDP con guida contestuale',items:[]},
           {id:'modbus_profiles',label:'Profili e registri Modbus',icon:'MB',hint:'Mappe versionate per pompe di calore, contatori, inverter, HVAC e PLC',items:[]},
@@ -2010,7 +2011,7 @@
           const uiTree=tree('UI generate',[],true);uiTree.insertAdjacentHTML('beforeend','<a class="adminTreeLink" href="home">Home</a><a class="adminTreeLink" href="home2">Home2</a><a class="adminTreeLink" href="e-face">e-Face</a><a class="adminTreeLink" href="lights">Luci</a><a class="adminTreeLink" href="covers">Cover</a><a class="adminTreeLink" href="extra">Extra</a>');
           tree('Programmazione',['scenario_management','scenario_triggers','entities','exposure_home','exposure_order','exposure_pwa','exposure_proxy','exposure_guard','device_organization','organization','rooms'],true);
           const busTree=tree('Bus e integrazioni',[],true);const hdl=document.createElement('div');hdl.className='adminTreePlanned';hdl.innerHTML='<b>HDL BusPro</b><em>ATTIVO</em>';busTree.appendChild(hdl);['KNX','Tuya','DALI'].forEach(name=>busTree.insertAdjacentHTML('beforeend','<div class="adminTreePlanned"><span>'+name+'</span><em>INATTIVO</em></div>'));const ferroliButton=button('ferroli_omnia');if(ferroliButton)busTree.appendChild(ferroliButton);busTree.insertAdjacentHTML('beforeend','<a class="adminTreeLink" href="ksenia"><span>Ksenia Smart Home</span><em>ATTIVO</em></a>');const btTree=document.createElement('details');btTree.className='adminTree';btTree.innerHTML='<summary>BTicino e Legrand · INATTIVO</summary><div class="adminTreeItems"></div>';const btItems=btTree.lastElementChild;[['MyHOME SCS',['myhome_overview','myhome_devices','myhome_diagnostics']],['Home + Control',['homeplus_overview','homeplus_devices','homeplus_diagnostics']]].forEach(([label,ids])=>{const branch=document.createElement('details');branch.className='adminTree';branch.innerHTML='<summary>'+label+'</summary><div class="adminTreeItems"></div>';ids.forEach(id=>{const node=button(id);if(node)branch.lastElementChild.appendChild(node);});btItems.appendChild(branch);});busTree.appendChild(btTree);
-          const esphomeButton=button('esphome_builder');if(esphomeButton)busTree.appendChild(esphomeButton);const oldKseniaLink=busTree.querySelector('a[href="ksenia"]');if(oldKseniaLink)oldKseniaLink.remove();const kseniaButton=button('ksenia_devices');if(kseniaButton)busTree.insertBefore(kseniaButton,busTree.querySelector('.adminTree')||null);
+          const esphomeButton=button('esphome_builder');if(esphomeButton)busTree.appendChild(esphomeButton);const nukiButton=button('nuki');if(nukiButton)busTree.appendChild(nukiButton);const oldKseniaLink=busTree.querySelector('a[href="ksenia"]');if(oldKseniaLink)oldKseniaLink.remove();const kseniaButton=button('ksenia_devices');if(kseniaButton)busTree.insertBefore(kseniaButton,busTree.querySelector('.adminTree')||null);
           const systemTree=tree('Sistema',['maintenance','tools','info'],false);systemTree.insertAdjacentHTML('beforeend','<a class="adminTreeLink" href="admin-guide">Guida</a>');
           page('ksenia_devices').insertAdjacentHTML('beforeend','<section class="adminMovedPanel"><div class="flex"><button class="btn secondary" id="kseniaRefresh" type="button">Aggiorna stati</button><span class="muted" id="kseniaDeviceCount"></span></div><div id="kseniaDeviceList" style="margin-top:14px"></div></section>');
           page('entities').insertAdjacentHTML('beforeend','<section class="adminMovedPanel"><h3>Stati e comandi delle integrazioni esterne</h3><p class="muted">Qui gestisci stato, comandi, nome, icona, categoria e opzioni tecniche. Piano, stanza, pagine e visibilità restano in Dispositivi e presentazione.</p><div id="externalDeviceList"></div></section>');
@@ -2028,6 +2029,7 @@
           document.getElementById('modbusApply')?.insertAdjacentHTML('afterend','<button class="btn secondary" id="modbusRestart" type="button">Riavvia servizi</button>');
           const profileBox=document.getElementById('modbusProfileJson');if(profileBox)profileBox.value=JSON.stringify(modbusExample,null,2);
           page('esphome_builder').insertAdjacentHTML('beforeend',`<section class="adminMovedPanel"><div class="flex" style="align-items:center"><img src="static/hub/brands/esphome.svg" alt="ESPHome" style="width:64px;height:64px"><div><h3 style="margin:0">ESPHome Device Builder</h3><span class="muted" id="esphomeSummary">Connessione in corso…</span></div><span class="spacer"></span><button class="btn secondary" id="esphomeRefresh" type="button">Aggiorna elenco</button><button class="btn" id="esphomeBuilderUpdate" type="button" hidden>Aggiorna Builder</button></div><div class="notice" style="margin-top:14px"><b>Archivio unico:</b> questa pagina usa direttamente le configurazioni ESPHome già presenti. Modifiche, compilazioni e aggiornamenti restano sincronizzati senza creare copie.</div><div id="esphomeDevices" class="adminFutureGrid" style="margin-top:16px"></div><h3>Entità disponibili in e-Control</h3><p class="muted">I permessi e-Face e Comandi si impostano in Dispositivi e presentazione. Stato e comandi sono disponibili qui per il collaudo.</p><div id="esphomeEntities"></div><section id="esphomeEditor" class="adminFutureCard" hidden style="margin-top:16px"><div class="flex"><b id="esphomeEditorTitle">Configurazione</b><span class="spacer"></span><button class="btn secondary" id="esphomeEditorClose" type="button">Chiudi</button></div><textarea id="esphomeYaml" rows="24" spellcheck="false" style="width:100%;font-family:ui-monospace,monospace;margin-top:12px"></textarea><div class="flex"><button class="btn" id="esphomeSave" type="button">Salva</button><button class="btn secondary" id="esphomeValidate" type="button">Verifica</button><span class="muted" id="esphomeActionMsg"></span></div><pre id="esphomeOutput" style="max-height:340px;overflow:auto;white-space:pre-wrap;word-break:break-word"></pre></section></section>`);
+          page('nuki').insertAdjacentHTML('beforeend','<section class="adminMovedPanel" id="nukiRoot"><p class="muted">Caricamento integrazione Nuki...</p></section>');
           let modbusSnapshot={status:{},connections:{},profiles:{},devices:{},catalog:{},generated_yaml:''};
           const mbEsc=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
           let busOrganization={devices:{}},busRuntime={};
@@ -7242,8 +7244,9 @@
         }
       } catch (e) {}
     </script>
-    <script src="static/hub/device-category-select.js?v=0.1.519"></script>
-    <script src="static/hub/organization.js?v=0.1.519"></script>
+    <script src="static/hub/nuki.js?v=0.1.520"></script>
+    <script src="static/hub/device-category-select.js?v=0.1.520"></script>
+    <script src="static/hub/organization.js?v=0.1.520"></script>
   </body>
 </html>
 

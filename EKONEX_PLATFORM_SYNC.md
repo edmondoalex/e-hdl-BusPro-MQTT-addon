@@ -617,3 +617,13 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 - Release `0.1.511`, commit `8cf2ef0`, `87 passed`; installazione NUC avviata e verificata. Pagina e logo HTTP 200, endpoint admin presente e validazione input attiva.
 - Nessuna configurazione fittizia salvata sull'impianto: IP e Slave ID saranno inseriti quando il gateway sarà installato. HDL invariato.
 - Correzione visibilità `0.1.512`: la voce Ferroli era stata inserita nel menu amministrativo legacy nascosto dal layout corrente. È ora presente nella navigazione laterale effettiva con logo e cache-buster dedicato; collaudo live conferma versione 0.1.512, link servito e asset aggiornato. Suite: `87 passed`; commit `c70291c`.
+
+## Handoff corrente — Nuki Smart Access 0.1.520
+
+- Integrazione Nuki nativa e-Control, indipendente da Home Assistant: MQTT locale per rilevamento, stato e comandi; Web API opzionale per nomi, autorizzazioni e registro accessi.
+- Smart Lock/Opener con `unlock`, `lock`, `unlatch` e Lock n Go; e-Face e Comandi sono permessi separati e partono disabilitati/in sola lettura.
+- Gli eventi conservano azione, origine, Auth-ID, Code-ID e persona risolta. Configurazione, catalogo, eventi e autorizzazioni sono persistenti e inclusi nel backup; il token cloud è separato e non esportato.
+- Aggiunta pagina Nuki, registro accessi, comandi di collaudo, logo e presenza in Dispositivi e presentazione; le serrature confluiscono in Sicurezza/Serrature di e-Face.
+- HDL invariato; compatibilità degli identificativi esistenti conservata.
+- Test locali: compilazione Python, sintassi JavaScript, diff check e suite completa `99 passed`.
+- Rischio residuo: prova meccanica e identificazione reale utenti/codici richiedono una Nuki fisica configurata sul broker e, per l'arricchimento, un token Web API.

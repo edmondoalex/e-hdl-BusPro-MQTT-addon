@@ -262,9 +262,9 @@ class OrganizationTests(unittest.TestCase):
         self.assertIn("id:'hdl_temperature'", index)
         self.assertIn("Strumenti avanzati · JSON scenario", index)
         self.assertNotIn("Scenari: configurazione JSON", index)
-        self.assertIn("device-category-select.js?v=0.1.519", index)
-        self.assertIn("organization.js?v=0.1.519", index)
-        self.assertIn("hub-nav.js?v=0.1.519", index)
+        self.assertIn("device-category-select.js?v=0.1.520", index)
+        self.assertIn("organization.js?v=0.1.520", index)
+        self.assertIn("hub-nav.js?v=0.1.520", index)
 
         self.assertIn("integrationLink('Ferroli OMNIA','ferroli_omnia'", nav)
         self.assertIn("link('Home','home','mdi:home-analytics','home')+link('Home2'", nav)
