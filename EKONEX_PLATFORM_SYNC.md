@@ -7,8 +7,9 @@
 - Configurazione autorevole persistita in `/data/modbus_manager.json`: nomi, Slave ID, gateway, IP, porte e abilitazione comandi vengono ricaricati nella UI dopo refresh, riavvio e aggiornamento e sono inclusi nell'export/import backup generale.
 - Una nuova preparazione sostituisce atomicamente il set Ferroli gestito: pompe e gateway rimossi non restano appesi. HDL e gli altri driver non sono stati modificati.
 - Profilo prudenziale invariato: vengono create automaticamente soltanto le tre funzioni verificate Zona 1, Zona 2 e ACS; l'estensione richiede la mappa registri ufficiale completa.
-- Versione candidata locale `0.1.513`; suite `92 passed`, compilazione Python, sintassi JavaScript inline/esterna e `git diff --check` superati.
-- Stato: modifiche locali non committate; nessun push, installazione o deploy eseguito. Prossimo gate: autorizzazione esplicita a commit/pubblicazione/installazione e successivo collaudo con gateway fisico.
+- Versione `0.1.513`; suite `92 passed`, compilazione Python, sintassi JavaScript inline/esterna e `git diff --check` superati.
+- Pubblicazione e installazione completate: commit `53c1618` su `origin/main`; backup Supervisor `2ecfaca3`; NUC aggiornato, add-on `started`, versione runtime/Supervisor `0.1.513`, nessun aggiornamento pendente e nessun errore di avvio.
+- Nessuna configurazione Ferroli fittizia applicata. Prossimo passo: estendere il profilo dalla mappa ufficiale integrale e collaudare letture prima di abilitare le scritture sul gateway fisico.
 
 ---
 
