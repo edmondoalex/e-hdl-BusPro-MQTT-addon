@@ -39,6 +39,7 @@
       title.dataset.originalName = original;
       const custom = input.value.trim();
       title.textContent = custom || original;
+      title.classList.toggle('busCustomName', Boolean(custom && custom !== original));
       let note = title.parentElement.querySelector(':scope > .busOriginalName');
       if (custom && custom !== original) {
         if (!note) { note = document.createElement('div'); note.className = 'muted busOriginalName'; title.after(note); }
@@ -47,6 +48,11 @@
     });
   }
   const start = () => {
+    if (!document.getElementById('busCustomNameStyle')) {
+      const style = document.createElement('style'); style.id = 'busCustomNameStyle';
+      style.textContent = '.busCustomName{color:#55dff5!important;text-shadow:0 0 12px rgba(85,223,245,.18)}';
+      document.head.appendChild(style);
+    }
     upgrade();
     new MutationObserver(records => records.forEach(record => record.addedNodes.forEach(node => {
       if (node.nodeType === Node.ELEMENT_NODE) upgrade(node);
