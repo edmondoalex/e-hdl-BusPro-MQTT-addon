@@ -548,3 +548,9 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 - Commit `7b78509` pubblicato e add-on `0.1.509` installato sul NUC.
 - Collaudo reale: comando `temperature` sulla Veranda da 8,0 a 8,5 °C accettato e confermato da Netatmo (`status: ok`); lo stato di ritorno espone 22,5 °C misurati e setpoint 8,5 °C.
 - Compatibilità: nessuna modifica a HDL, identificativi pubblici, assegnazioni di piano/stanza o permessi e-Face.
+
+### Aggiornamento esterno Netatmo 0.1.510
+
+- Aggiunto aggiornamento automatico ogni 30 secondi dello stato Netatmo diretto, seguito da sincronizzazione organizzazione e pubblicazione WebSocket verso e-Face.
+- Collaudo reale: un setpoint modificato esternamente è passato in e-Control/e-Face da 8,5 a 10 °C senza usare `Rileva e sincronizza`.
+- Release `0.1.510` installata e avviata; `84 passed`; commit `3cc6b5f` pubblicato. HDL non modificato.
