@@ -5,6 +5,7 @@
 - Corretta la sequenza guidata: `Associa Bridge` apre la finestra Nuki e indica di premere subito dopo il pulsante fisico entro 30 secondi.
 - Timeout `/auth` portato a 35 secondi; gli errori Bridge 403, 404 e 503 ora producono istruzioni specifiche invece di `Not Found`.
 - Test: `104 passed`, compilazione Python, sintassi JavaScript e `git diff --check` superati. Nessun comando serratura inviato.
+- Pubblicata e installata `0.1.529`; runtime HTTP verificato, cache UI corretta e discovery reale confermata su `192.168.3.22:8080`.
 
 ## Handoff corrente - Nuki Bridge locale 0.1.528
 
