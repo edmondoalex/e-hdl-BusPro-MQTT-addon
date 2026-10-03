@@ -34,6 +34,15 @@ def test_web_api_id_is_normalized_to_same_mqtt_device():
     assert canonical_device_id("4ca6faf4") == "4CA6FAF4"
 
 
+def test_cloud_only_records_are_not_operational_devices(tmp_path):
+    store = NukiStore(str(tmp_path / "nuki.json"))
+    data = store.load()
+    data["devices"]["21181354"] = {"device_id": "21181354", "name": "Vecchia Nuki", "web": True, "state": {}, "enabled": False, "read_only": True}
+    store.save(data)
+    assert store.rows() == []
+    assert len(store.rows(include_cloud_only=True)) == 1
+
+
 def test_discovery_event_identity_and_command(tmp_path):
     mqtt = FakeMqtt()
     manager = NukiManager(str(tmp_path / "nuki.json"), mqtt)

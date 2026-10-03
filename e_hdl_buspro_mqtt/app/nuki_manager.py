@@ -119,10 +119,12 @@ class NukiStore:
                 row["last_event"] = event
         self.save(data); return deepcopy(row)
 
-    def rows(self) -> list[dict[str, Any]]:
+    def rows(self, *, include_cloud_only: bool = False) -> list[dict[str, Any]]:
         now = time.time(); result = []
         for row in self.load()["devices"].values():
             state = row.get("state") or {}; raw_state = state.get("state") or state.get("lockState") or "unknown"
+            if not include_cloud_only and not state and not row.get("last_seen"):
+                continue
             lock_state = LOCK_STATES.get(int(raw_state), raw_state) if str(raw_state).isdigit() else raw_state
             recent = now - float(row.get("last_seen") or 0) < 180
             available = str(state.get("connected") or "").strip().lower() == "true" or recent
@@ -206,4 +208,6 @@ class NukiManager:
         self.store.save(data); return {"devices": count, "authorizations": len(data["authorizations"]), "events": len(data["events"])}
     def snapshot(self) -> dict[str, Any]:
         data = self.store.load(); status = self.mqtt.status()
-        return {"status": {"configured": bool(data["config"].get("enabled")), "mqtt_connected": bool(self._started and status.connected), "mqtt_error": status.last_error if self._started else None, "cloud_enabled": bool(data["config"].get("cloud_enabled")), "token_configured": bool(self.store.token()), "devices": len(data["devices"])}, "config": data["config"], "devices": self.store.rows(), "authorizations": list(data["authorizations"].values()), "events": data["events"][:200], "rules": data["rules"]}
+        devices = self.store.rows()
+        cloud_only = [row for row in self.store.rows(include_cloud_only=True) if not (row.get("state") or {}).get("attributes")]
+        return {"status": {"configured": bool(data["config"].get("enabled")), "mqtt_connected": bool(self._started and status.connected), "mqtt_error": status.last_error if self._started else None, "cloud_enabled": bool(data["config"].get("cloud_enabled")), "token_configured": bool(self.store.token()), "devices": len(devices), "cloud_only": len(cloud_only)}, "config": data["config"], "devices": devices, "cloud_only": cloud_only, "authorizations": list(data["authorizations"].values()), "events": data["events"][:200], "rules": data["rules"]}
