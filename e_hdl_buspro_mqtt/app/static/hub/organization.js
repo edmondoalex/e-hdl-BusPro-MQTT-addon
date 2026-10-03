@@ -3,8 +3,8 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const slug = value => String(value || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const apiUrl = path => new URL(path, window.location.href).toString();
-  const categories = ['lights','extra','covers','comfort','sensors'];
-  const labels = {lights:'Luci',extra:'Extra',covers:'Oscuranti',comfort:'Comfort',sensors:'Sensori'};
+  const categories = ['lights','extra','covers','comfort','sensors','security'];
+  const labels = {lights:'Luci',extra:'Extra',covers:'Oscuranti',comfort:'Comfort',sensors:'Sensori',security:'Serrature'};
   const sourceLabels = {hdl:'HDL BusPro',ksenia:'Ksenia Smart Home',knx:'e-KNX Manager',myhome_scs:'BTicino MyHOME SCS',home_plus_control:'BTicino Home + Control / Netatmo',modbus:'e-Modbus Manager',esphome:'ESPHome Device Builder',nuki:'Nuki Smart Access',ha:'Integrazioni esterne'};
   const sourceOrder = ['hdl','ksenia','knx','myhome_scs','home_plus_control','modbus','esphome','nuki','ha'];
   async function json(path, options) { const response=await fetch(apiUrl(path),options), data=await response.json().catch(()=>({})); if(!response.ok)throw new Error(data.detail||`HTTP ${response.status}`); return data; }

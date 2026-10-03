@@ -91,7 +91,7 @@ _handler.setFormatter(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
 
-ADDON_VERSION = "0.1.530"
+ADDON_VERSION = "0.1.531"
 
 USER_PORT = 8124
 ADMIN_PORT = 8125
@@ -563,7 +563,9 @@ def create_app() -> FastAPI:
     def _sync_organization() -> dict[str, Any]:
         organization.migrate_hdl(store.list_devices(), store.get_group_order())
         organization.migrate_hdl_presentation_v2(store.list_devices())
-        return organization.sync_devices(_organization_devices())
+        synced = organization.sync_devices(_organization_devices())
+        active_nuki = {str(item.get("device_id") or "") for item in nuki_manager.store.organization_catalog()}
+        return organization.reconcile_nuki_devices(active_nuki)
 
     # Home Assistant (Core) integration via Supervisor token (no user token required)
     def _ha_enabled() -> bool:
@@ -6339,6 +6341,7 @@ self.addEventListener('fetch', (event) => {{
     @api.get("/api/user/snapshot")
     async def api_user_snapshot():
         payload = _user_snapshot_payload()
+        payload["access_events"] = {"schema_version": "1.0", "items": nuki_manager.store.access_events()}
         ksenia_snapshot = ksenia.snapshot()
         payload["ksenia"] = ksenia_snapshot
         payload["smart_home"] = _smart_home_payload(payload)
@@ -7235,6 +7238,7 @@ self.addEventListener('fetch', (event) => {{
     async def api_eface_snapshot():
         payload = _user_snapshot_payload()
         payload["devices"] = _list_eface_devices()
+        payload["access_events"] = {"schema_version": "1.0", "items": nuki_manager.store.access_events()}
         return payload
 
     @api.get("/api/ui") 

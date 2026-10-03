@@ -53,6 +53,7 @@ CATEGORY_DEFAULTS = {
     "illuminance_sensor": ["sensors"], "environment_sensor": ["sensors"],
     "presence": ["sensors"], "dry_contact": ["sensors"], "scenario": ["scenarios"],
     "fan": ["extra"], "sensor": ["sensors"], "binary_sensor": ["sensors"],
+    "lock": ["security"], "smart_lock": ["security"], "opener": ["security"],
 }
 
 
@@ -334,6 +335,36 @@ class OrganizationStore:
             for key, current in data["devices"].items():
                 if key not in seen:
                     current["orphaned"] = True
+            return self.save(data, backup=False)
+
+    def reconcile_nuki_devices(self, active_ids: set[str]) -> dict[str, Any]:
+        """Merge legacy decimal Nuki aliases and remove only stale Nuki records."""
+        with self._lock:
+            data = self.load()
+            active = {str(value).strip().upper() for value in active_ids if str(value).strip()}
+            devices = data["devices"]
+            presentation_fields = ("floor_id", "room_id", "group_ids", "categories", "orders", "visible", "favorite", "shortcut", "icon_override", "name_override", "device_class_override")
+            for key, source in list(devices.items()):
+                if str(source.get("source") or "").lower() != "nuki": continue
+                raw_id = str(source.get("device_id") or "").strip()
+                if not raw_id.isdigit(): continue
+                canonical_id = f"{int(raw_id) & 0xFFFFFFFF:08X}"
+                target_key = canonical_key("nuki", canonical_id)
+                target = devices.get(target_key)
+                if target:
+                    for field in presentation_fields:
+                        value = source.get(field)
+                        empty = target.get(field) in (None, "", [], {})
+                        if field == "visible": empty = target.get(field, True) is True and value is False
+                        if field in {"favorite", "shortcut"}: empty = not bool(target.get(field)) and bool(value)
+                        if empty and value not in (None, "", [], {}): target[field] = deepcopy(value)
+                del devices[key]
+            for key, item in list(devices.items()):
+                if str(item.get("source") or "").lower() == "nuki" and str(item.get("device_id") or "").upper() not in active:
+                    del devices[key]
+                elif str(item.get("source") or "").lower() == "nuki" and item.get("categories") == ["extra"]:
+                    item["categories"] = ["security"]
+                    item["orders"] = {"security": int((item.get("orders") or {}).get("extra", 0))}
             return self.save(data, backup=False)
 
     def migrate_hdl_presentation_v2(self, hdl_devices: list[dict[str, Any]]) -> dict[str, Any]:

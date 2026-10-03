@@ -14,7 +14,7 @@ import urllib.request
 
 
 ACTION_NAMES = {1: "Sblocco", 2: "Blocco", 3: "Apertura", 4: "Lock 'n' Go", 5: "Lock 'n' Go con apertura", 240: "Porta aperta", 241: "Porta chiusa", 242: "Sensore porta bloccato"}
-TRIGGER_NAMES = {0: "Sistema", 1: "Manuale", 2: "Pulsante", 3: "Fob", 4: "Tastierino", 5: "Auto Unlock", 6: "Web API", 7: "App", 8: "HomeKit", 9: "MQTT", 10: "Matter"}
+TRIGGER_NAMES = {0: "Sistema/App/Keypad", 1: "Manuale", 2: "Pulsante", 3: "Fob/Automatico", 4: "Tastierino", 5: "Auto Unlock", 6: "Chiusura automatica/Web API", 7: "App", 8: "HomeKit", 9: "MQTT", 10: "Matter", 171: "HomeKit/Matter", 172: "MQTT"}
 COMMAND_TOPICS = {"unlock": "unlock", "lock": "lock", "unlatch": "unlatch", "lockngo": "lockNgo", "lockngo_unlatch": "lockNgoUnlatch"}
 LOCK_STATES = {0: "uncalibrated", 1: "locked", 2: "unlocking", 3: "unlocked", 4: "locking", 5: "unlatched", 6: "unlocked", 7: "unlatching", 254: "motor_blocked", 255: "undefined"}
 
@@ -155,7 +155,42 @@ class NukiStore:
         return result
 
     def catalog(self) -> list[dict[str, Any]]: return [row for row in self.rows() if row.get("enabled")]
-    def organization_catalog(self) -> list[dict[str, Any]]: return [{"device_id": x["device_id"], "name": x["name"], "device_class": "lock"} for x in self.rows()]
+    def organization_catalog(self) -> list[dict[str, Any]]:
+        return [
+            {"device_id": row["device_id"], "name": row["name"], "device_class": "lock"}
+            for row in self.rows()
+            if row.get("available") or row.get("enabled")
+        ]
+
+    def access_events(self, limit: int = 200) -> list[dict[str, Any]]:
+        data = self.load()
+        names = {canonical_device_id(key): str(row.get("name") or key) for key, row in data["devices"].items()}
+        authorizations = data.get("authorizations") or {}
+        result: list[dict[str, Any]] = []
+        for raw in (data.get("events") or [])[:max(1, min(1000, int(limit)) )]:
+            event = deepcopy(raw)
+            device_id = canonical_device_id(event.get("device_id"))
+            auth_id = str(event.get("auth_id") or "").strip()
+            code_id = str(event.get("code_id") or "").strip()
+            authorization = authorizations.get(auth_id) if auth_id and auth_id != "0" else None
+            person = str((authorization or {}).get("name") or event.get("person") or "").strip()
+            if not person or person.startswith("Autorizzazione "):
+                person = f"Codice keypad {code_id}" if code_id and code_id != "0" else (f"Autorizzazione {auth_id}" if auth_id and auth_id != "0" else "Origine non identificata")
+            trigger = event.get("trigger")
+            try: trigger_number = int(trigger)
+            except (TypeError, ValueError): trigger_number = -1
+            origin = str(TRIGGER_NAMES.get(trigger_number) or event.get("trigger_name") or "").strip()
+            if not origin and person in {"MQTT", "Nuki Web"}: origin = person
+            event.update({
+                "device_id": device_id,
+                "device_name": names.get(device_id, f"Nuki {device_id}"),
+                "person": person,
+                "origin": origin or "Non identificata",
+                "auth_id": "" if auth_id == "0" else auth_id,
+                "code_id": "" if code_id == "0" else code_id,
+            })
+            result.append(event)
+        return result
 
 
 class NukiManager:
@@ -286,7 +321,7 @@ class NukiManager:
             try:
                 auths = self._api(f"/smartlock/{urllib.parse.quote(cloud_id)}/auth")
                 for auth in auths if isinstance(auths, list) else []:
-                    aid = str(auth.get("id") or auth.get("authId") or "")
+                    aid = str(auth.get("authId") or auth.get("id") or "")
                     if aid: data["authorizations"][aid] = {"auth_id": aid, "name": auth.get("name") or aid, "enabled": auth.get("enabled", True), "allowed_from": auth.get("allowedFromDate"), "allowed_until": auth.get("allowedUntilDate")}
             except ValueError: pass
             try:
@@ -308,4 +343,4 @@ class NukiManager:
         data = self.store.load(); status = self.mqtt.status()
         devices = self.store.rows()
         cloud_only = [row for row in self.store.rows(include_cloud_only=True) if not (row.get("state") or {}).get("attributes")]
-        return {"status": {"configured": bool(data["config"].get("enabled")), "mqtt_connected": bool(self._started and status.connected), "mqtt_error": status.last_error if self._started else None, "cloud_enabled": bool(data["config"].get("cloud_enabled")), "token_configured": bool(self.store.token()), "bridge_enabled": bool(data["config"].get("bridge_enabled")), "bridge_token_configured": bool(self.store.bridge_token()), "devices": len(devices), "cloud_only": len(cloud_only)}, "config": data["config"], "devices": devices, "cloud_only": cloud_only, "authorizations": list(data["authorizations"].values()), "events": data["events"][:200], "rules": data["rules"]}
+        return {"status": {"configured": bool(data["config"].get("enabled")), "mqtt_connected": bool(self._started and status.connected), "mqtt_error": status.last_error if self._started else None, "cloud_enabled": bool(data["config"].get("cloud_enabled")), "token_configured": bool(self.store.token()), "bridge_enabled": bool(data["config"].get("bridge_enabled")), "bridge_token_configured": bool(self.store.bridge_token()), "devices": len(devices), "cloud_only": len(cloud_only)}, "config": data["config"], "devices": devices, "cloud_only": cloud_only, "authorizations": list(data["authorizations"].values()), "events": self.store.access_events(), "rules": data["rules"]}

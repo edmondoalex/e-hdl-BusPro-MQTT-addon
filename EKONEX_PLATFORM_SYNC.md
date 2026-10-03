@@ -1,5 +1,16 @@
 # Ekonex Platform Sync — HDL BusPro
 
+## Handoff corrente - serrature Nuki complete per e-Face 0.1.531
+
+- Le Nuki sono pubblicate a e-Face come dispositivi `lock`, con stato, disponibilita, percentuale batteria e azioni consentite dai permessi `Comandi`.
+- Il registro accessi condiviso espone serratura, persona/autorizzazione, azione, origine, Auth ID, Code ID e data; gli ID cloud decimali vengono ricondotti all'identita locale della serratura.
+- La sincronizzazione autorizzazioni usa l'Auth ID Nuki numerico, permettendo di risolvere i nomi reali al posto di etichette generiche; l'origine 172 e riconosciuta come MQTT.
+- Il catalogo organizzazione elimina gli alias cloud duplicati, conserva assegnazioni e personalizzazioni sul record canonico e non pubblica i vecchi dispositivi Bridge indisponibili e disabilitati.
+- Aggiunta la categoria `Serrature` nella pagina Dispositivi e presentazione; i lock nuovi la ricevono automaticamente.
+- Consumer e-Face aggiornato separatamente per visualizzare serrature, batteria e gli ultimi eventi di accesso nella pagina Sicurezza/Serrature.
+- Verifiche: suite e-Control `106 passed`, sintassi JavaScript superata; suite e-Face `421 passed`.
+- Compatibilita: HDL invariato; nessuna dipendenza da Home Assistant introdotta.
+
 ## Handoff corrente - stati e batteria Nuki 0.1.530
 
 - Ogni scheda Nuki mostra in modo esplicito stato serratura, livello/stato batteria, stato porta, connessione e trasporto locale.

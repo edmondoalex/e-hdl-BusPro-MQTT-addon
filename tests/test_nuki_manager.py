@@ -57,11 +57,28 @@ def test_discovery_event_identity_and_command(tmp_path):
     assert snapshot["devices"][0]["name"] == "Porta principale"
     assert snapshot["devices"][0]["state"]["state"] == "locked"
     assert snapshot["events"][0]["person"] == "Mario"
-    assert snapshot["events"][0]["code_id"] == 7
+    assert snapshot["events"][0]["code_id"] == "7"
+    assert snapshot["events"][0]["device_name"] == "Porta principale"
+    assert snapshot["events"][0]["origin"] == "Tastierino"
     with pytest.raises(ValueError): manager.command("123", "unlock")
     manager.store.update_device("123", {"read_only": False, "enabled": True})
     assert manager.command("123", "unlock")["accepted"] is True
     assert mqtt.published == [("nuki/123/unlock", "true", 1)]
+
+
+def test_access_events_normalize_cloud_ids_and_mqtt_origin(tmp_path):
+    store = NukiStore(str(tmp_path / "nuki.json"))
+    data = store.load()
+    data["devices"]["4D054BEF"] = {"device_id": "4D054BEF", "name": "Portoncino Scala", "state": {"state": "1"}}
+    data["authorizations"]["46623"] = {"auth_id": "46623", "name": "Mario"}
+    data["events"] = [{"id": "one", "device_id": "22767029231", "action_name": "Sblocco", "trigger": 172, "trigger_name": "Origine 172", "auth_id": 46623, "code_id": 0}]
+    store.save(data)
+    event = store.access_events()[0]
+    assert event["device_id"] == "4D054BEF"
+    assert event["device_name"] == "Portoncino Scala"
+    assert event["person"] == "Mario"
+    assert event["origin"] == "MQTT"
+    assert event["code_id"] == ""
 
 
 def test_start_subscribes_without_home_assistant(tmp_path):
@@ -112,6 +129,7 @@ def test_bridge_secret_sync_and_local_command(tmp_path):
     assert row["available"] is True
     assert row["state"]["attributes"]["batteryChargeState"] == "28"
     assert rows["3816993D"]["available"] is False
+    assert [item["device_id"] for item in manager.store.organization_catalog()] == ["21181354"]
     manager.store.update_device("21181354", {"read_only": False})
     result = manager.command("21181354", "unlock")
     assert result["source"] == "nuki_bridge"

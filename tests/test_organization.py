@@ -52,6 +52,18 @@ class OrganizationTests(unittest.TestCase):
         self.assertIn("hdl:1", data["devices"])
         self.assertIn("ksenia:1", data["devices"])
 
+    def test_nuki_aliases_are_merged_and_stale_records_removed(self):
+        self.store.sync_devices([
+            {"source":"nuki","device_id":"4D054BEF","name":"Portoncino Scala","device_class":"lock"},
+            {"source":"nuki","device_id":"22767029231","name":"Alias Web","device_class":"lock"},
+            {"source":"nuki","device_id":"OLD","name":"Vecchia","device_class":"lock"},
+        ])
+        self.store.assign({"source":"nuki","device_id":"22767029231","categories":["extra"],"favorite":True})
+        data = self.store.reconcile_nuki_devices({"4D054BEF"})
+        self.assertEqual(["nuki:4D054BEF"], sorted(key for key in data["devices"] if key.startswith("nuki:")))
+        self.assertTrue(data["devices"]["nuki:4D054BEF"]["favorite"])
+        self.assertEqual(["security"], data["devices"]["nuki:4D054BEF"]["categories"])
+
     def test_ksenia_survives_rename_restart_refresh_and_offline(self):
         device_id = "ksn_00000000000000000000000000000001"
         self.store.sync_devices([{"source":"ksenia","device_id":device_id,"name":"Prima","device_class":"light"}])
@@ -102,6 +114,7 @@ class OrganizationTests(unittest.TestCase):
         self.assertEqual("mdi:lightbulb", default_icon("light"))
         self.assertEqual("mdi:window-shutter", default_icon("cover"))
         self.assertEqual("mdi:devices", default_icon("future_class"))
+        self.assertEqual(["security"], default_categories("lock"))
 
     def test_driver_neutral_presentation_defaults_and_overrides_persist(self):
         self.store.sync_devices([
@@ -262,9 +275,9 @@ class OrganizationTests(unittest.TestCase):
         self.assertIn("id:'hdl_temperature'", index)
         self.assertIn("Strumenti avanzati · JSON scenario", index)
         self.assertNotIn("Scenari: configurazione JSON", index)
-        self.assertIn("device-category-select.js?v=0.1.530", index)
-        self.assertIn("organization.js?v=0.1.530", index)
-        self.assertIn("hub-nav.js?v=0.1.530", index)
+        self.assertIn("device-category-select.js?v=0.1.531", index)
+        self.assertIn("organization.js?v=0.1.531", index)
+        self.assertIn("hub-nav.js?v=0.1.531", index)
 
         self.assertIn("integrationLink('Ferroli OMNIA','ferroli_omnia'", nav)
         self.assertIn("link('Home','home','mdi:home-analytics','home')+link('Home2'", nav)
