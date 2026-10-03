@@ -626,4 +626,6 @@ Test non eseguibile nel workspace locale: installazione pulita, aggiornamento e 
 - Aggiunta pagina Nuki, registro accessi, comandi di collaudo, logo e presenza in Dispositivi e presentazione; le serrature confluiscono in Sicurezza/Serrature di e-Face.
 - HDL invariato; compatibilità degli identificativi esistenti conservata.
 - Test locali: compilazione Python, sintassi JavaScript, diff check e suite completa `99 passed`.
+- Pubblicazione: commit `c51dfae` su `origin/main`; add-on aggiornato e avviato sul NUC in versione `0.1.520`.
+- Smoke test reale: API e asset HTTP 200, runtime `0.1.520`, tre dispositivi Nuki rilevati direttamente via MQTT (`3D7F376C`, `4D054BEF`, `4CA6FAF4`), tutti inizialmente non esposti e in sola lettura; log senza errori/traceback.
 - Rischio residuo: prova meccanica e identificazione reale utenti/codici richiedono una Nuki fisica configurata sul broker e, per l'arricchimento, un token Web API.
