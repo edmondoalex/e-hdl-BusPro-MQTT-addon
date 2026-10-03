@@ -7,7 +7,8 @@
 - Il Bridge viene interrogato periodicamente e la pagina Nuki si aggiorna ogni 5 secondi senza refresh manuale, sospendendo il ridisegno mentre l'utente compila un campo.
 - Compatibilita': pannello e identificativi HDL invariati; ID Nuki normalizzati e policy e-Face/Comandi persistenti conservate.
 - Verifiche locali: `104 passed`, compilazione Python, sintassi JavaScript e `git diff --check` superati; discovery reale ha rilevato il Bridge `192.168.3.22:8080`.
-- Prossimo passo: pubblicare/installare `0.1.528`, verificare le nuove route sul runtime e completare il pairing reale premendo il pulsante fisico del Bridge dalla pagina Nuki.
+- Pubblicazione e installazione completate: commit `28607b6` su `origin/main`; runtime/Supervisor `0.1.528`, stato `started`, nessun aggiornamento pendente, route Nuki e discovery Bridge HTTP 200, log di avvio regolari.
+- Prossimo passo utente: dalla pagina Nuki premere il pulsante fisico del Bridge, quindi `Rileva Bridge` e `Associa Bridge`; il collaudo non ha inviato comandi alle serrature.
 
 ## Handoff corrente - nomi visibili nei pannelli bus 0.1.517
 
