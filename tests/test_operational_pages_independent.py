@@ -40,3 +40,11 @@ def test_admin_page_does_not_opt_out_of_navigation():
     admin = (ROOT / "index.html").read_text(encoding="utf-8")
     assert 'data-econtrol-page="operator"' not in admin
 
+
+def test_admin_sidebar_only_becomes_a_drawer_on_phone_widths():
+    css = (ROOT / "hub" / "hub.css").read_text(encoding="utf-8")
+    admin = (ROOT / "index.html").read_text(encoding="utf-8")
+    assert "@media(max-width:700px){body.hub-shell-ready" in css
+    assert "@media(max-width:900px){body.hub-shell-ready" not in css
+    assert 'href="static/hub/hub.css?v=0.1.566.3"' in admin
+
