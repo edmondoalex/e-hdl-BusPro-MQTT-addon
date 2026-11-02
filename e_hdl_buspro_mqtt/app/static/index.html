@@ -2006,7 +2006,10 @@
         ];
         function panelByTitle(root,selector,title){return [...root.querySelectorAll(selector)].find(x=>x.textContent.trim()===title)?.parentElement||null;}
         function start(){
-          if(!location.hash){window.location.replace(new URL('home',window.location.href).toString());return;}
+          if(!location.hash){
+            if(history.replaceState)history.replaceState(null,'','#info');
+            else location.hash='info';
+          }
           const grid=document.getElementById('adminView'),host=grid?.querySelector(':scope > section.card'),aside=grid?.querySelector(':scope > aside.card');if(!grid||!host||!aside)return;
           grid.classList.add('adminWorkspace');host.classList.add('adminContent');
           const err=document.getElementById('err');

@@ -42,6 +42,12 @@ def test_admin_page_does_not_opt_out_of_navigation():
     assert 'data-econtrol-page="operator"' not in admin
 
 
+def test_admin_ingress_root_stays_on_admin_ui():
+    admin = (ROOT / "index.html").read_text(encoding="utf-8")
+    assert "window.location.replace(new URL('home',window.location.href).toString())" not in admin
+    assert "history.replaceState(null,'','#info')" in admin
+
+
 def test_admin_sidebar_only_becomes_a_drawer_on_phone_widths():
     css = (ROOT / "hub" / "hub.css").read_text(encoding="utf-8")
     admin = (ROOT / "index.html").read_text(encoding="utf-8")

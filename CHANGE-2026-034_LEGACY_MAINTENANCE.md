@@ -1,5 +1,11 @@
 # e-Control Hub 0.1.566.4 — manutenzione legacy
 
+## 0.1.566.6
+
+La `0.1.566.6` mantiene la radice Home Assistant Ingress sulla configurazione
+amministrativa (`#info`) invece di reindirizzarla alla pagina utente `/home`.
+Web UI 8124 e Home Assistant Ingress 8125 restano invariati.
+
 ## 0.1.566.5
 
 La `0.1.566.5` impedisce che un'icona automatica legacy malformata proveniente
