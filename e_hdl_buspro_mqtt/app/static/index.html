@@ -6356,6 +6356,26 @@
         return { sid, payload: parsed };
       }
 
+      function applyScenarioConfigJsonToDraft(parsedResult = null) {
+        const parsed = parsedResult || parseScenarioConfigJson();
+        const next = cloneScenarioConfigDraft(parsed.payload);
+        if (parsed.sid) next.id = parsed.sid;
+        for (const item of (next.items || [])) {
+          if (!item || typeof item !== 'object') continue;
+          const state = String(item.state || '').trim().toUpperCase();
+          if (state === 'OFF') {
+            item.state = 'OFF';
+            item.brightness = null;
+          } else if (state === 'ON') {
+            item.state = 'ON';
+          }
+        }
+        scenarioConfigDraft = next;
+        applyScenarioConfigDraftToControls();
+        renderScenarioConfigLists();
+        return { sid: parsed.sid, payload: scenarioConfigPayloadFromDraft() };
+      }
+
       function applyHubConfig(data) {
         if (!data) return;
         if (data.hub_icons && typeof data.hub_icons === 'object') {
@@ -7001,6 +7021,14 @@
         });
       }
 
+      qs('scCfgJson').addEventListener('input', () => {
+        try {
+          applyScenarioConfigJsonToDraft();
+        } catch (e) {
+          // Keep the textarea editable while the JSON is incomplete.
+        }
+      });
+
       qs('scCfgSearch').addEventListener('input', () => {
         renderScenarioConfigAvailable();
       });
@@ -7152,9 +7180,10 @@
         const msg = qs('scCfgMsg');
         if (msg) msg.textContent = '';
         try {
-          parseScenarioConfigJson();
+          applyScenarioConfigJsonToDraft();
+          syncScenarioConfigJson();
           if (msg) {
-            msg.textContent = 'JSON valido';
+            msg.textContent = 'JSON valido e applicato';
             setTimeout(() => { msg.textContent = ''; }, 1400);
           }
         } catch (e) {
@@ -7166,7 +7195,7 @@
         const msg = qs('scCfgMsg');
         if (msg) msg.textContent = '';
         try {
-          const parsed = parseScenarioConfigJson();
+          const parsed = applyScenarioConfigJsonToDraft();
           let savedScenario = null;
           if (parsed.sid) {
             savedScenario = await getJson(`api/user/light_scenarios/${encodeURIComponent(parsed.sid)}`, {
