@@ -1,0 +1,91 @@
+#nukiRoot { --nuki-gold: #eed56b; --nuki-line: #344247; --nuki-muted: #a7b8bd; }
+#nukiRoot .nuki-directory { margin: 26px 0; padding: 26px; border: 1px solid #425047; border-radius: 22px; background: linear-gradient(135deg, #252b26 0%, #192328 45%, #172025 100%); color: #eef3f3; }
+#nukiRoot .nuki-directory svg, #nukiRoot .nuki-connection-panel > summary svg { width: 21px; height: 21px; flex: 0 0 auto; }
+#nukiRoot .nuki-directory-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+#nukiRoot .nuki-eyebrow { color: var(--nuki-gold); font-size: 11px; font-weight: 800; letter-spacing: .15em; }
+#nukiRoot .nuki-directory-heading h3 { margin: 6px 0 8px; font-size: clamp(22px, 2.2vw, 30px); line-height: 1.15; letter-spacing: -.035em; }
+#nukiRoot .nuki-directory-heading p { margin: 0; color: var(--nuki-muted); font-size: 14px; }
+#nukiRoot .nuki-sync { display: inline-flex; align-items: center; gap: 9px; white-space: nowrap; border-color: #716c43; color: var(--nuki-gold); background: #30332a; }
+#nukiRoot .nuki-directory-stats { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; margin: 24px 0; }
+#nukiRoot .nuki-directory-stats > div { display: grid; grid-template-columns: 42px 1fr; column-gap: 12px; align-items: center; border: 1px solid #39433e; border-radius: 14px; padding: 16px; background: #ffffff04; }
+#nukiRoot .nuki-directory-stats > div > span { display: grid; place-items: center; grid-row: span 2; width: 42px; height: 42px; background: #e8d5740c; color: var(--nuki-gold); border-radius: 12px; }
+#nukiRoot .nuki-directory-stats strong { font-size: 27px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+#nukiRoot .nuki-directory-stats small { color: var(--nuki-muted); font-size: 12px; margin-top: 4px; }
+#nukiRoot .nuki-directory-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 20px; }
+#nukiRoot .nuki-search { display: flex; align-items: center; gap: 10px; flex: 1 1 260px; max-width: 450px; margin: 0; padding: 0 14px; min-height: 44px; border: 1px solid var(--nuki-line); border-radius: 12px; background: #101a1e; color: #8ba1a8; }
+#nukiRoot .nuki-search:focus-within { border-color: var(--nuki-gold); box-shadow: 0 0 0 2px #eed56b12; }
+#nukiRoot .nuki-search input { min-width: 0; width: 100%; margin: 0; padding: 10px 0; color: #eef3f3; font-size: 13px; background: none; border: 0; box-shadow: none; outline: none; }
+#nukiRoot .nuki-search input::placeholder { color: #8ba1a8; }
+#nukiRoot .nuki-directory-filters { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; border: 1px solid var(--nuki-line); background: #101a1e; border-radius: 12px; }
+#nukiRoot .nuki-directory-filters button { border: 0; color: var(--nuki-muted); background: transparent; border-radius: 8px; padding: 9px 12px; font-size: 12px; font-weight: 650; cursor: pointer; }
+#nukiRoot .nuki-directory-filters button[aria-pressed="true"] { color: #181e1c; background: var(--nuki-gold); }
+#nukiRoot .nuki-directory-filters button:hover:not([aria-pressed="true"]) { background: #ffffff09; color: #fff; }
+#nukiRoot .nuki-directory button:focus-visible, #nukiRoot .nuki-directory summary:focus-visible { outline: 2px solid var(--nuki-gold); outline-offset: 3px; }
+#nukiRoot .nuki-directory-message { margin: 0 0 14px; color: var(--nuki-gold); font-size: 13px; }
+#nukiRoot .nuki-directory-message:empty { display: none; }
+#nukiRoot .nuki-lock-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,310px),1fr)); gap: 16px; align-items: start; }
+#nukiRoot .nuki-lock-card { min-width: 0; border: 1px solid var(--nuki-line); border-radius: 17px; overflow: hidden; background: #131d21; box-shadow: 0 10px 22px #00000014; }
+#nukiRoot .nuki-lock-card > header { position: static; z-index: auto; top: auto; backdrop-filter: none; box-shadow: none; display: flex; align-items: center; gap: 12px; padding: 20px 18px 16px; background: #ffffff02; }
+#nukiRoot .nuki-lock-icon { display: grid; place-items: center; flex: 0 0 42px; width: 42px; height: 44px; border-radius: 12px; color: var(--nuki-gold); background: #eed56b0e; border: 1px solid #eed56b26; }
+#nukiRoot .nuki-lock-title { flex: 1; min-width: 0; }
+#nukiRoot .nuki-lock-title h4 { margin: 0 0 5px; font-size: 16px; line-height: 1.2; font-weight: 750; overflow-wrap: anywhere; }
+#nukiRoot .nuki-lock-title > span { color: var(--nuki-muted); font-size: 11px; }
+#nukiRoot .nuki-lock-state { font-size: 10px; color: #89d8b4; padding: 5px 7px; background: #4bd09510; border: 1px solid #4bd09520; border-radius: 6px; white-space: nowrap; }
+#nukiRoot .nuki-lock-state.is-open { color: #efce83; border-color: #efce8333; background: #efce830c; }
+#nukiRoot .nuki-lock-summary { display: flex; justify-content: space-between; gap: 8px; padding: 0 18px 15px; font-size: 11px; color: #8ca4ac; border-bottom: 1px solid #ffffff09; }
+#nukiRoot .nuki-lock-summary > :first-child { color: #c4d0d3; }
+#nukiRoot .nuki-auth-group { border: 0; padding: 0; margin: 0; background: transparent; }
+#nukiRoot .nuki-auth-group > summary, #nukiRoot .nuki-unassigned > summary, #nukiRoot .nuki-connection-panel > summary { display: flex; align-items: center; gap: 9px; list-style: none; cursor: pointer; padding: 14px 18px; font-size: 12px; font-weight: 700; color: #bac9ce; background: transparent; border: 0; }
+#nukiRoot summary::-webkit-details-marker { display: none; }
+#nukiRoot .nuki-auth-group > summary > svg { width: 15px; height: 15px; color: #839b9e; }
+#nukiRoot .nuki-auth-group > summary > b { margin-left: auto; font-size: 11px; border-radius: 5px; padding: 2px 6px; background: #ffffff08; color: #839b9e; }
+#nukiRoot .nuki-auth-group + .nuki-auth-group { border-top: 1px solid #ffffff07; }
+#nukiRoot .nuki-auth-group > div { padding: 0 8px 8px; }
+#nukiRoot .nuki-chevron { display: grid; place-items: center; width: 12px; height: 16px; color: #758b93; flex: 0 0 12px; }
+#nukiRoot .nuki-chevron svg { width: 12px; height: 12px; transition: transform .15s ease; }
+#nukiRoot details[open] > summary > .nuki-chevron svg { transform: rotate(90deg); }
+#nukiRoot .nuki-auth { background: transparent; border: 0; padding: 0; margin: 0; border-radius: 10px; }
+#nukiRoot .nuki-auth > summary { display: flex; align-items: center; gap: 9px; padding: 10px; list-style: none; background: transparent; border: 0; border-radius: 10px; cursor: pointer; }
+#nukiRoot .nuki-auth > summary:hover, #nukiRoot .nuki-auth[open] { background: #ffffff04; }
+#nukiRoot .nuki-avatar { display: grid; place-items: center; width: 33px; height: 33px; flex: 0 0 33px; border-radius: 10px; background: #95bded0c; color: #94bde4; }
+#nukiRoot .nuki-avatar svg { width: 17px; height: 17px; }
+#nukiRoot .nuki-avatar.is-codes { color: #d9c56f; background: #eed56b0a; }
+#nukiRoot .nuki-avatar.is-accessories { color: #b2a0d8; background: #b2a0d80b; }
+#nukiRoot .nuki-auth-name { display: grid; gap: 3px; flex: 1; min-width: 0; }
+#nukiRoot .nuki-auth-name strong { font-size: 13px; font-weight: 650; color: #e1e8ea; line-height: 1.2; overflow-wrap: anywhere; }
+#nukiRoot .nuki-auth-name small { font-size: 10px; color: #8ea1a9; }
+#nukiRoot .nuki-auth-status { flex: 0 0 auto; font-size: 9px; color: #8acbb0; }
+#nukiRoot .nuki-auth-status.is-muted { color: #95a1a5; }
+#nukiRoot .nuki-auth-status.is-pending { color: #d9c56f; }
+#nukiRoot .nuki-auth.is-disabled .nuki-avatar { opacity: .5; }
+#nukiRoot .nuki-auth-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0; padding: 4px 12px 14px 52px; }
+#nukiRoot .nuki-auth-meta dt { font-size: 10px; color: #839ba5; margin-bottom: 3px; }
+#nukiRoot .nuki-auth-meta dd { font-size: 11px; color: #cfdbdf; margin: 0; overflow-wrap: anywhere; }
+#nukiRoot .nuki-lock-card > footer { padding: 12px 18px; border-top: 1px solid #ffffff07; color: #7e969f; font-size: 10px; line-height: 1.5; }
+#nukiRoot .nuki-lock-card > footer > span { display: block; color: #dbbd7c; }
+#nukiRoot .nuki-empty { padding: 8px 18px 16px; color: var(--nuki-muted); font-size: 13px; line-height: 1.5; }
+#nukiRoot .nuki-directory-empty { grid-column: 1/-1; display: grid; justify-items: center; padding: 35px 20px; text-align: center; border: 1px dashed #4b5547; border-radius: 15px; color: #9daea8; }
+#nukiRoot .nuki-directory-empty > svg { width: 28px; height: 28px; margin-bottom: 12px; color: var(--nuki-gold); }
+#nukiRoot .nuki-directory-empty h4 { font-size: 17px; color: #e1e8ea; margin: 0 0 8px; }
+#nukiRoot .nuki-directory-empty p { margin: 0; font-size: 13px; }
+#nukiRoot .nuki-unassigned { margin-top: 16px; border: 1px dashed #425057; border-radius: 12px; background: #ffffff02; }
+#nukiRoot .nuki-unassigned > summary > b { margin-left: auto; font-size: 11px; color: #8ca4ac; }
+#nukiRoot .nuki-unassigned > p { padding: 0 18px; color: var(--nuki-muted); font-size: 12px; }
+#nukiRoot .nuki-unassigned > div { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,280px),1fr)); padding: 0 10px 12px; }
+#nukiRoot .nuki-connection-panel { border: 1px solid var(--nuki-line); border-radius: 12px; margin: 16px 0; background: #ffffff02; }
+#nukiRoot .nuki-connection-panel > summary { color: #c4d0d3; font-size: 14px; }
+#nukiRoot .nuki-connection-panel > summary .nuki-chevron { margin-left: auto; }
+#nukiRoot .nuki-connection-panel > form { margin: 0 12px 12px !important; }
+@media (max-width: 760px) {
+  #nukiRoot .nuki-directory { padding: 18px 12px; border-radius: 16px; }
+  #nukiRoot .nuki-directory-heading { align-items: flex-start; flex-direction: column; gap: 14px; padding: 0 4px; }
+  #nukiRoot .nuki-directory-stats { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin: 18px 0; }
+  #nukiRoot .nuki-directory-stats > div { padding: 12px; grid-template-columns: 32px 1fr; gap: 8px; }
+  #nukiRoot .nuki-directory-stats > div > span { width: 32px; height: 36px; }
+  #nukiRoot .nuki-directory-stats strong { font-size: 24px; }
+  #nukiRoot .nuki-directory-toolbar { align-items: stretch; gap: 10px; }
+  #nukiRoot .nuki-search { max-width: none; flex-basis: 100%; }
+  #nukiRoot .nuki-directory-filters { width: 100%; justify-content: space-between; }
+  #nukiRoot .nuki-directory-filters button { padding: 9px 7px; font-size: 11px; }
+}
+@media (prefers-reduced-motion: reduce) { #nukiRoot .nuki-chevron svg { transition: none; } }

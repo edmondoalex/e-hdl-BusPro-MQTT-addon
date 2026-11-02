@@ -1,0 +1,125 @@
+{
+    "name":  "e-Control Hub",
+    "slug":  "e_hdl_buspro_mqtt",
+    "description":  "Ekonex multi-bus edge gateway. Active driver: HDL BusPro.",
+    "version":  "0.1.566.1",
+    "startup":  "services",
+    "boot":  "auto",
+    "homeassistant_api":  true,
+    "hassio_api":  true,
+    "host_network":  true,
+    "arch":  [
+                 "amd64",
+                 "aarch64",
+                 "armhf"
+             ],
+    "init":  false,
+    "map":  [
+                "config:rw",
+                "share:rw"
+            ],
+    "options":  {
+                    "gateway_host":  "192.168.1.10",
+                    "gateway_port":  6000,
+                    "gateway_local_ip":  "",
+                    "poll_interval_s":  180,
+                    "poll_pace_s":  0.15,
+                    "ha_poll_interval_s":  2.0,
+                    "light_cmd_interval_s":  0.12,
+                    "udp_send_interval_s":  0.0,
+                    "back_gesture_enabled":  true,
+                    "guard_enabled":  false,
+                    "debug":  false,
+                    "debug_telegram":  false,
+                    "memory_log":  false,
+                    "access_log":  false,
+                    "auth":  {
+                                 "mode":  "none",
+                                 "token":  "",
+                                 "username":  "",
+                                 "password":  ""
+                             },
+                    "user_auth":  {
+                                     "mode":  "none",
+                                     "token":  "",
+                                     "username":  "",
+                                     "password":  ""
+                                 },
+                    "mqtt":  {
+                                 "host":  "core-mosquitto",
+                                 "port":  1883,
+                                 "username":  "",
+                                 "password":  "",
+                                 "base_topic":  "buspro",
+                                 "discovery_prefix":  "homeassistant",
+                                 "client_id":  "buspro-addon",
+                                 "ksenia_username":  "",
+                                 "ksenia_password":  "",
+                                 "ksenia_client_id":  "buspro-addon-ksenia-smarthome"
+                             }
+                },
+    "schema":  {
+                   "gateway_host":  "str",
+                   "gateway_port":  "port",
+                   "gateway_local_ip":  "str?",
+                   "poll_interval_s":  "float?",
+                   "poll_pace_s":  "float?",
+                   "ha_poll_interval_s":  "float?",
+                   "light_cmd_interval_s":  "float?",
+                   "udp_send_interval_s":  "float?",
+                   "back_gesture_enabled":  "bool?",
+                   "guard_enabled":  "bool?",
+                   "debug":  "bool?",
+                   "debug_telegram":  "bool?",
+                   "memory_log":  "bool?",
+                   "access_log":  "bool?",
+                   "auth":  {
+                                "mode":  "list(none|token|basic)",
+                                "token":  "str?",
+                                "username":  "str?",
+                                "password":  "password?"
+                            },
+                   "user_auth":  {
+                                     "mode":  "list(none|token|basic)",
+                                     "token":  "str?",
+                                     "username":  "str?",
+                                     "password":  "password?"
+                                 },
+                   "mqtt":  {
+                                "host":  "str",
+                                "port":  "port",
+                                "username":  "str?",
+                                "password":  "password?",
+                                "base_topic":  "str",
+                                "discovery_prefix":  "str",
+                                "client_id":  "str",
+                                "ksenia_username":  "str?",
+                                "ksenia_password":  "password?",
+                                "ksenia_client_id":  "str?"
+                            }
+               },
+    "webui":  "http://[HOST]:[PORT:8124]",
+    "build_from":  {
+                       "amd64":  "ghcr.io/home-assistant/amd64-base:3.19",
+                       "aarch64":  "ghcr.io/home-assistant/aarch64-base:3.19",
+                       "armhf":  "ghcr.io/home-assistant/armhf-base:3.19"
+                   },
+    "ports":  {
+                  "8124/tcp":  8124,
+                  "8125/tcp":  8125,
+                  "6000/udp":  6000
+              },
+    "ports_description":  {
+                              "8124/tcp":  "Web UI",
+                              "8125/tcp":  "Admin UI",
+                              "6000/udp":  "BusPro UDP (default)"
+                          },
+    "ingress":  true,
+    "ingress_port":  8124,
+    "ingress_entry":  "index.html",
+    "panel_title":  "e-Control Hub",
+    "panel_icon":  "mdi:lan-connect"
+}
+
+
+

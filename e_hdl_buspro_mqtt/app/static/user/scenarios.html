@@ -1,0 +1,535 @@
+<!doctype html>
+<html data-econtrol-page="operator">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>e-Control Hub - Scenari</title>
+    <style>
+      :root{
+        --bg0:#05070b;
+        --text:#f2f5ff;
+        --muted:rgba(255,255,255,.60);
+        --line:rgba(255,255,255,.08);
+        --danger:#ff6b6b;
+      }
+      body{
+        margin:0;
+        font-family:system-ui,Segoe UI,Roboto,Arial;
+        color:var(--text);
+        -webkit-font-smoothing:antialiased;
+        text-rendering:optimizeLegibility;
+        min-height:100vh;
+      }
+      body::before{
+        content:'';
+        position:fixed;
+        inset:0;
+        z-index:-2;
+        background: radial-gradient(1200px 800px at 50% 50%, rgba(26,34,48,.65) 0%, var(--bg0) 52%, #000 100%);
+        background-position:center center;
+        background-repeat:no-repeat;
+      }
+      main{
+        max-width:820px;
+        margin:0 auto;
+        padding:10px 14px 24px;
+        min-height:100vh;
+        display:flex;
+        flex-direction:column;
+        justify-content:center;
+      }
+      .list{border-radius:18px;overflow:hidden;border:1px solid var(--line);background:rgba(0,0,0,.05);backdrop-filter: blur(10px)}
+      .topBtns{
+        position:fixed;left:50%;top:calc(env(safe-area-inset-top, 0px) + 10px);transform:translateX(-50%);z-index:20;
+        display:flex;gap:10px;align-items:center;justify-content:center;
+      }
+      .btnIcon{
+        width:42px;height:42px;border-radius:999px;
+        border:1px solid rgba(255,255,255,.10);
+        background:rgba(0,0,0,.28);
+        backdrop-filter: blur(10px);
+        display:flex;align-items:center;justify-content:center;
+        cursor:pointer;
+        -webkit-tap-highlight-color: transparent;
+        user-select:none;
+      }
+      .btnIcon:active{transform:scale(.98)}
+      .btnIcon svg{width:20px;height:20px}
+      .btnIcon path{stroke:rgba(242,245,255,.78);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+      .btnIcon .fill{fill:rgba(242,245,255,.78);stroke:none}
+      .row{
+        display:flex;gap:14px;align-items:center;justify-content:space-between;
+        padding:14px 16px;
+        border-top:1px solid rgba(255,255,255,.06);
+        background:rgba(0,0,0,.05);
+        -webkit-tap-highlight-color: transparent;
+      }
+      .row:first-child{border-top:none}
+      .name{font-size:19px;line-height:1.15;font-weight:420;opacity:.88;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .nameBtn{all:unset;display:inline-flex;align-items:center;gap:8px;max-width:100%;cursor:pointer}
+      .nameBtn .caret{font-size:12px;color:rgba(255,255,255,.58)}
+      .meta{font-size:12px;color:rgba(255,255,255,.55);margin-top:6px}
+      .details{display:none}
+      .details.open{display:block}
+      .trigRow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+      .trigLbl{font-size:11px;color:rgba(255,255,255,.62);letter-spacing:.06em;text-transform:uppercase}
+      .trigTime{
+        height:30px;padding:0 8px;
+        border:1px solid rgba(255,255,255,.14);
+        background:rgba(0,0,0,.24);
+        color:rgba(242,245,255,.88);
+        border-radius:10px;
+      }
+      .trigTime.active{
+        border-color:rgba(255,215,0,.48);
+        background:rgba(255,215,0,.14);
+        color:#fff3bf;
+        box-shadow:0 0 0 1px rgba(255,215,0,.20) inset;
+      }
+      .trigTime.inactive{
+        border-color:rgba(255,255,255,.14);
+        background:rgba(255,255,255,.06);
+        color:rgba(242,245,255,.75);
+      }
+      .trigHint{font-size:11px;color:rgba(255,255,255,.50)}
+      .extHint{font-size:11px;color:rgba(255,255,255,.50)}
+      .left{flex:1;min-width:0}
+      .btn{
+        height:38px;padding:0 12px;
+        border:1px solid rgba(255,255,255,.14);
+        background:rgba(255,255,255,.06);
+        color:rgba(242,245,255,.86);
+        border-radius:12px;
+        cursor:pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .btnRow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+      .btn:active{transform:scale(.99)}
+      .btn.primary{border-color:rgba(255,215,0,.35); background:rgba(255,215,0,.08)}
+      .btn.danger{border-color:rgba(255,107,107,.40); background:rgba(255,107,107,.10)}
+      .pressFx{
+        position:relative;
+        overflow:hidden;
+        transition:transform .12s ease, box-shadow .18s ease, border-color .18s ease;
+      }
+      .pressFx.pressed{
+        transform:scale(.98);
+        border-color:rgba(255,215,0,.35);
+        box-shadow:0 0 0 2px rgba(255,215,0,.18) inset, 0 10px 18px rgba(255,215,0,.08);
+      }
+      .pressFx.pulse{animation:btnPulse .28s ease-out 1}
+      .pressFx.ripple::after{
+        content:'';
+        position:absolute;
+        inset:4px;
+        border-radius:999px;
+        background:radial-gradient(circle at center, rgba(255,215,0,.22) 0%, rgba(255,215,0,.10) 40%, rgba(255,215,0,0) 70%);
+        opacity:0;
+        animation:btnRipple .32s ease-out 1;
+        pointer-events:none;
+      }
+      @keyframes btnPulse{
+        0%{transform:scale(1)}
+        45%{transform:scale(1.04)}
+        100%{transform:scale(1)}
+      }
+      @keyframes btnRipple{
+        0%{opacity:.85;transform:scale(.86)}
+        100%{opacity:0;transform:scale(1.2)}
+      }
+      .error{color:var(--danger);font-size:13px;margin-top:10px}
+      @media (max-width: 900px){
+        main{
+          padding:calc(env(safe-area-inset-top, 0px) + 72px) 14px 24px;
+          justify-content:flex-start;
+        }
+      }
+    </style>
+    <link rel="stylesheet" href="static/hub/hub.css?v=0.1.479" />
+    <script defer src="static/hub/hub-nav.js?v=0.1.564"></script>
+  </head>
+  <body>
+    <div class="topBtns">
+      <button id="homeBtn" class="btnIcon pressFx" type="button" aria-label="Home">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 10.5l8-7 8 7" fill="none" />
+          <path d="M6.5 9.8V20h11V9.8" fill="none" />
+        </svg>
+      </button>
+      <button id="editBtn" class="btnIcon pressFx" type="button" aria-label="Modifica scenari">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 3l2.6 5.4L20.5 9l-4.3 4.2 1 6-5.2-2.8-5.2 2.8 1-6L3.5 9l5.9-.6z" fill="none" />
+          <path d="M18 7l3 3" fill="none" />
+          <path d="M14 21l6-6" fill="none" />
+        </svg>
+      </button>
+      <button id="settingsBtn" class="btnIcon pressFx" type="button" aria-label="Impostazioni scenari">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z" fill="none"/>
+          <path d="M19.4 15a7.9 7.9 0 0 0 .1-2l2-1.1-2-3.5-2.3.7a7.7 7.7 0 0 0-1.7-1l-.3-2.4H11l-.3 2.4a7.7 7.7 0 0 0-1.7 1L6.7 8.4l-2 3.5 2 1.1a7.9 7.9 0 0 0 .1 2l-2 1.1 2 3.5 2.3-.7a7.7 7.7 0 0 0 1.7 1l.3 2.4h4.1l.3-2.4a7.7 7.7 0 0 0 1.7-1l2.3.7 2-3.5z" fill="none"/>
+        </svg>
+      </button>
+    </div>
+    <main>
+      <div id="list" class="list"></div>
+      <div id="err" class="error"></div>
+    </main>
+
+    <script>
+      const qs = (id) => document.getElementById(id);
+      let scenarioItems = [];
+      let scenarioStates = {};
+      let scenarioRunning = {};
+      let scenarioExpanded = {};
+      let scenarioHaTriggersById = {};
+      function absUrl(path) { return new URL(path, window.location.href).toString(); }
+      async function getJson(path, opts) {
+        const url = absUrl(path);
+        const r = await (window.busproFetchWithTimeout ? window.busproFetchWithTimeout(url, opts, 12000) : fetch(url, opts));
+        if (!r.ok) throw new Error(await r.text());
+        const ct = (r.headers.get('content-type')||'').toLowerCase();
+        if (ct.includes('application/json')) return r.json();
+        return r.text();
+      }
+      function escapeHtml(s){
+        const v = (s === null || s === undefined) ? '' : String(s);
+        return v
+          .replace(/&/g,'&amp;')
+          .replace(/</g,'&lt;')
+          .replace(/>/g,'&gt;')
+          .replace(/\"/g,'&quot;')
+          .replace(/'/g,'&#039;');
+      }
+      function animatePress(el) {
+        if (!el) return;
+        try {
+          el.classList.remove('pressed', 'pulse', 'ripple');
+          void el.offsetWidth;
+          el.classList.add('pressed', 'pulse', 'ripple');
+          setTimeout(() => el.classList.remove('pressed'), 130);
+          setTimeout(() => el.classList.remove('pulse', 'ripple'), 320);
+        } catch (e) {}
+      }
+
+      async function runScenario(id) {
+        await getJson(`api/control/light_scenario/${encodeURIComponent(String(id||''))}`, { method:'POST' });
+      }
+      async function stopScenario(id) {
+        await getJson(`api/control/light_scenario/${encodeURIComponent(String(id||''))}`, {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ command: 'STOP' })
+        });
+      }
+
+      async function setScenario(id, state) {
+        await getJson(`api/control/light_scenario/${encodeURIComponent(String(id||''))}`, {
+          method:'POST',
+          headers: { 'Content-Type':'application/json' },
+          body: JSON.stringify({ state: String(state || '').toUpperCase() })
+        });
+      }
+
+      async function saveScenarioTriggerTime(sc, timeValue) {
+        const sid = String((sc && sc.id) || '').trim();
+        if (!sid) throw new Error('Scenario non valido');
+        const t = String(timeValue || '').trim();
+        if (!/^\d{2}:\d{2}$/.test(t)) throw new Error('Orario non valido');
+        const trig = (sc && typeof sc.trigger === 'object' && sc.trigger) ? sc.trigger : {};
+        let offsetMin = Number(trig.offset_min ?? 0);
+        if (!Number.isFinite(offsetMin)) offsetMin = 0;
+        const payload = {
+          name: String(sc.name || '').trim(),
+          items: Array.isArray(sc.items) ? sc.items : [],
+          covers: Array.isArray(sc.covers) ? sc.covers : [],
+          run_enabled: !!sc.run_enabled,
+          onoff_enabled: (sc.onoff_enabled === undefined) ? true : !!sc.onoff_enabled,
+          trigger: {
+            enabled: true,
+            type: 'time',
+            time: t,
+            offset_min: Math.max(-1440, Math.min(1440, Math.round(offsetMin))),
+          },
+        };
+        await getJson(`api/user/light_scenarios/${encodeURIComponent(sid)}`, {
+          method:'PUT',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify(payload),
+        });
+      }
+
+      async function disableScenarioTrigger(sc) {
+        const sid = String((sc && sc.id) || '').trim();
+        if (!sid) throw new Error('Scenario non valido');
+        const trig = (sc && typeof sc.trigger === 'object' && sc.trigger) ? sc.trigger : {};
+        let offsetMin = Number(trig.offset_min ?? 0);
+        if (!Number.isFinite(offsetMin)) offsetMin = 0;
+        const payload = {
+          name: String(sc.name || '').trim(),
+          items: Array.isArray(sc.items) ? sc.items : [],
+          covers: Array.isArray(sc.covers) ? sc.covers : [],
+          run_enabled: !!sc.run_enabled,
+          onoff_enabled: (sc.onoff_enabled === undefined) ? true : !!sc.onoff_enabled,
+          trigger: {
+            enabled: false,
+            type: String(trig.type || 'none').toLowerCase(),
+            time: String(trig.time || ''),
+            offset_min: Math.max(-1440, Math.min(1440, Math.round(offsetMin))),
+          },
+        };
+        await getJson(`api/user/light_scenarios/${encodeURIComponent(sid)}`, {
+          method:'PUT',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify(payload),
+        });
+      }
+
+      function renderScenariosList() {
+        const root = qs('list');
+        const err = qs('err');
+        root.replaceChildren();
+        const items = Array.isArray(scenarioItems) ? scenarioItems : [];
+        if (!Array.isArray(items) || !items.length) {
+          const row = document.createElement('div');
+          row.className = 'row';
+          row.innerHTML = `<div class="left"><div class="name">Nessuno scenario</div><div class="meta">Crea uno scenario dalla pagina Luci</div></div>`;
+          root.appendChild(row);
+          return;
+        }
+        items
+          .slice()
+          .sort((a,b) => String(a.name||'').localeCompare(String(b.name||''), undefined, {sensitivity:'base'}))
+          .forEach((sc) => {
+            const row = document.createElement('div');
+            row.className = 'row';
+            const name = String(sc.name || '').trim() || '(senza nome)';
+            const n = Array.isArray(sc.items) ? sc.items.length : 0;
+            const c = Array.isArray(sc.covers) ? sc.covers.length : 0;
+            const sid = String(sc.id || '').trim();
+            const on = String((scenarioStates && scenarioStates[sid]) || '').toUpperCase() === 'ON';
+            const running = !!(scenarioRunning && scenarioRunning[sid]);
+            const trig = (sc && typeof sc.trigger === 'object' && sc.trigger) ? sc.trigger : {};
+            const trigType = String(trig.type || 'none').toLowerCase();
+            const trigEnabled = !!trig.enabled;
+            const trigTime = (/^\d{2}:\d{2}$/.test(String(trig.time || '')) ? String(trig.time) : '');
+            const extId = String(sc.ha_trigger_id || '').trim();
+            const extEnabled = !!sc.ha_trigger_enabled && !!extId;
+            const extName = extEnabled ? String(scenarioHaTriggersById[extId] || extId) : '';
+            const runEnabled = !!sc.run_enabled;
+            const onoffEnabled = (sc.onoff_enabled === undefined) ? true : !!sc.onoff_enabled;
+            const expanded = !!scenarioExpanded[sid];
+            const btns = [];
+            if (runEnabled) {
+              btns.push(`<button class="btn pressFx" type="button" data-act="run" data-id="${escapeHtml(String(sc.id||''))}">Esegui</button>`);
+              btns.push(`<button class="btn pressFx ${running ? 'danger' : ''}" type="button" data-act="stop" data-id="${escapeHtml(String(sc.id||''))}">Stop</button>`);
+            }
+            if (onoffEnabled) {
+              btns.push(`<button class="btn pressFx ${on ? 'danger' : 'primary'}" type="button" data-act="toggle" data-id="${escapeHtml(String(sc.id||''))}">${on ? 'Spegni' : 'Accendi'}</button>`);
+            }
+            const triggerHtml = extEnabled
+              ? `<div class="trigRow">
+                   <span class="trigLbl">Trigger E-manager</span>
+                   <span class="extHint">${escapeHtml(extName)}</span>
+                 </div>`
+              : `<div class="trigRow">
+                   <span class="trigLbl">Trigger</span>
+                   <input class="trigTime ${trigEnabled ? 'active' : 'inactive'}" type="time" step="60" data-act="trig-time" data-id="${escapeHtml(String(sc.id||''))}" value="${escapeHtml(trigTime)}" />
+                   <button class="btn pressFx" type="button" data-act="trig-save" data-id="${escapeHtml(String(sc.id||''))}">Salva ora</button>
+                   <button class="btn pressFx ${trigEnabled ? 'danger' : ''}" type="button" data-act="trig-off" data-id="${escapeHtml(String(sc.id||''))}">Disattiva</button>
+                   <span class="trigHint">${trigEnabled && trigType === 'time' ? 'attivo' : 'non attivo'}</span>
+                 </div>`;
+            row.innerHTML = `
+              <div class="left">
+                <button class="nameBtn pressFx" type="button" data-act="expand" data-id="${escapeHtml(String(sc.id||''))}">
+                  <span class="name">${escapeHtml(name)}</span>
+                  <span class="caret">${expanded ? '&#9662;' : '&#9656;'}</span>
+                </button>
+                <div class="details ${expanded ? 'open' : ''}">
+                  <div class="meta">${escapeHtml(String(n))} luci &bull; ${escapeHtml(String(c))} tapparelle</div>
+                  ${triggerHtml}
+                </div>
+              </div>
+              <div class="btnRow">${btns.join('')}</div>
+            `;
+            row.querySelectorAll('button[data-act]').forEach((b) => {
+              b.addEventListener('click', async () => {
+                animatePress(b);
+                try {
+                  err.textContent = '';
+                  const sid2 = String(sc.id || '').trim();
+                  const act = b.getAttribute('data-act') || '';
+                  if (act === 'expand') {
+                    scenarioExpanded[sid2] = !scenarioExpanded[sid2];
+                    renderScenariosList();
+                    return;
+                  } else if (act === 'run') {
+                    await runScenario(sc.id);
+                  } else if (act === 'stop') {
+                    await stopScenario(sc.id);
+                  } else if (act === 'toggle') {
+                    const nowOn = String((scenarioStates && scenarioStates[sid2]) || '').toUpperCase() === 'ON';
+                    await setScenario(sc.id, nowOn ? 'OFF' : 'ON');
+                  } else if (act === 'trig-save') {
+                    const tEl = row.querySelector('input[data-act="trig-time"]');
+                    const tVal = String((tEl && tEl.value) || '').trim();
+                    await saveScenarioTriggerTime(sc, tVal);
+                  } else if (act === 'trig-off') {
+                    await disableScenarioTrigger(sc);
+                  }
+                  await load();
+                } catch (e) {
+                  err.textContent = 'Errore esecuzione scenario';
+                }
+              });
+            });
+            root.appendChild(row);
+          });
+      }
+
+      async function load() {
+        const err = qs('err');
+        err.textContent = '';
+        try {
+          const meta = await getJson('api/meta');
+          window.__backGestureEnabled = !(meta && typeof meta.back_gesture_enabled === 'boolean') ? true : !!meta.back_gesture_enabled;
+        } catch (e) {}
+        try {
+          const data = await getJson('api/user/light_scenarios');
+          const st = await getJson('api/user/light_scenarios_status');
+          const tr = await getJson('api/user/scenario_ha_triggers');
+          scenarioItems = (data && Array.isArray(data.items)) ? data.items : [];
+          scenarioStates = (st && st.states && typeof st.states === 'object') ? st.states : {};
+          scenarioRunning = (st && st.running && typeof st.running === 'object') ? st.running : {};
+          const tItems = (tr && Array.isArray(tr.items)) ? tr.items : [];
+          scenarioHaTriggersById = {};
+          for (const it of tItems) {
+            if (!it || typeof it !== 'object') continue;
+            const id = String(it.id || '').trim();
+            const name = String(it.name || '').trim();
+            if (id) scenarioHaTriggersById[id] = name || id;
+          }
+        } catch (e) {
+          scenarioItems = [];
+          scenarioStates = {};
+          scenarioRunning = {};
+          scenarioHaTriggersById = {};
+          err.textContent = 'Errore caricamento scenari';
+          renderScenariosList();
+          return;
+        }
+        renderScenariosList();
+      }
+
+      qs('homeBtn').addEventListener('click', () => {
+        animatePress(qs('homeBtn'));
+        try { window.location.href = absUrl('home2'); } catch (e) {}
+      });
+      // Star (page) indicates "scenari": keep on this page (refresh list)
+      qs('editBtn').addEventListener('click', async () => {
+        animatePress(qs('editBtn'));
+        try { await load(); } catch (e) {}
+      });
+      qs('settingsBtn').addEventListener('click', () => {
+        animatePress(qs('settingsBtn'));
+        try { window.location.href = absUrl('lights?sc=1'); } catch (e) {}
+      });
+
+      function wsUrl() {
+        const u = new URL('ws', window.location.href);
+        u.protocol = (location.protocol === 'https:') ? 'wss:' : 'ws:';
+        return u.toString();
+      }
+
+      function connectWs() {
+        const ws = new WebSocket(wsUrl());
+        ws.onclose = () => { setTimeout(connectWs, 1500); };
+        ws.onmessage = async (evt) => {
+          try {
+            const msg = JSON.parse(evt.data);
+            if (msg.type === 'light_scenario_state') {
+              const d = msg.data || {};
+              const sid = String(d.id || '').trim();
+              const st = String(d.state || '').trim().toUpperCase();
+              if (sid && (st === 'ON' || st === 'OFF')) {
+                scenarioStates = scenarioStates && typeof scenarioStates === 'object' ? scenarioStates : {};
+                scenarioStates[sid] = st;
+                renderScenariosList();
+              }
+              return;
+            }
+            if (msg.type === 'light_scenario_running') {
+              const d = msg.data || {};
+              const sid = String(d.id || '').trim();
+              if (sid) {
+                scenarioRunning = scenarioRunning && typeof scenarioRunning === 'object' ? scenarioRunning : {};
+                scenarioRunning[sid] = !!d.running;
+                renderScenariosList();
+              }
+              return;
+            }
+          } catch (e) {}
+        };
+      }
+
+      function startPolling() {
+        async function tick() {
+          try { await load(); }
+          catch (e) {
+            if (window.busproUiLog) window.busproUiLog('poll_error', e && e.message ? e.message : String(e));
+          }
+        }
+        setInterval(tick, 5000);
+      }
+
+      (async () => {
+        await load();
+        if (window.busproPollMode) startPolling();
+        else connectWs();
+      })();
+    </script>
+    <script>
+      // Hidden back gesture: long-press top-left corner.
+      (function () {
+        async function backEnabled() {
+          if (typeof window.__backGestureEnabled === 'boolean') return window.__backGestureEnabled;
+          try {
+            const meta = await getJson('api/meta');
+            return !(meta && typeof meta.back_gesture_enabled === 'boolean') ? true : !!meta.back_gesture_enabled;
+          } catch (e) {
+            return true;
+          }
+        }
+        (async () => {
+          const enabled = await backEnabled();
+          if (!enabled) return;
+          const CORNER = 60;
+          const HOLD_MS = 450;
+          let timer = null;
+          function inCorner(e) {
+            return !!e && Number(e.clientX) <= CORNER && Number(e.clientY) <= CORNER;
+          }
+          function goHome() {
+            try { window.location.href = absUrl('home2'); } catch (e) {}
+          }
+          function doBack() {
+            try {
+              if (window.history && window.history.length > 1) { window.history.back(); return; }
+            } catch (e) {}
+            goHome();
+          }
+          function clear() {
+            if (timer) { clearTimeout(timer); timer = null; }
+          }
+          document.addEventListener('pointerdown', (e) => {
+            if (timer) return;
+            if (!inCorner(e)) return;
+            timer = setTimeout(() => { timer = null; doBack(); }, HOLD_MS);
+          }, { passive: true });
+          document.addEventListener('pointerup', clear, { passive: true });
+          document.addEventListener('pointercancel', clear, { passive: true });
+          document.addEventListener('pointermove', (e) => { if (timer && !inCorner(e)) clear(); }, { passive: true });
+        })();
+      })();
+    </script>
+  </body>
+</html>

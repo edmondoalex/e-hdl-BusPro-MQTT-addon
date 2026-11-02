@@ -1,0 +1,1819 @@
+# WORKLOG
+
+## 2026-10-02 (Netatmo engine hidden 0.1.489)
+- Home Assistant resta un motore interno: la scelta `pick_implementation` non viene mostrata all'installatore.
+- Se presente, e-Control seleziona automaticamente la credenziale `e-Control Hub` e continua il flusso OAuth.
+- Rimossi link e schede Home Assistant dalla guida; mantenuta una procedura breve e-Control/Netatmo.
+- Version bump: 0.1.488 -> 0.1.489.
+
+## 2026-10-02 (Netatmo application credentials 0.1.488)
+- Aggiunti campi protetti Client ID e Client Secret nella pagina Home + Control.
+- Registrazione tramite WebSocket ufficiale Home Assistant `application_credentials/create`; il Secret non viene restituito alla UI o registrato nei log.
+- Stato credenziali esposto senza dati sensibili.
+- Version bump: 0.1.487 -> 0.1.488.
+
+## 2026-10-02 (Netatmo setup documentation 0.1.487)
+- Aggiunti nella pagina Home + Control il link diretto a Netatmo Developer e la documentazione ufficiale Home Assistant.
+- Inserite istruzioni sintetiche: nome app, Redirect URI/Webhook URI vuoti e protezione/rotazione del Client Secret.
+- Version bump: 0.1.486 -> 0.1.487.
+
+## 2026-10-02 (Netatmo compound handler recovery 0.1.485)
+- Riconosciuti sia handler config-flow semplici sia identificativi composti usati da Home Assistant per OAuth Netatmo.
+- Impedita la restituzione di un falso successo se Home Assistant mantiene comunque il lock del flusso.
+- Version bump: 0.1.484 -> 0.1.485.
+
+## 2026-10-02 (Netatmo active-flow lookup 0.1.484)
+- Il recupero interroga l'elenco config-flow attivi di Home Assistant e usa l'ID reale, poiché l'abort `already_in_progress` può contenere un ID già scaduto.
+- Un DELETE già risolto (404) è tollerato e il nuovo avvio viene comunque tentato.
+- Version bump: 0.1.483 -> 0.1.484.
+
+## 2026-10-02 (Netatmo provisioning recovery 0.1.483)
+- Il configuratore Home + Control / Netatmo resta interamente in e-Control.
+- Un config flow OAuth abbandonato con `already_in_progress` viene annullato in modo mirato e riavviato automaticamente.
+- Aggiunti messaggi leggibili per flusso già aperto, credenziali applicative mancanti e integrazione già configurata.
+- Version bump: 0.1.482 -> 0.1.483.
+
+## 2026-10-02 (e-Modbus Manager 0.1.482)
+- Implementato e-Modbus Manager con connessioni TCP, seriale RTU/RS-485, RTU-over-TCP e UDP.
+- Aggiunti profili dispositivo versionati e riutilizzabili, validazione registri, tipi dati, scala, offset, unità, swap, polling e limiti.
+- Aggiunta associazione connessione/profilo/slave e generazione deterministica della configurazione Home Assistant Modbus/pymodbus.
+- e-Control inserisce automaticamente l'include gestito, conserva un backup, rifiuta configurazioni Modbus già possedute da terzi e valida la configurazione tramite Supervisor prima del riavvio esplicito.
+- Aggiunti tutorial contestuali brevi per TCP, RS-485, RTU-over-TCP e UDP, inclusi cablaggio e dati da recuperare nel manuale del dispositivo.
+- Aggiunti catalogo opt-in per e-Face, comandi protetti da sola lettura, diagnostica, conteggi e backup/ripristino.
+- Prima versione produttiva focalizzata sulle primitive sicure e universali `sensor`, `binary_sensor` e `switch`; i profili HVAC composti saranno aggiunti e collaudati sui manuali reali delle pompe di calore.
+- Version bump: 0.1.481 -> 0.1.482.
+
+## Tag operativi per collaudi futuri
+
+### TODO-KNX-COLLAUDO
+
+- Collegare un impianto KNX reale tramite interfaccia/router KNX/IP.
+- Importare un progetto ETS e verificare indirizzi di gruppo, DPT e associazioni.
+- Sincronizzare il catalogo KNX in e-Control e controllare identità stabile, rinomina e dispositivi orfani.
+- Abilitare un campione per ogni capability disponibile: luce, dimmer, cover, clima, switch e sensori.
+- Verificare collocazione, categorie, icone, stati realtime e comandi in e-Face.
+- Provare disconnessione, riconnessione, riavvio Home Assistant e riavvio e-Control.
+- Verificare diagnostica, backup/ripristino e assenza di duplicati con eventuali entità Home Assistant già configurate.
+
+### TODO-BTICINO-COLLAUDO
+
+- MyHOME SCS: collegare un gateway OpenWebNet reale e installare da e-Control il componente MyHOME verificato.
+- Riavviare Home Assistant da e-Control, completare il config flow e sincronizzare il catalogo `myhome_scs`.
+- Home + Control: collegare un account Netatmo/Legrand reale tramite il config flow ufficiale e sincronizzare `home_plus_control`.
+- Verificare che le due sorgenti restino separate nei conteggi, nei cataloghi, nella diagnostica e nel backup.
+- Abilitare dispositivi campione e controllare classificazione, stanze, gruppi, icone, realtime e comandi in e-Face.
+- Provare gateway/cloud offline, riconnessione, riavvii, rinomina entità e dispositivi rimossi/orfani.
+- Verificare assenza di duplicati con il catalogo Home Assistant generico e completare il collaudo backup/ripristino.
+
+## 2026-10-02 (BTicino MyHOME SCS e Home + Control 0.1.481)
+- Separati i trasporti BTicino in `myhome_scs` (OpenWebNet locale) e `home_plus_control` (Netatmo cloud).
+- Aggiunti cataloghi persistenti indipendenti, rilevamento dal registry Home Assistant, opt-in verso e-Face e instradamento comandi.
+- Aggiunte pagine professionali per panoramica, dispositivi e diagnostica di ciascuna integrazione.
+- Aggiunto installatore verificato del componente MyHOME 0.9.4, con controllo SHA-256 e backup della versione precedente.
+- Aggiunti configurazione guidata Home Assistant, conteggi separati, backup/ripristino e stato dinamico nel menu.
+- Aggiornato il registro capability e uniformati gli stati UI ad ATTIVO/INATTIVO.
+- Version bump: 0.1.480 -> 0.1.481.
+
+## 2026-10-02 (Stati integrazioni e logo Home Assistant coerenti)
+- Uniformati i badge del menu a `ATTIVO` e `INATTIVO`: rimossi `NUOVO` e `PIANIFICATO` dalla navigazione e dalle viste informative.
+- Home Assistant usa ora lo stesso riquadro logo degli altri bus e integrazioni.
+- Version bump: 0.1.479 -> 0.1.480.
+
+## 2026-10-02 (Conteggi integrazioni verificabili)
+- Corretto `devices_by_bus.hdl_buspro`: il totale HDL non include più per errore le entità Home Assistant del ramo legacy.
+- Aggiunte metriche per sorgente con elementi rilevati/configurati, esportati Smart Home, visibili, sicurezza legacy ed esclusi.
+- La pagina Info distingue chiaramente catalogo tecnico ed esposizione e-Face; e-KNX Manager mostra lo stato reale invece di risultare pianificato.
+- Il totale globale include Home Assistant come sorgente separata.
+- Version bump: 0.1.478 -> 0.1.479.
+
+## 2026-10-01 (Smart Home globale driver-neutral)
+- L'Hub è la fonte autorevole per categorie/pagine multiple, piano, stanza, gruppi, ordine, visibilità, preferiti, scorciatoie e icone di HDL, Ksenia e driver futuri.
+- Il contratto `smart_home` pubblica capability e descrittori uniformi per comandi, realtime, scenari e routine senza dettagli di trasporto.
+- Provider e dispatcher comandi sono registrabili per source; aggiungere un driver non richiede modifiche alla route centrale.
+- UI organizzazione estesa per categorie multiple, gruppi multipli e preferenze di presentazione persistenti e incluse nel backup.
+- Version bump: 0.1.458 -> 0.1.459.
+
+## 2026-09-28 (MQTT RGB strip master)
+- MQTT Discovery: i canali dimmer RGB restano esposti singolarmente e viene aggiunta una luce master per ogni gruppo RGB configurato.
+- Il master espone accensione, luminosita' e selettore colore RGB; i comandi vengono convertiti nei valori dei canali BusPro red/green/blue.
+- Lo stato master e' ricavato dagli stati reali dei canali e aggiornato in tempo reale; aggiunta pulizia dei retained discovery per gruppi rimossi o rinominati.
+- Version bump: 0.1.440 -> 0.1.441.
+
+## 2026-09-23 (Home Assistant entities routed exclusively to eFace)
+- Admin: aggiunto il flag persistente `Solo eFace`; con il flag attivo sono accettati tutti i domini Home Assistant.
+- Runtime: le entita' `Solo eFace` vengono escluse dalla UI HDL classica e incluse nel nuovo endpoint `/api/eface/snapshot` con stato e attributi HA.
+- eFace: aggiunta categoria Sensori per `sensor`, `binary_sensor` e domini informativi, con valore, unita', disponibilita' e icone per device class.
+- Version bump: 0.1.439 -> 0.1.440.
+
+## 2026-09-19 (Scenario command events for e-Face routines)
+- Il connettore pubblica `light_scenario_command` con ID e azione ON/OFF/RUN/STOP all'avvio del comando, distinto dallo stato calcolato dello scenario.
+- Version bump: 0.1.438 -> 0.1.439.
+
+## 2026-06-10 (Filter WebView parse-noise warning)
+- Runtime: filtrato `ui_log` per il falso positivo Android/WebView `js_error: Unexpected end of input`, lasciando attivi gli altri warning UI.
+- Version bump: 0.1.437 -> 0.1.438.
+
+## 2026-06-10 (SunMind smart redirect diagnostics)
+- Proxy: aggiunta iniezione minimale smart redirect/debug anche per `e_SunMind`, mantenendo il resto della pagina in pass-through.
+- Debug: gli errori probe ora riportano il messaggio composto (`fetch + image fallback`) invece del solo nome generico `Error`.
+- Version bump: 0.1.436 -> 0.1.437.
+
+## 2026-06-10 (Smart redirect for ext pages)
+- Proxy: aggiunto redirect smart locale/remoto anche alle pagine HTML servite da `/ext/<name>/`.
+- Debug: le pagine proxate scrivono `smart_link target=page_redirect:ext:<name>` quando `Debug` smart link e' attivo.
+- Runtime: il redirect `/ext` mantiene path/query/hash e cambia solo il base locale/remoto.
+- Runtime: aggiunto fallback probe via immagine statica locale quando `fetch()` verso IP privato viene bloccato dal browser.
+- Runtime: aggiunto recheck su `online`, `focus`, `visibilitychange` e retry leggero per passaggio dati mobili -> Wi-Fi senza refresh manuale.
+- Version bump: 0.1.435 -> 0.1.436.
+
+## 2026-06-10 (Smart page local/remote redirect)
+- User UI: aggiunto redirect smart locale/remoto comune a `/home`, `/home2`, `/home_plus`, `/e-face`, `/lights`, `/covers`, `/scenarios`, `/extra`, `/locks` e `/e-guard`.
+- Runtime: il redirect testa `Base URL locale + /health` con timeout configurabile e mantiene path/query/hash della pagina aperta.
+- Admin UI: aggiunti `Redirect pagine`, base URL locale/remoto, timeout test locale e cache esito nella sezione `Home (hub) links`.
+- Debug: i log `smart_link` includono anche le decisioni `page_redirect:*`; `noredirect=1` evita il redirect per singolo test.
+- Version bump: 0.1.434 -> 0.1.435.
+
+## 2026-06-10 (Smart local/remote Home2 links)
+- Home2: aggiunta funzione opzionale Smart link locale/remoto per i link manuali della Home.
+- Admin UI: aggiunti switch `Attivo`/`Debug`, host locale/remoto e campi `URL locale`/`URL remoto` sui link Home.
+- Runtime: aggiunto endpoint debug `api/smart_link_log`, attivo solo con debug smart link abilitato.
+- Version bump: 0.1.433 -> 0.1.434.
+
+## 2026-06-09 (Memory diagnostics option)
+- Runtime: aggiunta opzione `memory_log` per abilitare esplicitamente i log `memory_diag`.
+- Runtime: i diagnostici memoria sono spenti di default e non vengono piu' stampati ogni minuto con `debug` disattivato.
+- Version bump: 0.1.432 -> 0.1.433.
+
+## 2026-06-09 (Readable admin scenario devices)
+- Admin UI: nella lista `Dispositivi nello scenario` vengono mostrati i nomi reali dei dispositivi invece dei soli indirizzi tecnici.
+- Admin UI: le righe dei dispositivi selezionati sono piu' leggibili, con nome/metadati sopra e controlli sotto.
+- Version bump: 0.1.431 -> 0.1.432.
+
+## 2026-06-09 (Admin duplicate scenarios)
+- Admin UI: aggiunto pulsante `Duplica scenario` nella configurazione scenari.
+- Admin UI: la duplicazione copia dispositivi, cover, trigger e flag dello scenario selezionato, rimuove l'ID e salva come nuovo scenario.
+- Version bump: 0.1.430 -> 0.1.431.
+
+## 2026-06-09 (Admin scenario editor)
+- Admin UI: la sezione scenari consente ora di creare scenari nuovi e modificare quelli esistenti senza passare dalla UI utente.
+- Admin UI: aggiunti ricerca, aggiunta singola e "Aggiungi visibili" per luci BusPro, cover BusPro, gruppi cover, luci/switch HA e cover HA supportati dal motore scenari.
+- Admin UI: le schede accordion partono chiuse/minimizzate a ogni apertura della pagina Admin.
+- Version bump: 0.1.429 -> 0.1.430.
+
+## 2026-06-09 (Disable noisy global JS error telemetry)
+- User UI: disabilitata la cattura globale `window.onerror` per evitare warning ripetuti `Unexpected end of input` non azionabili su Android WebView.
+- Proxy: disabilitata la telemetria globale `js_error` del bootstrap, mantenendo rejection/stream/websocket diagnostics.
+- Version bump: 0.1.428 -> 0.1.429.
+
+## 2026-06-09 (No-store user HTML)
+- User UI: le pagine HTML utente vengono servite con `Cache-Control: no-store` per evitare bundle diagnostici stale in Android WebView.
+- PWA: il service worker non precache-a piu' pagine HTML e forza `cache: reload` sulle navigazioni.
+- Version bump: 0.1.427 -> 0.1.428.
+
+## 2026-06-09 (WebView UI diagnostic compatibility)
+- User UI: lo script diagnostico comune non usa piu' `async`/`await`, riducendo i parse error su Android WebView embedded.
+- Version bump: 0.1.426 -> 0.1.427.
+
+## 2026-06-09 (WebView parse diagnostics)
+- Proxy: il bootstrap JS iniettato usa sintassi piu' conservativa per compatibilita' con WebView embedded.
+- User UI: i log `js_error` includono filename, riga e colonna per isolare eventuali parse error residui.
+- Version bump: 0.1.425 -> 0.1.426.
+
+## 2026-06-09 (Proxy upstream unavailable log)
+- Proxy: gli errori upstream `URLError`/connection refused vengono loggati come warning sintetico invece di stampare traceback completi.
+- UX/API: quando un target proxato non e' raggiungibile, il proxy risponde con `502` e detail `Upstream unavailable`.
+- Version bump: 0.1.424 -> 0.1.425.
+
+## 2026-06-09 (SunMind proxy log cleanup)
+- Proxy: normalizzato il nome target `e_SunMind`/`e-SunMind` prima del controllo pass-through, evitando l'iniezione bootstrap sulle pagine SunMind.
+- Log UI: gli eventi informativi `ui_log` passano a debug; restano warning solo errori JS/fetch reali.
+- Version bump: 0.1.423 -> 0.1.424.
+
+## 2026-06-09 (Runtime memory diagnostics)
+- Runtime: aggiunto log `memory_diag` ogni 60 secondi con RSS/VMS/swap, thread, task asyncio, stato MQTT, client WebSocket e dimensioni delle principali strutture dati.
+- Diagnostica: inclusi conteggi di device, stati, gruppi, scenari, dispositivi HA, cache runtime e buffer sniffer per individuare crescite anomale nel tempo.
+- Shutdown: il task diagnostico viene cancellato esplicitamente durante lo spegnimento reale del runtime.
+- Version bump: 0.1.422 -> 0.1.423.
+
+## 2026-06-09 (Normalize MQTT discovery icons)
+- MQTT Discovery: le icone vengono normalizzate nel formato richiesto da Home Assistant `prefix:name`.
+- Compatibilita': valori legacy come `strip` vengono pubblicati come `mdi:led-strip`, evitando errori MQTT discovery su `data['icon']`.
+- Version bump: 0.1.421 -> 0.1.422.
+
+## 2026-06-09 (Ignore invalid UDP telegrams)
+- BusPro UDP: i datagrammi con CRC non valido vengono scartati prima dei callback, evitando `AttributeError: 'NoneType' object has no attribute 'target_address'`.
+- Parser BusPro: i CRC falliti passano a log debug invece di stampare ripetutamente su stdout.
+- Version bump: 0.1.420 -> 0.1.421.
+
+## 2026-06-08 (Colored floor headers)
+- User UI Luci/Extra: le intestazioni piano supportano colore opzionale con sintassi `# Piano | #ffd700`.
+- Admin UI: il drag & drop conserva anche il colore configurato sulle intestazioni piano.
+- Version bump: 0.1.419 -> 0.1.420.
+
+## 2026-06-08 (HA device group selector)
+- Admin UI: il form Home Assistant devices usa la stessa select gruppo dei dispositivi BusPro, con opzione `Altro (custom)`.
+- Version bump: 0.1.418 -> 0.1.419.
+
+## 2026-06-08 (Hide floor marker in user UI)
+- User UI Luci/Extra: il prefisso tecnico `#` resta nell'admin ma non viene mostrato nelle intestazioni piano della vista utente.
+- Version bump: 0.1.417 -> 0.1.418.
+
+## 2026-06-08 (Preserve floor marker while dragging)
+- Admin UI: il drag & drop dell'ordine gruppi mantiene il prefisso `#` sulle intestazioni piano.
+- Version bump: 0.1.416 -> 0.1.417.
+
+## 2026-06-08 (Visible floor marker)
+- User UI Luci/Extra: le intestazioni piano mostrano il prefisso `#` anche nella vista utente, per distinguerle chiaramente dai gruppi.
+- Version bump: 0.1.415 -> 0.1.416.
+
+## 2026-06-08 (Floor header emphasis)
+- User UI Luci/Extra: le intestazioni piano `# ...` sono piu' grandi, in grassetto e piu' leggibili.
+- Version bump: 0.1.414 -> 0.1.415.
+
+## 2026-06-08 (Group rename action)
+- Admin UI: aggiunto comando `Rinomina gruppo` per aggiornare realmente il nome gruppo nei dispositivi BusPro e nei dispositivi Home Assistant importati.
+- API: aggiunto `POST /api/ui/groups/rename`, con broadcast realtime di dispositivi e ordine gruppi dopo la rinomina.
+- Store: la rinomina aggiorna anche `group_order`, mantenendo intatte le intestazioni piano `#`.
+- Version bump: 0.1.413 -> 0.1.414.
+
+## 2026-06-08 (Floor headers in group order)
+- Admin UI: `User UI: ordine gruppi` supporta righe `# NOME PIANO` come intestazioni, mantenendole nel salvataggio senza mostrarle nelle select gruppo dei dispositivi.
+- User UI Luci/Extra: inseriti divisori piano sopra i gruppi assegnati sotto ciascuna riga `#`.
+- Store: `group_order` conserva le intestazioni `#` invece di convertirle in gruppi normali.
+- Version bump: 0.1.412 -> 0.1.413.
+
+## 2026-06-08 (Active group indicators)
+- User UI Luci: gli header gruppo mostrano un'icona lampadina e si colorano leggermente quando almeno una luce del gruppo e' accesa.
+- User UI Extra: gli header gruppo mostrano un'icona extra e si colorano leggermente quando almeno un elemento del gruppo e' attivo.
+- I conteggi realtime aggiornano anche lo stato visivo attivo degli header gruppo.
+- Version bump: 0.1.411 -> 0.1.412.
+
+## 2026-06-08 (Admin group dropdown refresh)
+- Admin UI: la tendina gruppo dei form dispositivo viene aggiornata anche dopo il caricamento e il salvataggio dell'ordine gruppi User UI.
+- Risolve i gruppi creati ma non ancora usati che comparivano nella lista ordinabile ma non nel menu del form.
+- Version bump: 0.1.410 -> 0.1.411.
+
+## 2026-06-08 (Docker build arch fallback)
+- Dockerfile: l'immagine base ora deriva direttamente da `BUILD_ARCH` invece di forzare `amd64-base`.
+- Risolve il build su host `aarch64` che falliva con `exec /bin/ash: exec format error` usando per errore l'immagine base amd64.
+- Version bump: 0.1.409 -> 0.1.410.
+
+## 2026-06-08 (Prebuilt e-Face assets for add-on build)
+- Build add-on: rimossa la dipendenza da `node:20-alpine` e `npm ci` durante il build Docker Home Assistant.
+- e-Face Vue/Vite viene pubblicata come asset statico precompilato sotto `app/static/eface`, riducendo i punti di errore dell'update add-on.
+- Version bump: 0.1.408 -> 0.1.409.
+
+## 2026-06-08 (VENTIL category shown in Extra)
+- User UI: i dispositivi BusPro `type=light` con `category=VENTIL` vengono mostrati automaticamente in `/extra`.
+- User UI Luci: gli stessi dispositivi vengono esclusi da `/lights`, come gia' avviene per `Switch` ed `Extra`.
+- Version bump: 0.1.407 -> 0.1.408.
+
+## 2026-06-08 (Proxy stream queue hardening)
+- Proxy stream: eliminati gli stack trace `asyncio.queues.QueueFull` quando il browser consuma lentamente lo stream proxato.
+- Per target con `base_url` sotto path applicativo, `/api/stream` viene inoltrato alla root dell'upstream come gli altri endpoint `/api/...`.
+- Version bump: 0.1.406 -> 0.1.407.
+
+## 2026-06-08 (Admin group selector includes ordered groups)
+- Admin UI: le select `group` dei form dispositivo includono anche i gruppi creati/ordinati in `User UI: ordine gruppi`, anche se non sono ancora usati da nessun dispositivo.
+- Mantiene l'opzione `Altro (custom)` per nuovi gruppi liberi.
+- Version bump: 0.1.405 -> 0.1.406.
+
+## 2026-06-06 (Proxy root API with app path)
+- Proxy `/ext/...`: per target con `base_url` sotto path applicativo (es. `/thermostats`), le chiamate root come `/api/cmd` ora vengono inoltrate alla root dell'upstream.
+- Risolve i comandi proxati che fallivano con 404 su `/ext/<name>/api/cmd`.
+- Version bump: 0.1.404 -> 0.1.405.
+
+## 2026-06-06 (Proxy app-path dedupe)
+- Proxy `/ext/...`: quando un target ha `base_url` con path applicativo (es. `/thermostats`), la navigazione interna non duplica piu' il prefisso (`/thermostats/thermostats/1`).
+- Risolve le pagine proxate che si aprivano ma caricavano dati vuoti perche' l'app riceveva un id percorso sbagliato.
+- Version bump: 0.1.403 -> 0.1.404.
+
+## 2026-06-05 (Vue/Vite e-Face shell)
+- Aggiunta nuova interfaccia `/e-face` basata su Vue 3 + Vite, separata da `Home+`.
+- e-Face usa le API esistenti dell'addon (`/api/user/snapshot`, `/api/meta`, `/api/control/...`) per mostrare e comandare luci, cover, lock ed extra.
+- Build Docker estesa con stage Node (`npm ci` + `vite build`) e pubblicazione degli asset sotto `/static/eface`.
+- User port: `/e-face` autorizzata come pagina utente; aggiunto link e-Face nella barra Admin.
+- Version bump: 0.1.402 -> 0.1.403.
+
+## 2026-06-05 (Home+ wall panel refresh)
+- User UI Home+: rinominato `Quick Links` in `Menu` per chiarire che mostra tutti i collegamenti disponibili.
+- User UI Home+: i `Preferiti` ora sono una selezione configurabile dal pannello `Personalizza` e non duplicano piu' automaticamente il menu.
+- User UI Home+: layout aggiornato con testata brand, tile piu' leggibili, orologio grande, indicatori luci/cover/comandi e stato sistema compatto.
+- Compatibilita': le preferenze locali `ekonex_home_plus_v1` vengono lette come fallback dalla nuova configurazione `v2`.
+- Version bump: 0.1.401 -> 0.1.402.
+
+## 2026-06-04 (Separate cover inversion and curtain mode)
+- Ripristinata l'opzione `Inverti stato, posizione e comandi` per le cover Home Assistant, inclusa la gestione negli scenari.
+- Aggiunta una seconda opzione indipendente `Modalita' tenda`: cambia solo la direzione fisica delle frecce (`su = CLOSE`, `giu' = OPEN`).
+- Se entrambe le opzioni sono attive, le frecce vengono scambiate una sola volta e non si annullano tra loro.
+- Le configurazioni `invert_cover` esistenti continuano a funzionare senza migrazione; la nuova modalita' usa il campo separato `curtain_mode`.
+- Version bump: 0.1.400 -> 0.1.401.
+
+## 2026-06-04 (Vertical curtain arrow direction)
+- L'opzione cover Home Assistant invertita ora rappresenta la modalita' tenda verticale: `CLOSED` e' completamente arrotolata in alto, `OPEN` e' completamente srotolata in basso.
+- User UI Cover: per le tende verticali la freccia su invia `CLOSE` e la freccia giu' invia `OPEN`.
+- Stato, posizione, slider e comandi degli scenari restano fedeli ai valori Home Assistant e non vengono piu' invertiti.
+- Admin UI: rinominata e chiarita l'opzione per distinguere l'inversione delle frecce dall'inversione di stato/posizione.
+- Version bump: 0.1.399 -> 0.1.400.
+
+## 2026-06-04 (Invert HA curtain state and position)
+- Admin Home Assistant devices: aggiunta opzione `Cover/tenda invertita` per le entita' `cover.*` mostrate nella pagina Cover.
+- User UI Cover: con inversione attiva scambia Aperta/Chiusa e Apertura/Chiusura, mostra `100 - posizione` e traduce Apri/Chiudi e slider nei comandi reali opposti.
+- Runtime scenari: i comandi e lo stato degli scenari rispettano l'inversione configurata sulla cover HA.
+- L'inversione e' configurabile per singola entita', evitando di modificare le tende Home Assistant che seguono gia' la semantica standard.
+- Version bump: 0.1.398 -> 0.1.399.
+
+## 2026-06-04 (Cover UI routing and HA position capability)
+- User UI Cover: i comandi distinguono esplicitamente target HDL, Home Assistant e gruppi, evitando che un comando destinato a una cover HDL venga inviato a una cover HA.
+- Cover Home Assistant: lo slider posizione viene mostrato solo quando l'entita' supporta `CoverEntityFeature.SET_POSITION`.
+- Aggiunta validazione degli indirizzi HDL prima dell'invio dei comandi cover.
+- Version bump: 0.1.397 -> 0.1.398.
+
+## 2026-06-03 (Ignore retained MQTT commands)
+- MQTT: i comandi retained ricevuti sui topic `cmd/...` vengono ignorati, evitando che vecchi comandi `ON` vengano rieseguiti al riavvio dell'add-on o di Home Assistant.
+- Version bump: 0.1.396 -> 0.1.397.
+
+## 2026-06-03 (RGB off-state persistence)
+- User UI Luci: quando un gruppo RGB e' spento, gli slider slave `red/green/blue` vengono nascosti.
+- User UI Luci: lo snapshot/realtime non sovrascrive piu' il colore base RGB con `0/0/0` quando tutti i canali risultano spenti dopo riavvio.
+- User UI Luci: aggiunta protezione per colori RGB gia' salvati tutti a zero, ripristinando valori utilizzabili se il gruppo e' spento.
+- Version bump: 0.1.395 -> 0.1.396.
+
+## 2026-06-03 (RGB realtime feedback)
+- User UI Luci: gli slider slave RGB ora si sincronizzano con gli stati reali dei canali quando cambiano da altra interfaccia o da polling/realtime.
+- User UI Luci: le righe slave RGB ora usano una colorazione interna proporzionale alla percentuale del canale.
+- User UI Luci: il master RGB ora usa il colore composto RGB come feedback visivo, con intensita' proporzionale alla percentuale master, invece del giallo standard delle luci normali.
+- Version bump: 0.1.394 -> 0.1.395.
+
+## 2026-06-03 (Home Assistant panel title)
+- Add-on: rinominato il titolo del pannello Home Assistant da `BusPro` a `e-Control`.
+- Version bump: 0.1.393 -> 0.1.394.
+
+## 2026-06-03 (RGB color wheel cleanup)
+- User UI Luci: rimosso il blocchetto testuale sotto la ruota colore, mantenendo barra anteprima, ruota centrata, preset e selettore colore.
+- Version bump: 0.1.392 -> 0.1.393.
+
+## 2026-06-03 (RGB color wheel alignment)
+- User UI Luci: corretta la conversione punto ruota -> colore, eliminando l'offset che poteva applicare un colore diverso da quello cliccato.
+- La ruota colore ora e' centrata nel pannello RGB; la barra luminosa di anteprima resta sopra.
+- Version bump: 0.1.391 -> 0.1.392.
+
+## 2026-06-03 (RGB color wheel)
+- User UI Luci: aggiunta ruota colore nel pannello RGB, mantenendo la barra luminosa di anteprima.
+- La ruota permette di scegliere tonalita' e saturazione; la preview si aggiorna durante il trascinamento e il colore viene applicato al rilascio.
+- Restano disponibili preset colore e selettore colore personalizzato.
+- Version bump: 0.1.390 -> 0.1.391.
+
+## 2026-06-03 (RGB color palette)
+- User UI Luci: aggiunta tavola colori apribile dalla freccia sul master dei gruppi RGB.
+- La tavola include preset colore, anteprima luminosa e selettore colore personalizzato.
+- La scelta colore aggiorna i canali slave `red`, `green`, `blue` e mantiene la regolazione globale del master.
+- Gli slave RGB ora supportano valore `0`, necessario per colori puri come rosso/verde/blu senza residui degli altri canali.
+- Version bump: 0.1.389 -> 0.1.390.
+
+## 2026-06-03 (RGB light master/slave controls)
+- Admin: aggiunti campi opzionali `Gruppo RGB` e `Canale RGB` (`red`, `green`, `blue`) sui dispositivi luce.
+- User UI Luci: i canali dimmer con stesso gruppo RGB vengono mostrati come blocco unico con slider `Master` e slider slave per i singoli canali.
+- Logica RGB: il master scala i valori slave mantenendo il rapporto colore, inviando ai canali HDL il valore effettivo calcolato.
+- I device luce senza configurazione RGB restano invariati.
+- Version bump: 0.1.387 -> 0.1.389.
+
+## 2026-05-25 (HA cover entities on Locks page)
+- HA entities `cover.*` configured with `page=locks` are now rendered in the Locks page as lock-style secure outputs.
+- Locks UI command mapping for cover entities:
+  - `LOCK` -> `cover.close_cover`
+  - `UNLOCK` / `OPEN` -> `cover.open_cover`
+- Open cover states are treated as active on the Locks page.
+- Version bump: 0.1.386 -> 0.1.387.
+
+## 2026-05-18 (Control4 iPhone polling mode)
+- Aggiunta modalita' opzionale `?poll=1` per pagine utente usate in Control4 WebViewer/iPhone.
+- Nuovo endpoint `GET /api/user/snapshot` con lo stesso payload snapshot iniziale del WebSocket.
+- Con `poll=1`, `lights`, `covers`, `extra`, `locks` e `scenarios` non aprono `/ws` e aggiornano lo stato via HTTP polling.
+- Proxy `/ext/...`: bootstrap diagnostico esteso per loggare errori/chiusure `WebSocket` e `EventSource` delle pagine proxate (allarme/altri add-on) dentro Control4 WebViewer.
+- Modalita' normale invariata: senza `poll=1` resta WebSocket realtime.
+- Obiettivo: aggirare chiusure WebSocket anomale iOS WebView (`code=1006`) senza cambiare interfaccia o comandi.
+- Version bump: 0.1.385 -> 0.1.386.
+
+## 2026-05-15 (iPhone user pages loading diagnostics)
+- User UI: aggiunto bootstrap diagnostico comune su tutte le pagine utente (`home`, `home2`, `home_plus`, `lights`, `covers`, `extra`, `locks`, `scenarios`, `e_guard`).
+- Le chiamate `getJson()` delle pagine utente passano ora da fetch con timeout 12s per evitare spinner infinito silenzioso su iPhone/WebView.
+- Aggiunto endpoint `GET /api/ui_log` per log sintetici lato browser:
+  - `page_boot`
+  - `fetch_error`
+  - `js_error`
+  - `js_rejection`
+  - eventi specifici pagina Luci (`load_start`, `meta_ok`, `devices_ok`, `load_error`, `ws_error`, `ws_close`)
+- Logging: aggiunta opzione `access_log` default `false` per ridurre il rumore uvicorn nei log addon; riattivabile da configurazione.
+- Version bump: 0.1.384 -> 0.1.385.
+
+## 2026-05-09 (Home+ include built-in hub sections)
+- Home+ `Quick Links` ora include anche le voci native hub:
+  - `Luci` (`/lights`)
+  - `Cover` (`/covers`)
+  - `Lock` (`/locks`)
+  - `Extra` (`/extra`)
+- Visibilita' e icone rispettano `hub_show` e `hub_icons` da `api/meta`, allineate a Home/Home2.
+- Risolve il caso in cui in Home+ comparivano solo `home_actions` e link proxy custom.
+- Version bump: 0.1.381 -> 0.1.382.
+
+## 2026-05-09 (new Home+ with client-side widgets customization)
+- Aggiunta nuova pagina utente `GET /home_plus` con layout full-screen in stile dashboard.
+- Nuova Home+ basata su widget modulari:
+  - `Quick Links` (azioni home + link proxy visibili)
+  - `Tempo` (orologio/data live)
+  - `Preferiti`
+  - `Sistema` (versione, conteggi, stato back gesture)
+- Personalizzazione lato client (browser/device) con `localStorage`:
+  - mostra/nascondi widget
+  - ordine widget
+  - URL background
+  - numero colonne tile
+- Middleware user aggiornato per consentire la route `/home_plus`.
+- Service worker PWA precache aggiornato includendo `/home_plus`.
+- Version bump: 0.1.380 -> 0.1.381.
+
+## 2026-05-08 (e-SunMind strict pass-through debug mode)
+- Proxy `ext_proxy` per target `e-SunMind` in modalita' pass-through:
+  - disabilitato rewrite/injection del body HTML/CSS
+  - nessuna modifica a `index`/`assets` contenuti.
+- Forward headers `Accept-Encoding` disabilitato per `e-SunMind` (evita transcodifica/compressione lato upstream per debug integrita').
+- Timeout fetch upstream portato a 120s (stabile per payload grandi e reti lente).
+- Cache disabilitata su HTML/CSS/JS e su `/assets/*` `e-SunMind` (`no-store`, no validator headers).
+- MIME statici forzati per `e-SunMind`:
+  - `.js` -> `application/javascript; charset=utf-8`
+  - `.css` -> `text/css; charset=utf-8`
+- Version bump: 0.1.379 -> 0.1.380.
+
+## 2026-05-08 (bootstrap debug script hardened for WebView parser)
+- Ridotto e semplificato il blocco debug JS iniettato dal proxy per massima compatibilita' WebView:
+  - rimosso uso di `fetch`/`sendBeacon`/`Blob` per debug
+  - trasporto debug via semplice `Image()` GET query string.
+- Endpoint `__debug/bootstrap` ora gestisce sia `GET` (query params) sia `POST` (body).
+- Obiettivo: eliminare parse error `Unexpected end of input` lato pagina (`/ext/...`) emerso su Android WebView.
+- Version bump: 0.1.378 -> 0.1.379.
+
+## 2026-05-08 (proxy bootstrap client debug telemetry)
+- Aggiunta telemetria debug lato browser nel bootstrap JS iniettato dal proxy:
+  - eventi `load`, `js_error`, `promise_rejection`, `bootstrap_timeout` (8s)
+  - payload con `dt_ms`, `href`, `ua`.
+- Aggiunto endpoint interno proxy `POST /ext/{name}/__debug/bootstrap` gestito in `ext_proxy` con log debug dedicato:
+  - `ext_proxy bootstrap_debug: ... payload=...`
+- Obiettivo: capire subito se i casi "spinner infinito" sono errori JS runtime o timeout bootstrap nel WebView.
+- Version bump: 0.1.377 -> 0.1.378.
+
+## 2026-05-08 (proxy hard no-304 for webview consistency)
+- Proxy `ext_proxy`: rimossi header condizionali in forward request (`If-None-Match`, `If-Modified-Since`, `If-Match`, `If-Unmodified-Since`, `If-Range`) per evitare risposte `304` da upstream.
+- Header anti-cache estesi anche a `text/css` e `javascript` (oltre `text/html`).
+- Obiettivo: evitare mismatch runtime HTML/JS/CSS in WebView (Control4/Android/iOS) con loading infinito o bootstrap error intermittente.
+- Version bump: 0.1.376 -> 0.1.377.
+
+## 2026-05-08 (proxy HTML no-store for webview cache mismatch)
+- Proxy `ext_proxy`: per risposte `text/html` aggiunti header anti-cache:
+  - `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`
+  - `Pragma: no-cache`
+  - `Expires: 0`
+- Su HTML rimossi anche validator header (`ETag`, `Last-Modified`) per evitare riuso stale in WebView/Control4.
+- Obiettivo: ridurre i casi in cui la UI proxata resta in loading/errore bootstrap con asset JS/CSS cached in modo incoerente.
+- Version bump: 0.1.375 -> 0.1.376.
+
+## 2026-05-08 (network diagnostics endpoint)
+- Aggiunto endpoint admin `GET /api/diag/net` per diagnosi raggiungibilita' target proxy dal container addon.
+- Per ogni target proxy restituisce:
+  - check TCP (`host:port`, latenza, errore)
+  - check HTTP su `base_url` (status/latenza o errore)
+- Utile per distinguere problemi rete Android/proxy da problemi UI.
+- Version bump: 0.1.374 -> 0.1.375.
+
+## 2026-05-08 (ext proxy client-disconnect handling)
+- Gestione esplicita `ClientDisconnect` in `ext_proxy` durante la lettura body request.
+- Evita traceback rumorosi `Exception in ASGI application` quando il client interrompe la richiesta.
+- Risposta pulita con status `499` e log debug sintetico.
+- Version bump: 0.1.373 -> 0.1.374.
+
+## 2026-05-08 (proxy client identity logging)
+- Aggiunto tracciamento client reale nei log proxy: `real_ip` da `X-Forwarded-For` (fallback `X-Real-IP`), `proxy_ip` e `user-agent`.
+- Log applicato ai punti chiave proxy (`ext_proxy` e stream proxy named) per distinguere client finali dietro HA/reverse proxy.
+- Nessun cambiamento alla logica di routing/comandi; solo diagnostica.
+- Version bump: 0.1.372 -> 0.1.373.
+
+## 2026-05-08 (log timezone fix)
+- Logging timestamp reso timezone-aware con formatter dedicato.
+- Default timezone log: `Europe/Rome` (override con env `BUSPRO_LOG_TZ` o `TZ`).
+- Risolve disallineamento orario nei log addon rispetto all'ora locale.
+- Version bump: 0.1.371 -> 0.1.372.
+
+## 2026-05-08 (single runtime init across dual uvicorn servers)
+- Fix duplicazione runtime: la stessa app avvia due server (`8124` user + `8125` admin) e gli eventi startup/shutdown venivano eseguiti due volte.
+- Aggiunto guard con lock+refcount condiviso su `app.state`: inizializzazione pesante (`BusPro`, MQTT, poll loop) eseguita una sola volta.
+- Shutdown pesante eseguito solo all'ultimo server shutdown, evitando doppio stop/disconnect.
+- Riduce duplicazione log/eventi cover e traffico bus.
+- Version bump: 0.1.370 -> 0.1.371.
+
+## 2026-05-08 (cover state machine stabilization + HA alignment kept)
+- Cover BusPro: fix logica `set_position` con gestione `pending`/probe/fallback nel punto corretto (dopo invio comando), evitando stati incoerenti OPEN/CLOSE/STOP.
+- Cover BusPro: `clear_pending_motion` semplificato a solo cancel/reset (rimosso blocco errato che usava variabili non definite).
+- Cover BusPro: no-op sicuro quando `requested_position == current_position` (niente comando OPEN/CLOSE spurio).
+- Allineamento HA cover: mapping stato resta coerente con `OPEN/CLOSED/OPENING/CLOSING/STOP` + `position`.
+- Version bump: 0.1.369 -> 0.1.370.
+
+## 2026-05-08 (proxy stream timeout fix + query dedupe)
+- Fix timeout su stream proxati: le richieste `/ext/{name}/api/stream` vengono ora instradate al proxy SSE dedicato (timeout lungo), evitando `_fetch_upstream` a 12s.
+- Fix merge query su root proxy: deduplica coppie query per evitare duplicati tipo `?view=user&view=user`.
+- Version bump: 0.1.368 -> 0.1.369.
+
+## 2026-05-08 (proxy root redirect robustness)
+- Proxy route estesa anche a `/ext/{name}` (oltre a `/ext/{name}/{path:path}`) per coprire ingressi senza trailing slash.
+- Rilevazione root proxy resa robusta (`path == ""` oppure `path == "/"`) per applicare sempre redirect query base.
+- Redirect root con query base (`/ext/<name>/?...`) ora coerente anche in edge-case di routing.
+- Version bump: 0.1.367 -> 0.1.368.
+
+## 2026-05-08 (proxy root keeps base_url query)
+- Fix proxy root URL composition: quando `base_url` contiene query (es. `http://host:1980/?view=user`), la query non viene piu' persa su apertura `/ext/<name>/`.
+- `ext_proxy` ora preserva la query del `base_url` per path root e la merge con eventuale query della richiesta.
+- Risolve il caso in cui veniva aperto `http://host:1980/` invece di `http://host:1980/?view=user`.
+- Version bump: 0.1.366 -> 0.1.367.
+
+## 2026-05-08 (iphone proxy hardening: named stream/assets + EventSource rewrite)
+- Proxy hardening per iPhone/Safari WebView: aggiunte route esplicite con `name` nel path per evitare dipendenza da `referer/cookie`:
+  - `/ext/{name}/api/stream`
+  - `/ext/{name}/assets/{asset_path}`
+- Bootstrap JS iniettato su pagine proxate: aggiunto wrapper `EventSource` con rewrite URL via proxy (`/ext/{name}/...`), allineato a fetch/XHR.
+- Manteniamo i fallback legacy `/api/stream` e `/assets/...` con debug, per compatibilita' retroattiva.
+- Version bump: 0.1.365 -> 0.1.366.
+
+## 2026-05-08 (proxy debug + timestamped logs)
+- Logging: aggiunto formato con timestamp (`YYYY-MM-DD HH:MM:SS`) su tutte le righe log.
+- Proxy debug: aggiunti log `DEBUG` su risoluzione `proxy_name` (referer/cookie), richieste/risposte `/ext`, fallback `/assets`, stream `/api/stream`, websocket `/extws`.
+- Obiettivo: diagnosticare casi intermittenti in cui la pagina proxata resta in loading per perdita contesto (`referer`/cookie) o errore upstream.
+- Version bump: 0.1.364 -> 0.1.365.
+
+## 2026-04-24 (cover position retained stale fix for HA)
+- Cover MQTT publish: il topic posizione (`state/cover_pos/...`) ora viene sempre aggiornato; quando posizione non disponibile viene inviato payload vuoto retained per cancellare valori vecchi.
+- Cover group MQTT publish: stessa correzione su `state/cover_group_pos/...` (prima il topic posizione gruppo poteva restare non aggiornato).
+- Restore stati all'avvio: ora pubblica anche clear dei topic posizione cover/group quando `position` e' `null`, evitando percentuali stale in Home Assistant.
+- Version bump: 0.1.363 -> 0.1.364.
+
+## 2026-04-22 (scenario covers UI: action buttons always visible)
+- UI editor scenari tapparelle: introdotta classe layout dedicata per righe cover (`scCoverItem`) con controlli su piu' righe e wrapping robusto.
+- Pulsanti `Su/Giu/Stop/Rimuovi` e campi `2 fasi Su` sempre visibili senza clipping a destra.
+- Fix valido su desktop, tablet e smartphone.
+- Version bump: 0.1.362 -> 0.1.363.
+
+## 2026-04-22 (scenario covers UI: names visible with two-phase controls)
+- UI scenari tapparelle: fix layout riga editor per evitare che il nome/address cover venga schiacciato con i nuovi controlli `2 fasi Su`.
+- Migliorata responsivita' a larghezze intermedie (tablet/desktop stretto): i controlli vanno sotto e il nome resta leggibile.
+- Aggiornato wrapping meta riga per evitare rendering verticale dell'indirizzo.
+- Version bump: 0.1.361 -> 0.1.362.
+
+## 2026-04-22 (scenario covers: two-phase OPEN in RUN)
+- Scenari tapparelle (`/lights?sc=1`): aggiunta opzione per item cover `2 fasi Su` con parametri `%1` e `Delay m` (mobile-safe, stessi controlli anche su smartphone).
+- Store scenari: persistenza/normalizzazione campi `two_phase_open`, `phase1_pct`, `phase2_delay_minutes` per cover single/group/ha.
+- Runtime RUN scenari: se cover `OPEN` con `2 fasi Su` attivo, esegue `OPEN` -> stop dopo `%1` del tempo salita -> attesa `Delay m` -> `OPEN` finale.
+- Supportato sia per cover singole sia per gruppi cover (comportamento invariato per CLOSE/STOP e per rampe classiche).
+- Version bump: 0.1.360 -> 0.1.361.
+
+## 2026-04-16 (remove ON reinforcement flicker, keep single paced pass)
+- Runtime scenari luci BusPro: rimossa la seconda passata di rinforzo `ON` (causava effetto lampeggio su alcuni impianti).
+- Mantenuta una sola passata comandi con pacing aumentato per maggiore stabilità senza "albero di Natale".
+- Version bump: 0.1.349 -> 0.1.350.
+
+## 2026-04-16 (scenario ON reinforcement pass)
+- Runtime scenari luci BusPro: aggiunta seconda passata di rinforzo `ON` (con pacing) sui target accesi nello scenario.
+- Obiettivo: migliorare affidabilità quando lo scenario contiene molte luci (es. 16) e alcuni telegrammi ON vengono persi al primo passaggio.
+- Version bump: 0.1.348 -> 0.1.349.
+
+## 2026-04-16 (RUN scenarios: ignore OFF light items)
+- Runtime scenari luci: in esecuzione `RUN` (senza stato esplicito) vengono inviati solo comandi `ON`; gli item `OFF` vengono ignorati.
+- I comandi `OFF` restano disponibili solo nei percorsi espliciti ON/OFF/toggle scenario.
+- Version bump: 0.1.347 -> 0.1.348.
+
+## 2026-04-16 (gateway queue race fix under load)
+- BusPro gateway: fix race condition nei worker code (`light`/`cover`) tra controllo coda vuota e `event.clear()`, che poteva perdere wakeup e lasciare job in coda non eseguiti.
+- Event clear ora avviene sotto lock condiviso con enqueue, evitando comandi persi in burst (scenario o comandi multipli ravvicinati).
+- Version bump: 0.1.346 -> 0.1.347.
+
+## 2026-04-16 (scenario rollback verify/retry, keep pacing)
+- Runtime scenari luci BusPro: rimossa la logica di verifica+retry per-target introdotta in `0.1.345` (causava comportamento instabile in alcuni impianti).
+- Mantenuto pacing esplicito tra comandi scenario luce, con delay moderato, per ridurre burst sul bus senza effetti collaterali.
+- Version bump: 0.1.345 -> 0.1.346.
+
+## 2026-04-16 (scenario BusPro pacing + per-target verify)
+- Runtime scenari luci BusPro: aggiunto delay esplicito tra comandi consecutivi nello scenario (oltre al pacing del gateway) per ridurre perdita telegrammi su burst.
+- Verifica scenario: retry sequenziale per-target con `read_light_status` dopo ogni tentativo (fino a 2 tentativi) e log degli indirizzi ancora fuori stato.
+- Version bump: 0.1.344 -> 0.1.345.
+
+## 2026-04-16 (scenario reliability: readback + retry)
+- Runtime scenari luci BusPro: aggiunta verifica stato post-invio (`read_light_status`) e retry automatico una volta solo sui target rimasti fuori stato.
+- Logging: aggiunti warning con conteggio mismatch/retry e lista indirizzi che restano fuori target dopo il retry.
+- Version bump: 0.1.343 -> 0.1.344.
+
+## 2026-04-16 (build fix BUILD_FROM fallback)
+- Dockerfile: aggiunto default per `ARG BUILD_FROM` (`ghcr.io/home-assistant/amd64-base:3.19`) per evitare build failure quando Supervisor non passa il build-arg.
+- Version bump: 0.1.342 -> 0.1.343.
+
+## 2026-04-16 (scenario list + target dedupe)
+- UI user `/lights` scenari: rimossi limiti artificiali nelle liste "Aggiungi" (luci e tapparelle), così non risultano più parziali.
+- UI scenari: inclusi tutti i dispositivi luce rilevanti per l'editor scenario (anche categorizzati `Switch/Extra` lato BusPro e pagina `extra` lato HA).
+- Store scenari: deduplica dei target luce in salvataggio (`entity_id`/indirizzo), mantenendo l'ultima configurazione.
+- Runtime scenari: deduplica difensiva dei target prima dell'invio e warning di log mirati sui target che falliscono.
+- Version bump: 0.1.341 -> 0.1.342.
+
+## 2026-04-08 (locks: mapping sensori HA esterni)
+- Admin `Home Assistant devices`: per entita' con pagina `locks` aggiunti campi opzionali per mappare sensori esterni (`battery`, `battery_low`, `rssi`, `linkquality`, `tamper`).
+- Poll HA: per ogni lock in pagina `locks` legge anche le entita' esterne configurate e unisce i valori alle metriche lock.
+- UI user `/locks`: continua a mostrare metriche sotto lo stato, ora anche da sensori separati (non solo attributi della lock).
+- Version bump: 0.1.340 -> 0.1.341.
+
+## 2026-04-08 (locks: metriche entita' HA in UI user)
+- Backend lock mapping HA: aggiunte metriche opzionali nel payload stato lock (`battery_level`, `battery_low`, `rssi`, `linkquality`, `tamper`), ricavate dagli attributi entita' HA.
+- UI user `/locks`: sotto lo stato lock ora mostra metriche disponibili (es. `Batteria 78%`, `RSSI -62 dBm`, `Tamper attivo`).
+- Aggiornato aggiornamento realtime/snapshot per mantenere sincronizzate le metriche lock senza toccare i comandi lock/unlock/open.
+- Version bump: 0.1.339 -> 0.1.340.
+
+## 2026-04-08 (UI user: trigger esterno E-manager)
+- UI user scenari: quando uno scenario ha trigger esterno attivo, nasconde i controlli trigger orario e mostra `Trigger E-manager` con nome friendly del trigger.
+- UI user modifica scenario (`/lights?sc=1`): rinominata dicitura da `Automazione HA` a `Automazione E-manager`.
+- UI user: etichette visibili `HA` sostituite con `E-manager` (coperture/candidati scenario), senza cambiare la logica backend.
+- Fix integrita' `scenarios.html`: ripristino caratteri corrotti nel render e mantenimento stato espandi/trigger.
+- Version bump: 0.1.338 -> 0.1.339.
+
+## 2026-04-08 (HA automation triggers for scenarios)
+- Added admin-managed list of HA scenario triggers (friendly names) with CRUD API and Admin UI section.
+- Added MQTT Discovery button entities for each HA scenario trigger: automation action can press these buttons.
+- Added trigger command handling: cmd/scenario_ha_trigger/<id> now starts all scenarios linked to that trigger.
+- Added per-scenario fields in user scenario editor: Automazione HA (enable + trigger selection).
+- User UI now reads trigger list and stores ha_trigger_enabled + ha_trigger_id in scenario payload.
+- Version bump: 0.1.337 -> 0.1.338.
+
+## 2026-04-08 (modifica scenari: nomi sempre visibili)
+- UI /lights?sc=1: righe scenario ristrutturate in due blocchi (sinistra nome+meta, destra pulsanti).
+- Fix clipping nomi scenario: nome non viene più mangiato quando ci sono molti pulsanti.
+- Su mobile i pulsanti vanno a capo sotto il nome, mantenendo leggibilità e scroll verticale.
+- Version bump: 0.1.336 -> 0.1.337.
+
+## 2026-04-08 (modifica scenari mobile scroll fix)
+- UI /lights?sc=1 (modifica scenari): modal scenari reso scrollabile su mobile con overflow:auto e -webkit-overflow-scrolling: touch.
+- Modal posizionato sotto area top (safe-area) per evitare copertura/overlap e consentire scroll verticale naturale come UI user.
+- Desktop invariato: modal resta centrato con altezza massima precedente.
+- Version bump: 0.1.335 -> 0.1.336.
+
+## 2026-04-08 (scenari centered desktop + safe mobile)
+- UI /scenarios: layout responsive corretto.
+- Desktop: lista scenari nuovamente centrata verticalmente.
+- Mobile: mantiene padding top con safe-area per evitare overlap con icone fisse quando gli scenari sono espansi.
+- Version bump: 0.1.334 -> 0.1.335.
+
+## 2026-04-08 (scenari top safe area)
+- Fix UI /scenarios: aggiunto spazio superiore con safe-area per evitare sovrapposizione con icone fisse (home/scenari/settings) quando le righe sono espanse.
+- main ora parte dall'alto (justify-content:flex-start) invece che centrato verticalmente.
+- Version bump: 0.1.333 -> 0.1.334.
+
+## 2026-04-08 (scenari compact + trigger expand)
+- UI /scenarios: lista compatta di default (nome + pulsanti esecuzione).
+- Click sul nome scenario: espande/chiude dettagli trigger (orario, salva, disattiva, stato).
+- Feedback trigger: campo orario giallo quando attivo, grigio quando non attivo.
+- Aggiunto pulsante Disattiva trigger nella riga scenario.
+- Version bump: 0.1.332 -> 0.1.333.
+
+
+## 2026-01-19
+- Creato scheletro add-on (Dockerfile, config.json, backend FastAPI placeholder).
+- Prossimo: UI web + auth + persistenza devices + MQTT discovery.
+
+## 2026-01-19 (continuazione)
+- Aggiunta UI web iniziale (CRUD dispositivi) su `/`.
+- Aggiunto client MQTT + endpoint `/api/mqtt/status` e ripubblicazione discovery.
+- La discovery (retain) viene pubblicata su avvio e ad ogni modifica dei devices.
+
+- Version bump: 0.1.0 → 0.1.1 (policy: bump ad ogni modifica).
+
+
+## 2026-01-19 (fix Supervisor discovery)
+- Rimosso `repository.yaml` (Supervisor lo interpretava come repository, quindi l’add-on non compariva).
+- Aggiunto `build_from` e cambiato `image` per build locale.
+- Version bump: 0.1.1 → 0.1.2.
+
+## 2026-01-19 (rename)
+- Rinominata cartella add-on per combaciare con `slug`: `e-hdl_buspro_addon` → `e_hdl_buspro_mqtt`.
+- Version bump: 0.1.2 → 0.1.3.
+
+- Fix: rimosso UTF-8 BOM da config.json (Supervisor non lo parsava).
+- Version bump: 0.1.3 → 0.1.4.
+
+
+- Fix: webui placeholder valido per Supervisor (PORT placeholder).
+- Version bump: 0.1.4 → 0.1.5.
+
+
+- Fix: rimosso campo 'image' per forzare build locale da Dockerfile (evita pull 404).
+- Version bump: 0.1.5 → 0.1.6.
+
+
+## 2026-01-19 (build fix)
+- Fix build: uso venv in `/opt/venv` per evitare errore PEP 668 (externally-managed-environment).
+- Aggiornato `run.sh` per usare il python del venv.
+- Version bump: 0.1.6 → 0.1.7.
+
+- Tweaks: pip upgraded inside venv (safe) + removed no-op install.
+- Version bump: 0.1.7 → 0.1.8.
+
+
+## 2026-01-19 (runtime fix)
+- Fix: rimosso BOM da `run.sh` (shebang rotto) + aggiunto `cd /app`.
+- Fix: aggiunto `PYTHONPATH=/app` nel Dockerfile per risolvere `No module named app.main`.
+- Version bump: 0.1.8 → 0.1.9.
+
+## 2026-01-19 (sidebar/ingress)
+- Aggiunto Ingress + panel (Mostra nella barra laterale) in `config.json`.
+- UI ora usa fetch relativi per funzionare sia su porta web sia via Ingress.
+- Porta interna fissata a 8124; la porta esterna si cambia dalla sezione Network dell’add-on.
+- Version bump: 0.1.9 → 0.1.10.
+
+## 2026-01-19 (dockerfile fix)
+- Fix: riscritto Dockerfile (ENV line continuations corrette; rimosse sequenze `\\` accidentali).
+- Version bump: 0.1.10 → 0.1.11.
+
+## 2026-01-19 (auth defaults)
+- Default auth impostata a `none` (evita lockout con token vuoto).
+- Fallback automatico a `none` se `token` o credenziali basic mancanti.
+- Version bump: 0.1.11 → 0.1.12.
+
+## 2026-01-19 (ingress fix)
+- Fix: disabilitato `host_network` per far funzionare Ingress/sidebar (503).
+- Version bump: 0.1.12 → 0.1.13.
+
+## 2026-01-19 (mqtt callback fix)
+- Fix: callback `on_disconnect` compatibile con Paho MQTT v2 (aggiunto parametro `disconnect_flags`).
+- Version bump: 0.1.13 → 0.1.14.
+
+## 2026-01-19 (ingress auth bypass)
+- Fix: bypass auth interna quando richiesto via Home Assistant Ingress (header ingress), per evitare 503 e usare l’autenticazione di HA.
+- Version bump: 0.1.14 → 0.1.15.
+
+## 2026-01-19 (ingress routing)
+- Fix UI: chiamate API relative (`./api/...`) per funzionare dietro Ingress.
+- Aggiunto endpoint alias `/ingress` → `/`.
+- Pulita formattazione `auth_middleware`.
+- Version bump: 0.1.15 → 0.1.16.
+
+## 2026-01-19 (ingress basepath)
+- Fix: middleware che stripppa il prefisso `x-ingress-path` (o `/local_*`) per far funzionare routing/API dietro Ingress.
+- Version bump: 0.1.16 → 0.1.17.
+
+## 2026-01-19 (ingress fallback)
+- Fix: aggiunto `X-Forwarded-Prefix` come base path Ingress.
+- Fix: route fallback SPA per servire l’UI anche su path non previsti dietro proxy.
+- Version bump: 0.1.17 → 0.1.18.
+
+## 2026-01-19 (playbook)
+- Creato `ADDON_BUILD_PLAYBOOK.md` con i passaggi e bugfix per replicare il processo su add-on futuri.
+- Version bump: 0.1.18 → 0.1.19.
+
+## 2026-01-19 (realtime control)
+- Vendorizzato `pybuspro` dentro l’add-on.
+- Aggiunto gateway UDP + cache stato + comandi luce.
+- Aggiunta UI realtime: WebSocket + comandi (toggle/slider) sui device creati.
+- MQTT: publish stati su `buspro/state/...` e subscribe comandi su `buspro/cmd/...`.
+- Version bump: 0.1.19 → 0.1.20.
+
+- Cleanup: rimosso telegram callback extra (duplicato) in buspro_gateway.
+- Version bump: 0.1.20 → 0.1.21.
+
+
+## 2026-01-19 (persistence)
+- Persistenza: salvato ultimo stato device in `/data/state.json` (sezione `states`).
+- MQTT: stati pubblicati retained + ripubblicati all’avvio.
+- UI: snapshot websocket include gli ultimi stati persistiti.
+- Version bump: 0.1.21 → 0.1.22.
+
+## 2026-01-19 (hotfix syntax)
+- Fix: corretto `buspro_gateway.py` (rimosso testo letterale `\\n` che rompeva la sintassi Python).
+- Version bump: 0.1.22 → 0.1.23.
+
+- Fix2: sostituito literal \\n con newline reale in buspro_gateway.
+- Version bump: 0.1.23 → 0.1.24.
+
+
+## 2026-01-19 (pybuspro HA-deps fix)
+- Fix: `pybuspro/devices/__init__.py` non importa piu `cover` (dipendenza da `homeassistant`).
+- Fix: `pybuspro/__init__.py` riscritto senza BOM.
+- Fix: `pybuspro/devices/cover.py` ora ha fallback se `homeassistant` non esiste.
+- Version bump: 0.1.24 -> 0.1.25.
+
+- Fix: riscritto pybuspro/__init__.py rimuovendo literal \\n che rompeva Python.
+- Version bump: 0.1.25 → 0.1.26.
+
+
+## 2026-01-19 (startup fixes)
+- Fix: corretto `_republish_discovery()` (publish dentro al loop; rimossa riga errata con variabili non definite).
+- Fix: rimossa chiamata duplicata a `_republish_discovery()` in startup.
+- Version bump: 0.1.26 → 0.1.27.
+
+- Fix: rimossa seconda chiamata duplicata a _republish_discovery() in startup.
+- Version bump: 0.1.27 → 0.1.28.
+
+
+- Fix: rimossa chiamata duplicata _republish_discovery() (regex CRLF).
+- Version bump: 0.1.28 → 0.1.29.
+
+
+- Fix: corretto indent della comment line dopo _republish_discovery (evita IndentationError).
+- Version bump: 0.1.29 → 0.1.30.
+
+
+## 2026-01-19 (remove device)
+- Aggiunto endpoint remove singolo device light: `DELETE /api/devices/light/{subnet}/{device}/{channel}`.
+- Store: rimozione anche dello stato persistito per quel device.
+- Version bump: 0.1.30 → 0.1.31.
+
+## 2026-01-19 (ui remove)
+- UI: aggiunto pulsante Rimuovi per device (chiama `DELETE /api/devices/light/...`).
+- Version bump: 0.1.31 → 0.1.32.
+
+## 2026-01-19 (indent fix)
+- Fix: corretto indent di `@api.delete("/api/devices")` (evitava IndentationError).
+- Version bump: 0.1.32 → 0.1.33.
+
+## 2026-01-19 (hotfix store)
+- Fix: rimosso literal `\\n` da `store.py` (SyntaxError su avvio).
+- Version bump: 0.1.33 → 0.1.34.
+
+## 2026-01-19 (build guard)
+- Fix: rimosso literal `\\n` residuo in `store.py`.
+- Dockerfile: aggiunto `python -m compileall` in build per fallire subito se ci sono SyntaxError/IndentationError.
+- Version bump: 0.1.34 → 0.1.35.
+
+## 2026-01-20 (build fix cover)
+- Fix: corretto `pybuspro/devices/cover.py` (rimosse sequenze `\\n` letterali nel try/except).
+- Version bump: 0.1.35 → 0.1.36.
+
+## 2026-01-20 (realtime devices)
+- Realtime: broadcast lista dispositivi su WebSocket dopo add/remove/clear.
+- Version bump: 0.1.36 → 0.1.37.
+
+## 2026-01-20 (ui devices event)
+- UI: gestione evento WebSocket `devices` per aggiornare la tabella senza refresh.
+- Version bump: 0.1.37 → 0.1.38.
+
+## 2026-01-20 (commands debug)
+- Aggiunto `/api/buspro/status` per diagnosticare host/porta e stato UDP transport.
+- Aggiunto polling `read_status` ogni 20s per aggiornare stati senza azioni manuali.
+- `control_light` ora ritorna 503 se il transport UDP non è pronto.
+- Version bump: 0.1.39 → 0.1.40.
+
+- Fix: corretto newline mancante tra _broadcast_devices e _republish_discovery (SyntaxError).
+- Version bump: 0.1.40 → 0.1.41.
+
+
+- Fix: rimosse sequenze \\n letterali in shutdown (poll_task cancel) in main.py.
+- Version bump: 0.1.41 → 0.1.42.
+
+
+- Fix: shutdown poll_task line replaced properly (no literal \\n).
+
+## 2026-01-20 (ui live refresh + controls)
+- Fix: `POST/DELETE /api/devices` ora fanno broadcast WebSocket `devices` (prima serviva refresh).
+- Fix: non cancellare piu `poll_task` su `buspro_status` / `control_light` / `add_device` (lo stato continua ad aggiornarsi).
+
+## 2026-01-24 (temperature sensors)
+- Aggiunti sensori temperatura manuali (device `type=temp`) con `sensor_id` (channel), `decimals`, `min_value`/`max_value`.
+- Decode telegram `OperateCode.BroadcastTemperatureResponse` (float32 little-endian) e publish MQTT retained su `.../state/temp/<sub>/<dev>/<sensor>`.
+- MQTT Discovery Home Assistant per `sensor` (device_class temperature, unit °C).
+- Admin UI: CRUD sensori temperatura + valore live via WebSocket (`temp_value`) e snapshot `temp_states`.
+- Fix decode: i 4 byte float sono `payload[2:6]` (non `payload[1:5]`).
+- Version bump: 0.1.171 -> 0.1.173.
+- Sensori temperatura: supporto formato corto a 2 byte (`payload=[sensor_id,value]`) per moduli 12-in-1, con `temp_format` e override `temp_scale`/`temp_offset`.
+- Admin UI: aggiunta scelta formato + scale/offset per eliminare il valore `?` quando il device non invia float32.
+- Version bump: 0.1.173 -> 0.1.174.
+
+## 2026-01-24 (sniffer raw operate_code)
+- Sniffer: aggiunti `operate_code_raw_hex` e `operate_code_raw_int` (2 byte raw a offset 21) per analizzare telegrammi con `operate_code` non riconosciuto.
+- UI Sniffer: mostra `raw:0x....` quando `operate_code` e' vuoto.
+- Version bump: 0.1.174 -> 0.1.175.
+- UI: rimossa sequenza `\\n` letterale nel submit; fallback `GET /api/devices` dopo add; clear svuota tabella; pill `UDP` + messaggi errore; update ottimistico dopo comando.
+- Version bump: 0.1.43 -> 0.1.44.
+
+## 2026-01-20 (command guard)
+- API: `control_light` ritorna 503 se il transport UDP non e' pronto (errore esplicito invece di comando "silenzioso").
+- Version bump: 0.1.44 -> 0.1.45.
+
+## 2026-01-20 (ingress basepath)
+- UI: le chiamate API/WS ora calcolano un basepath stabile (funziona anche su URL ingress senza trailing slash, che lasciava i pill a '?').
+- Version bump: 0.1.45 -> 0.1.46.
+
+## 2026-01-20 (ui version)
+- API: aggiunto `GET /api/meta` con versione add-on.
+- UI: mostra versione in header (utile per capire se e' aggiornato).
+- Version bump: 0.1.46 -> 0.1.47.
+
+## 2026-01-20 (ingress basepath hotfix)
+- UI: `basePrefix()` ora rimuove `/ingress` dal path (fix per pill a '?' e comandi non funzionanti in Ingress).
+- Version bump: 0.1.47 -> 0.1.48.
+
+## 2026-01-20 (tx auto + initial states)
+- BusPro: auto-imposta la destinazione TX usando l'IP/porta dell'ultimo pacchetto RX (comandi UI funzionano anche se `gateway_host` e' sbagliato).
+- WS snapshot: include gli stati persistiti, cosi la UI non parte con `?` dopo reboot.
+- Version bump: 0.1.48 -> 0.1.49.
+
+## 2026-01-20 (tx host only)
+- BusPro: auto TX ora usa solo l'host dall'ultimo RX e mantiene la porta configurata (alcuni gateway inviano da porta sorgente non-6000).
+- UI: mostra `tx` e `rx` in pill UDP per debug rapido.
+- Version bump: 0.1.49 -> 0.1.50.
+
+## 2026-01-20 (tx NAT guard)
+- BusPro: non usare l'host RX per auto-TX se coincide col default gateway del container (RX NATato tipo `172.x`); mantiene il `gateway_host` configurato.
+- Version bump: 0.1.50 -> 0.1.51.
+
+## 2026-01-20 (dimmer button)
+- UI: tasto Accendi/Spegni per dimmerabili non invia piu `brightness` quando spegne; quando accende forza un valore valido se lo slider e' a 0/non valido.
+- BusPro: mapping brightness 0..255 -> percentuale usa round e minimo 1% quando brightness > 0 (evita che 1/255 diventi 0%).
+- Version bump: 0.1.51 -> 0.1.52.
+
+## 2026-01-20 (dimmer default)
+- UI: tasto Accendi per dimmer usa l'ultima brightness nota (se presente), altrimenti non invia brightness (backend -> 100%).
+- UI: slider default a 255 quando stato sconosciuto; non forza a 1 quando la luce e' OFF.
+- Version bump: 0.1.52 -> 0.1.53.
+
+## 2026-01-20 (slider sync)
+- UI: quando la luce va OFF, lo slider torna al minimo (1 ~= 0%) per riflettere lo stato reale.
+- Version bump: 0.1.53 -> 0.1.54.
+
+## 2026-01-20 (slider refresh)
+- UI: su refresh, se lo stato e' OFF lo slider parte dal minimo (non piu' al max).
+- Version bump: 0.1.54 -> 0.1.55.
+
+## 2026-01-20 (ui highlight)
+- UI: righe luci ON evidenziate in giallo; per dimmerabili evidenziazione proporzionale e badge percentuale.
+- Version bump: 0.1.55 -> 0.1.56.
+
+## 2026-01-20 (mqtt category + icon)
+- MQTT Discovery: tutte le luci ora sono raggruppate sotto un unico device "BusPro Luci" (category device).
+- UI/API: aggiunto campo `icon` (mdi) opzionale per forzare l'icona in Home Assistant.
+- Version bump: 0.1.56 -> 0.1.57.
+
+## 2026-01-20 (edit + category)
+- UI: aggiunti `categoria` (gruppo HA) e `Modifica` per cambiare nome/dimmable/categoria/icona senza cancellare.
+- API: aggiunto `PATCH /api/devices/light/{subnet}/{device}/{channel}`.
+- MQTT Discovery: device raggruppato per `categoria` (es. "BusPro Luci", "BusPro Cover"...).
+- Version bump: 0.1.57 -> 0.1.58.
+
+## 2026-01-20 (category dropdown)
+- UI: `Categoria` ora e' un menu a tendina con preset (Luci, Switch, Curtain, Cover, Sensori, ...), con opzione "Altro" custom.
+- Version bump: 0.1.58 -> 0.1.59.
+
+## 2026-01-20 (covers)
+- BusPro: aggiunti device cover con comandi open/close/stop/set_position e broadcast realtime `cover_state`.
+- MQTT: aggiunta discovery + topic state/command per cover (posizione + stato) e subscribe ai comandi.
+- UI: form + tabella cover con controlli e slider posizione.
+- Store: persistenza stato cover (state + position).
+- Version bump: 0.1.59 -> 0.1.60.
+
+## 2026-01-20 (cover up/down + calibrazione)
+- Cover: supporto tempi separati salita/discesa (`opening_time_up`, `opening_time_down`).
+- UI: form cover con tempi salita/discesa e pulsanti calibrazione "Calibra Su/Giu" (premi una volta per partire, poi di nuovo per salvare i secondi).
+- API: `PATCH /api/devices/cover/{subnet}/{device}/{channel}` per aggiornare i tempi.
+- Version bump: 0.1.60 -> 0.1.62.
+
+## 2026-01-20 (cover bidirezionale)
+- Cover: parsing dei telegrammi `CurtainSwitch*Response` per aggiornare stato/posizione stimata anche quando i comandi partono da HDL.
+- Version bump: 0.1.62 -> 0.1.63.
+
+## 2026-01-20 (calibra fix + edit tempi)
+- Calibrazione cover: ora usa comandi raw OPEN/CLOSE senza auto-stop, quindi non si ferma a meta'.
+- UI: aggiunto `Modifica` per cover e visualizzazione tempi `su/giu` nella tabella; salva via `PATCH /api/devices/cover/...`.
+- Version bump: 0.1.63 -> 0.1.65.
+
+## 2026-01-20 (cover stop robust)
+- Cover: STOP ora viene inviato due volte + read_status (fix per casi in cui lo stop singolo non ferma se il movimento parte da HDL).
+- Version bump: 0.1.65 -> 0.1.66.
+
+## 2026-01-20 (calibrazione no popup)
+- UI: calibrazione cover senza alert/confirm; stato e istruzioni mostrati in pagina con timer sul bottone.
+- Version bump: 0.1.66 -> 0.1.67.
+
+## 2026-01-20 (cover edit UX)
+- UI: in modifica cover mostra bottone `Salva` + `Annulla` (prima non era chiaro come salvare).
+- Version bump: 0.1.67 -> 0.1.68.
+
+## 2026-01-20 (cover stop from HDL)
+- Cover: se arriva una risposta senza status ma la cover era in movimento, congela la posizione stimata (fix per STOP premuto da HDL che prima faceva continuare fino a 0/100 in UI).
+- Version bump: 0.1.68 -> 0.1.69.
+- Version bump: 0.1.42 -> 0.1.43.
+
+## 2026-01-20 (debug + stop affidabile)
+- Add-on: aggiunta opzione `debug` in configurazione per log verbosi (utile per diagnosticare comandi/telegrammi).
+- Cover: polling `read_status` mentre e' in movimento + freeze su status inatteso (STOP da HDL piu' affidabile).
+- Version bump: 0.1.69 -> 0.1.70.
+
+## 2026-01-20 (cover stop anti-fantasma)
+- Cover: evita che `CurtainSwitchStatusResponse` con valore 1/2 riavvii la corsa dopo uno STOP; solo i `ControlResponse` avviano un movimento.
+- Version bump: 0.1.70 -> 0.1.71.
+
+## 2026-01-20 (cover start da HDL + stop debounce)
+- Cover: `StatusResponse` 1/2 ora può avviare il movimento quando il comando parte da HDL, ma viene ignorato per ~1.5s dopo uno STOP per evitare ripartenze fantasma.
+- Version bump: 0.1.71 -> 0.1.72.
+
+## 2026-01-20 (cover status=0 + debug telegram)
+- Cover: `CurtainSwitchStatusResponse` con `status=0` non viene piu' interpretato come STOP (su alcuni gateway significa "no info"); avvio/stop movimento usa `CurtainSwitchControl`/`ControlResponse`.
+- Add-on: aggiunto toggle `debug_telegram` per attivare/disattivare i log rumorosi `buspro.telegram`/`buspro.log`.
+- Version bump: 0.1.72 -> 0.1.73.
+
+## 2026-01-20 (cover realtime ticker)
+- Cover: aggiunto ticker interno per aggiornare la posizione in realtime durante OPENING/CLOSING anche se il bus non invia stati; finalizza la posizione quando il tempo stimato e' scaduto.
+- Cover: ignora comandi ripetuti nella stessa direzione (evita reset continui della stima).
+- Version bump: 0.1.73 -> 0.1.74.
+
+## 2026-01-20 (cover status=0 non-stop)
+- Cover: `CurtainSwitchStatusResponse status=0` ora viene ignorato (sul tuo gateway equivale a "no info") per evitare che lo stato passi a STOP durante il movimento.
+- Version bump: 0.1.74 -> 0.1.75.
+
+## 2026-01-20 (cover calib tempi persistenti)
+- Gateway: `ensure_cover()` non sovrascrive piu' `opening_time_up/down` con il default (20s) quando il device esiste; i comandi da UI rispettano i tempi calibrati.
+- Version bump: 0.1.75 -> 0.1.76.
+
+## 2026-01-20 (user dashboard)
+- UI: aggiunta vista `User` (dashboard) separata dalla vista `Admin`, con tab per tipo (Tutti/Luci/Cover), card moderne, raggruppamento per categoria e controlli realtime.
+- Version bump: 0.1.76 -> 0.1.77.
+
+## 2026-01-20 (porte separate user/admin)
+- Add-on: aggiunta porta Admin `8125/tcp` (oltre alla User `8124/tcp`).
+- UI User: pagine separate `/lights` e `/covers` senza header (porta 8124).
+- Gate: sulla porta User sono esposti solo User UI + comandi e WS; le API/admin UI restano accessibili solo sulla porta Admin.
+- Auth: aggiunto `user_auth` separato da `auth` (admin).
+- Version bump: 0.1.77 -> 0.1.78.
+
+## 2026-01-20 (user background)
+- UI User: aggiornato lo sfondo con radial-gradient.
+- Version bump: 0.1.78 -> 0.1.79.
+
+## 2026-01-20 (user ingress urls)
+- UI User: fix URL per ingress (websocket `/ws` e chiamate API relative al path corrente) così luci/cover caricano correttamente anche da Home Assistant.
+- Version bump: 0.1.79 -> 0.1.80.
+
+## 2026-01-20 (user syntax fix)
+- UI User: fix `escapeHtml()` (SyntaxError in browser per escaping errato).
+- Version bump: 0.1.80 -> 0.1.81.
+
+## 2026-01-20 (user js compat)
+- UI User: rimosso uso di `??` e `replaceAll` per maggiore compatibilita' con WebView/browser vecchi (fix SyntaxError su pagina cover).
+- Version bump: 0.1.81 -> 0.1.82.
+
+## 2026-01-20 (user pages link + admin cleanup)
+- UI Admin: rimosso routing interno alla vista User (resta solo Admin).
+- UI Admin: link "User" ora apre le pagine reali User su `:8124/lights` (accesso separato dalla Admin `:8125`).
+- UI User: title reso ASCII (`BusPro - ...`) per evitare caratteri "strani" su alcuni browser.
+- Version bump: 0.1.82 -> 0.1.83.
+
+## 2026-01-20 (user centered list)
+- UI User: elenco dispositivi centrato e in lista (card con larghezza max, centrata nella pagina).
+- Version bump: 0.1.83 -> 0.1.84.
+
+## 2026-01-20 (user light feedback)
+- UI User (Luci): quando accesa, la card cambia colore con intensita' proporzionale alla % (dimmer) / 100% (non-dimmer).
+- Version bump: 0.1.84 -> 0.1.85.
+
+## 2026-01-20 (user compact cards)
+- UI User: schede device piu' compatte (meno padding/altezza; controlli piu' piccoli).
+- Version bump: 0.1.85 -> 0.1.86.
+
+## 2026-01-20 (user background colors)
+- UI User: base background aggiornata a `#05070b` (gradient: `#1a2230` -> `#05070b` -> `#000`).
+- Version bump: 0.1.86 -> 0.1.87.
+
+## 2026-01-20 (user card theme)
+- UI User: schede con palette piu' scura/grigio-nera coerente con lo sfondo (meno blu) e contrasto leggero.
+- Version bump: 0.1.87 -> 0.1.88.
+
+## 2026-01-20 (user hide ids)
+- UI User: rimossa visualizzazione dell'ID/indirizzo dispositivo (es. `1.100.2`) dalle card.
+- Version bump: 0.1.88 -> 0.1.89.
+
+## 2026-01-20 (mdi icon cache + lights redesign)
+- Add-on: cache locale icone `mdi:*` (download on-demand e serve via `/api/icons/mdi/<name>.svg`, fallback placeholder se offline).
+- Add-on: sync icone su boot e quando modifichi/aggiungi device; endpoint admin `POST /api/icons/sync`.
+- UI User (Luci): redesign stile "lista" con sezioni per categoria, icone e slider in stile app.
+- Version bump: 0.1.89 -> 0.1.90.
+
+## 2026-01-20 (user api gate fix)
+- Gate porta User: consentito `GET /api/devices` (necessario alla pagina Luci) e consentite solo icone `GET /api/icons/mdi/*` (bloccato `POST /api/icons/sync`).
+- Version bump: 0.1.90 -> 0.1.91.
+
+## 2026-01-20 (state store robust)
+- Fix: `StateStore.read_raw()` ora gestisce JSON corrotto rinominando il file in `state.json.corrupt.<timestamp>` e ripartendo da vuoto (evita 500 su `/api/devices`).
+- Version bump: 0.1.91 -> 0.1.92.
+
+## 2026-01-20 (user lights tap targets)
+- UI User (Luci): toggle anche su tap dell'icona (oltre al nome) per rendere il comando piu' usabile.
+- Version bump: 0.1.92 -> 0.1.93.
+
+## 2026-01-20 (user lights polish)
+- UI User (Luci): tutta la riga e' touch per toggle (slider escluso); rimossa label ON/OFF; nascosta sezione "Luci"; icona visibile bianca da OFF e gialla da ON.
+- Version bump: 0.1.93 -> 0.1.94.
+
+## 2026-01-20 (user darker background)
+- UI User: gradient reso piu' "nero" (meno blu) regolando posizione/alpha del blu.
+- Version bump: 0.1.94 -> 0.1.95.
+
+## 2026-01-20 (user typography tune)
+- UI User: testi meno "bianchi" e meno bold; icone meno abbaglianti (bianco soft in OFF, giallo soft in ON).
+- Version bump: 0.1.95 -> 0.1.96.
+
+## 2026-01-20 (user icon intensity)
+- UI User (Luci): icona ON ora scala di intensita' (giallo/glow) in base alla % dimmer.
+- Version bump: 0.1.96 -> 0.1.97.
+
+## 2026-01-20 (mdi icon yellow)
+- UI User (Luci): icona MDI renderizzata come maschera (no filter), cosi' diventa davvero bianca in OFF e gialla in ON (intensita' da dimmer).
+- Version bump: 0.1.97 -> 0.1.98.
+
+## 2026-01-20 (user slider white)
+- UI User (Luci): slider dimmer reso bianco (coerente con testi).
+- Version bump: 0.1.98 -> 0.1.99.
+
+## 2026-01-20 (user covers popup + icons)
+- UI User (Cover): layout lista stile app, bottoni Apri/Stop/Chiudi a icona, tap sulla riga apre popup con regolazione % (slider + preview).
+- Version bump: 0.1.99 -> 0.1.100.
+
+## 2026-01-20 (cover slider tint)
+- UI User (Cover): slider reso "bianco sporco" (meno saturo).
+- Version bump: 0.1.100 -> 0.1.101.
+
+## 2026-01-20 (fixed background)
+- UI User (Luci/Cover): background centrato e fisso durante lo scroll (overlay `body::before`).
+- Version bump: 0.1.101 -> 0.1.102.
+
+## 2026-01-20 (background centered)
+- UI User (Luci/Cover): centro del radial-gradient allineato a `50% 50%` (centrato in altezza e larghezza).
+- Version bump: 0.1.102 -> 0.1.103.
+
+## 2026-01-20 (vertical centering)
+- UI User (Luci/Cover): se ci sono pochi dispositivi, la lista viene centrata verticalmente (se supera l'altezza, resta scroll normale).
+- Version bump: 0.1.103 -> 0.1.104.
+
+## 2026-01-20 (cover icon + popup refine)
+- UI User (Cover): icona stato da bianco->blu in base alla % apertura; nel popup percentuale sopra il titolo e regolazione con drag sul "pill" (rimosso slider sotto).
+- Version bump: 0.1.104 -> 0.1.105.
+
+## 2026-01-20 (cover light fill)
+- UI User (Cover): nel popup il riempimento del "pill" non e' viola: ora simula la "luce che entra" (gradiente chiaro/caldo proporzionale alla %).
+- Version bump: 0.1.105 -> 0.1.106.
+
+## 2026-01-20 (cover sky fill)
+- UI User (Cover): popup pill fill "cielo azzurro" con intensita' che cresce con la % (molto tenue a bassa apertura).
+- Version bump: 0.1.106 -> 0.1.107.
+
+## 2026-01-20 (cover sky contrast)
+- UI User (Cover): aumentato contrasto del pill e intensita' del cielo azzurro (stacco piu' leggibile anche a basse %).
+- Version bump: 0.1.107 -> 0.1.108.
+
+## 2026-01-20 (cover color alignment)
+- UI User (Cover): allineata la curva/tonalita' del colore tra icona stato e fill del popup (stessa "linea" di dimmerazione).
+- Version bump: 0.1.108 -> 0.1.109.
+
+## 2026-01-20 (cover reverse icon)
+- Admin: aggiunta opzione cover `reverse_icon` (inverti indicatore colore per oscuranti).
+- UI User (Cover): icona e fill del popup usano curva invertita quando `reverse_icon=true`.
+- Version bump: 0.1.109 -> 0.1.110.
+
+## 2026-01-20 (ui font weights)
+- UI: ridotti i font-weight (meno "grassetto") su pagine User (Luci/Cover) e Admin.
+- Version bump: 0.1.110 -> 0.1.111.
+
+## 2026-01-20 (cover reverse popup)
+- UI User (Cover): nel popup, fill/handle e drag sono invertiti quando `reverse_icon=true` (0% mostra il colore “invertito”).
+- Version bump: 0.1.111 -> 0.1.112.
+
+## 2026-01-20 (groups + manual order)
+- Admin: campo `group` opzionale per device (senza # obbligatorio) + configurazione ordine gruppi (uno per riga).
+- User UI (Luci/Cover): raggruppamento per `group` e ordinamento secondo `group_order` (aggiornabile anche via realtime).
+- API: aggiunti `GET/PUT /api/ui` e `group_order` in `GET /api/meta`.
+- Version bump: 0.1.112 -> 0.1.113.
+
+## 2026-01-20 (groups drag & drop)
+- Admin: lista gruppi rilevati dai dispositivi + drag&drop per riordinare (sincronizzata col textarea).
+- Version bump: 0.1.113 -> 0.1.114.
+
+## 2026-01-20 (backup text)
+- Admin: aggiunti backup/ripristino in formato testo (copia/incolla) + API `GET /api/backup` e `POST /api/restore` (crea anche un `.bak` del file stato).
+- Version bump: 0.1.114 -> 0.1.115.
+
+## 2026-01-20 (user extra)
+- User UI: aggiunta pagina `EXTRA` (`/extra`) per dispositivi categoria `Switch`/`Extra` (toggle-only).
+- Version bump: 0.1.115 -> 0.1.116.
+
+## 2026-01-20 (backup download + admin links)
+- Admin: backup scaricabile (`GET /api/backup/file`) + import da file (riempie textarea per ripristino).
+- Admin: link diretti alle pagine User `Luci`/`Cover`/`EXTRA` (porta `8124`).
+- Version bump: 0.1.116 -> 0.1.117.
+
+## 2026-01-20 (extra only)
+- User UI: i dispositivi `Switch/Extra` non compaiono piu' nella pagina Luci (solo in `EXTRA`).
+- Version bump: 0.1.117 -> 0.1.118.
+
+## 2026-01-20 (mdi suggestions)
+- Admin: suggerimenti icone MDI basati sulle icone gia' usate (endpoint `GET /api/icons/used` + datalist negli input).
+- Version bump: 0.1.118 -> 0.1.119.
+
+## 2026-01-20 (group suggestions)
+- Admin: tendina/suggerimenti per `group` basata sui gruppi gia' presenti nei dispositivi.
+- Version bump: 0.1.119 -> 0.1.120.
+
+## 2026-01-20 (group dropdown)
+- Admin: `group` ora usa una vera tendina (select) + campo custom, invece di `datalist` (piu' compatibile).
+- Version bump: 0.1.120 -> 0.1.121.
+
+## 2026-01-20 (restore robustness)
+- Backup: ripristino piu' tollerante (BOM/paste) + mostra errore reale in UI Admin.
+- Version bump: 0.1.121 -> 0.1.122.
+
+## 2026-01-20 (dedupe devices)
+- Admin: bottone `Rimuovi duplicati` e endpoint `POST /api/devices/dedupe` (tiene l'ultima definizione).
+- API: blocco creazione device con stesso indirizzo (HTTP 409).
+- Version bump: 0.1.122 -> 0.1.123.
+
+## 2026-01-20 (edit address)
+- Admin: possibile modificare `Subnet/Device/Channel` in modifica tramite checkbox "Modifica indirizzo".
+- API/Store: supporto cambio indirizzo (migra anche lo stato salvato) con controllo duplicati (409).
+- Version bump: 0.1.123 -> 0.1.124.
+
+## 2026-01-20 (edit address ui fix)
+- Admin: fix checkbox "Modifica indirizzo" (abilita correttamente i campi anche con CSS width input).
+- Version bump: 0.1.124 -> 0.1.125.
+
+## 2026-01-20 (active-only filter)
+- User UI (Luci/Cover/EXTRA): aggiunto toggle (icona 3 linee) per mostrare solo dispositivi attivi; giallo = filtro attivo.
+- Version bump: 0.1.125 -> 0.1.126.
+
+## 2026-01-20 (filter button position)
+- User UI (Luci/Cover/EXTRA): icona filtro centrata in basso.
+- Version bump: 0.1.126 -> 0.1.127.
+
+## 2026-01-20 (filter button position top)
+- User UI (Luci/Cover/EXTRA): icona filtro centrata in alto.
+- Version bump: 0.1.127 -> 0.1.128.
+
+## 2026-01-20 (double safety checks)
+- Admin UI: "Svuota" richiede conferma doppia (confirm + parola `SVUOTA`).
+- Admin UI: "Rimuovi duplicati" richiede conferma doppia (confirm + parola `DEDUPE`).
+- Version bump: 0.1.128 -> 0.1.129.
+
+## 2026-01-20 (ui fixes + confirm hints)
+- User UI (Luci/Cover/EXTRA): fix click effect sul filtro (evita shift mantenendo `translateX(-50%)` anche su `:active`).
+- Admin UI: promemoria visibile e tooltip con parole di conferma `SVUOTA` / `DEDUPE`.
+- Version bump: 0.1.129 -> 0.1.130.
+
+## 2026-01-20 (realtime dedupe)
+- Backend: evita publish/broadcast realtime quando lo stato non cambia (cache in memoria inizializzata dal file stato).
+- Riduce carico CPU/rete sui client (Chrome "scheda rallenta").
+- Version bump: 0.1.130 -> 0.1.131.
+
+## 2026-01-20 (collapsible groups default)
+- User UI (Luci/Cover/EXTRA): gruppi collassati di default alla prima apertura (preferenza salvata in localStorage).
+- User UI: toggle globale per collassare/espandere tutto resta disponibile.
+- Version bump: 0.1.131 -> 0.1.132.
+
+## 2026-01-20 (collapsible groups default expanded)
+- User UI (Luci/Cover/EXTRA): default ripristinato a gruppi espansi alla prima apertura (non forza il collasso).
+- Version bump: 0.1.132 -> 0.1.133.
+
+## 2026-01-20 (cover start delay fix)
+- Cover: la simulazione posizione non parte subito al comando (evita sfasamenti se il motore parte in ritardo).
+- Cover: inizia quando arriva la conferma OPEN/CLOSE dal bus; fallback dopo 1s se non arriva.
+- Version bump: 0.1.133 -> 0.1.134.
+
+## 2026-01-21 (addon icon)
+- Add-on: impostata icona/Logo usando `www/e-control nobg.png` -> `icon.png` e `logo.png`.
+- Version bump: 0.1.134 -> 0.1.135.
+
+## 2026-01-21 (admin header logo)
+- Admin UI: aggiunto logo in alto a sinistra (usa `app/static/logo.png`).
+- Version bump: 0.1.135 -> 0.1.136.
+
+## 2026-01-21 (admin logo size)
+- Admin UI: logo in header ingrandito (3x).
+- Version bump: 0.1.136 -> 0.1.137.
+
+## 2026-01-21 (admin header title)
+- Admin UI: titolo header aggiornato con prefisso “e-hdl”.
+- Version bump: 0.1.137 -> 0.1.138.
+
+## 2026-01-21 (lights watermark)
+- User UI (Luci): aggiunto watermark centrale (trasparente) usando `app/static/user/e-light-addon.png`.
+- Version bump: 0.1.138 -> 0.1.139.
+
+## 2026-01-21 (lights watermark size)
+- User UI (Luci): watermark ridotto a metà dimensione.
+- Version bump: 0.1.139 -> 0.1.140.
+
+## 2026-01-21 (lights watermark opacity)
+- User UI (Luci): watermark meno trasparente (più evidente).
+- Version bump: 0.1.140 -> 0.1.141.
+
+## 2026-01-21 (lights watermark opacity 2)
+- User UI (Luci): watermark ancora più evidente (opacità aumentata).
+- Version bump: 0.1.141 -> 0.1.142.
+
+## 2026-01-21 (lights watermark opacity 3)
+- User UI (Luci): watermark ancora più evidente (opacità aumentata).
+- Version bump: 0.1.142 -> 0.1.143.
+
+## 2026-01-21 (lights watermark color)
+- User UI (Luci): watermark usa i colori originali (rimosso grayscale).
+- Version bump: 0.1.143 -> 0.1.144.
+
+## 2026-01-21 (lights watermark opacity 4)
+- User UI (Luci): watermark ancora più evidente (opacità aumentata).
+- Version bump: 0.1.144 -> 0.1.145.
+
+## 2026-01-21 (lights watermark opacity 5)
+- User UI (Luci): watermark ancora più evidente (opacità aumentata).
+- Version bump: 0.1.145 -> 0.1.146.
+
+## 2026-01-21 (lights watermark opacity off)
+- User UI (Luci): watermark senza trasparenza (`opacity: 1`).
+- Version bump: 0.1.146 -> 0.1.147.
+
+## 2026-01-21 (lights cards transparency)
+- User UI (Luci): card/lista e righe più trasparenti (background rgba ridotti).
+- Version bump: 0.1.147 -> 0.1.148.
+
+## 2026-01-21 (lights cards transparency 2)
+- User UI (Luci): ulteriore aumento trasparenza card/lista e righe.
+- Version bump: 0.1.148 -> 0.1.149.
+
+## 2026-01-21 (cover/extra watermark + transparency)
+- User UI (Cover): watermark centrale `app/static/user/e-cover-addon.png` + card/lista più trasparenti.
+- User UI (EXTRA): watermark centrale `app/static/user/e-extra-addon.png` + card/lista più trasparenti.
+- Version bump: 0.1.149 -> 0.1.150.
+
+## 2026-01-21 (lights watermark swap)
+- User UI (Luci): watermark aggiornato a `app/static/user/e-light-addon2.png`.
+- Version bump: 0.1.150 -> 0.1.151.
+
+## 2026-01-21 (cover slider timing)
+- Cover: `SET_POSITION` usa l'istante di invio comando come start_time (non quando arriva conferma/fallback) per evitare sfasamenti.
+- Cover: STOP schedulato più affidabile (invia STOP 2 volte).
+- Version bump: 0.1.151 -> 0.1.152.
+
+## 2026-01-21 (cover slider timing 2)
+- Cover: STOP schedulato usa il tempo rimanente quando la conferma del bus arriva in ritardo (compensa il lag di start).
+- Version bump: 0.1.152 -> 0.1.153.
+
+## 2026-01-21 (cover popup handle)
+- User UI (Cover): handle del popup posizionato correttamente sulla percentuale (aggiornato dopo layout).
+- Version bump: 0.1.153 -> 0.1.154.
+
+## 2026-01-21 (user UI performance)
+- User UI (Cover/Luci/EXTRA): niente piu' re-render completo ad ogni `*_state` via WebSocket; aggiorna solo la riga interessata per ridurre lag e click in ritardo.
+- User UI (Cover/Luci/EXTRA): conteggio `attivi/totale` aggiornato in modo throttled.
+- Backend: aggiunto log DEBUG con timing su `/api/control/cover/...` per verificare la latenza server-side.
+- Version bump: 0.1.154 -> 0.1.155.
+
+## 2026-01-21 (cover stop accuracy)
+- Cover: ridotto polling `read_status` durante il movimento (2.0s) e sospeso vicino allo stop programmato per evitare ritardi nell'esecuzione del comando STOP.
+- Version bump: 0.1.155 -> 0.1.156.
+
+## 2026-01-21 (cover slider sync)
+- Cover: per `SET_POSITION` avvia l'interpolazione e lo stop automatico solo quando il movimento viene rilevato (StatusResponse 1/2) oppure dopo un fallback piu' lungo (2.5s), per evitare desync quando il motore parte in ritardo.
+- Cover: a fine stop non forza piu' la posizione a quella richiesta; usa la stima basata sul tempo (con snap +/-2%) così la UI non "mente" e permette nuovi comandi.
+- Version bump: 0.1.156 -> 0.1.157.
+
+## 2026-01-21 (multi-cover stability)
+- Gateway: scheduler comandi cover con pacing (~180ms) + coalescing per cover (evita flood UDP quando muovi fino a ~12 tapparelle insieme da UI/HA).
+- Cover: dopo STOP fa un `read_status` best-effort per ridurre stati stuck.
+- Version bump: 0.1.157 -> 0.1.158.
+
+## 2026-01-21 (covers UI separator)
+- User UI (Cover): fix carattere separatore nello stato (usa `&#183;`/`\\u00B7` per evitare glitch encoding tipo "Â·").
+- Version bump: 0.1.158 -> 0.1.159.
+
+## 2026-01-21 (cover flood protection)
+- Cover: pacing globale dei telegrammi (inclusi STOP programmati) per evitare perdita comandi quando muovi molte tapparelle insieme (8-12).
+- Version bump: 0.1.159 -> 0.1.160.
+
+## 2026-01-22 (cover groups / group blind)
+- Aggiunti gruppi cover persistenti (`ui.cover_groups`) con CRUD via `GET/POST/DELETE /api/cover_groups`.
+- MQTT discovery: pubblicate entita' cover di gruppo con topic `cmd/cover_group/+` e `cmd/cover_group_pos/+` + stati `state/cover_group_*` (retain).
+- Cleanup: quando un gruppo viene rimosso, viene svuotata la discovery e gli stati retain del gruppo.
+- Admin UI: sezione "Gruppi Cover (Group blind)" per creare/modificare/eliminare gruppi e selezionare i membri.
+- Version bump: 0.1.160 -> 0.1.161.
+
+## 2026-01-22 (user UI cover groups)
+- User UI (Cover): mostra i gruppi cover (group blind) in alto, con comandi Apri/Stop/Chiudi e popup posizione che invia `SET_POSITION` al gruppo.
+- Backend: `GET /api/cover_groups` consentito anche su porta user.
+- Version bump: 0.1.161 -> 0.1.162.
+
+## 2026-01-22 (cover groups stable id)
+- Gruppi cover: aggiunto campo `id` persistente e univoco (stabile anche se rinomini il gruppo) per evitare collisioni e gruppi "rotti".
+- Admin UI: usa `id` nascosto quando modifichi/elimini un gruppo.
+- User UI (Cover): usa `id` per comandi/stato dei gruppi.
+- Version bump: 0.1.162 -> 0.1.163.
+
+## 2026-01-22 (cover group custom icon)
+- Gruppi cover: aggiunto campo `icon` opzionale (mdi) ai gruppi (salvato e restituito da `/api/cover_groups`).
+- MQTT discovery: pubblica `icon` anche per le entita' cover di gruppo.
+- Admin UI: campo "Icona gruppo (mdi)" per i gruppi cover.
+- User UI (Cover): icona del gruppo usa la tua mdi (fallback: `mdi:blinds-group`).
+- Version bump: 0.1.163 -> 0.1.164.
+
+## 2026-01-22 (cover group icon realtime)
+- WebSocket snapshot include `cover_groups` e broadcast `cover_groups` dopo save/delete per aggiornare la user UI senza refresh.
+- Version bump: 0.1.164 -> 0.1.165.
+
+## 2026-01-23 (cover group icon cache)
+- Fix: cache/download icone MDI anche per i Cover Group (UI user mostrava placeholder).
+- `GET /api/icons/used` ora include anche le icone usate dai gruppi.
+- Version bump: 0.1.165 -> 0.1.166.
+
+## 2026-01-23 (cover command reliability)
+- Fix affidabilita': coda comandi cover resa thread-safe con lock e STOP prioritario (stile Control4).
+- Cover groups: invio comandi ai membri in sequenza (evita flood UDP e race con molti dispositivi).
+- Version bump: 0.1.166 -> 0.1.167.
+
+## 2026-01-23 (cover start delay)
+- Cover: aggiunto `start_delay_s` (ritardo avvio) per riallineare UI/STOP quando il motore parte in ritardo.
+- Admin UI: campo "Ritardo avvio (s)" per device cover; viene applicato anche nei gruppi.
+- Version bump: 0.1.167 -> 0.1.168.
+
+## 2026-01-23 (cover sync + discovery stable id)
+- Cover: fix pacing telegram (lock copre davvero `send()`), anche `read_status()` passa dal lock per evitare flood/ritardi con molte cover.
+- Cover: StatusResponse ora aggiorna correttamente start/stop anche da comandi HDL (bidirezionale) e avvio pending confermato ignora `start_delay_s` (parte subito quando il bus conferma).
+- Cover: aggiunto "probe" leggero (pochi `read_status`) durante pending + fallback dinamico basato su `start_delay_s`.
+- MQTT discovery: topic `object_id` stabile per luci/cover (non dipende dal nome) per evitare entita' duplicate quando rinomini.
+- Nota: eventuali entita' vecchie create con topic basato sul nome vanno rimosse manualmente una sola volta da Home Assistant.
+- Version bump: 0.1.168 -> 0.1.169.
+
+## 2026-01-26 (mqtt reconnect re-subscribe)
+- Fix: dopo restart/disconnect del broker MQTT, il client ora si riconnette e ripristina automaticamente le subscribe ai topic `cmd/*` (evita HA che non comanda finché non riavvii l’add-on).
+- Version bump: 0.1.182 -> 0.1.183.
+
+## 2026-01-26 (dry contact / binary_sensor)
+- Admin UI: aggiunta sezione "Dry contact" (accordion) per creare ingressi digitali.
+- MQTT discovery: pubblicate entità `binary_sensor` + stato su `buspro/state/dry_contact/...` (ON/OFF).
+- Listener telegrammi: decodifica `ControlPanelACResponse` (0xE3D9) e aggiornamento realtime + retain.
+- Version bump: 0.1.183 -> 0.1.184.
+
+## 2026-01-26 (mqtt availability after reconnect)
+- Fix: su ogni (re)connect MQTT ripubblica `buspro/availability` e la discovery (utile se il broker perde i retained dopo restart / persistence off).
+- Version bump: 0.1.184 -> 0.1.185.
+
+## 2026-01-26 (dry contact ui note)
+- UI: aggiunta nota su telegramma UDP ascoltato per i Dry contact (ControlPanelACResponse / 0xE3D9).
+- Version bump: 0.1.185 -> 0.1.186.
+
+## 2026-01-26 (dry contact payload variant)
+- Fix: per `ControlPanelACResponse` (0xE3D9) l’ID device viene sempre preso da `source_address`; il primo byte del payload può variare (es. 18) quindi non viene più usato come check.
+- Version bump: 0.1.186 -> 0.1.187.
+
+## 2026-01-26 (dry contact trace payload x)
+- Dry contact: salva e mostra il primo byte del payload (`x`, es. 18/29) e lo pubblica come attributo MQTT (`buspro/state/dry_contact_attr/...`) via `json_attributes_topic`.
+- Version bump: 0.1.187 -> 0.1.188.
+
+## 2026-01-26 (user hub page + links)
+- User UI: aggiunta pagina `home` (landing) con pulsanti Luci/Cover/Extra e link aggiuntivi configurabili.
+- Admin UI: sezione "Home (hub) links" per creare/ordinare link (titolo, URL, icona mdi, show, nuova scheda).
+- Icone mdi: sync anche per le icone dei link hub.
+- Version bump: 0.1.188 -> 0.1.189.
+
+## 2026-01-26 (hub fixed buttons icons)
+- Admin UI: configurazione icone pulsanti fissi Home (Luci/Cover/Extra).
+- User UI: Home usa le icone configurate via `api/meta.hub_icons`.
+- Version bump: 0.1.189 -> 0.1.190.
+
+## 2026-01-26 (hub fixed buttons visibility)
+- Admin UI: opzioni per nascondere i pulsanti fissi Home (Luci/Cover/Extra).
+- User UI: Home rispetta `api/meta.hub_show` per mostrare/nascondere.
+- Version bump: 0.1.190 -> 0.1.191.
+
+## 2026-01-26 (home2 tile UI)
+- User UI: aggiunta pagina `home2` stile “tile” (tipo screenshot) con logo ekonex in alto (`/www/ekonex.png`) e senza scritte/sottotitoli.
+- Server: esposta directory repo `www/` su route `/www` (accessibile anche su USER_PORT).
+- Admin: aggiunto link rapido “Home2”.
+- Version bump: 0.1.191 -> 0.1.192.
+
+## 2026-01-26 (home2 responsive tiles + ekonex logo)
+- User UI: Home2 ora usa tile staccate e responsive (grid) per smartphone.
+- Logo: prova automaticamente `www/logo_ekonex.png` (e fallback) e lo nasconde se non presente.
+- Version bump: 0.1.192 -> 0.1.193.
+
+## 2026-01-26 (home2 tweaks)
+- User UI: rimosso riquadro contenitore grande; tile sempre “staccate” e responsive.
+- Logo: usa path assoluto `/www/logo_ekonex.png` + fallback.
+- UI: cerchi icone +15%.
+- Version bump: 0.1.193 -> 0.1.194.
+
+## 2026-01-26 (home2 centered rows + ingress-safe logo)
+- User UI: Home2 centra le righe (layout flex-wrap) per avere 3+3 quando ci sono 6 tile.
+- Logo: path relativo `www/logo_ekonex.png` (più compatibile con Ingress).
+- Version bump: 0.1.194 -> 0.1.195.
+
+## 2026-01-26 (www assets fix + home2 layout)
+- Fix: `/www/*` ora servito via endpoint dedicato (evita 500) e aggiunto `/favicon.ico` (204).
+- User UI: Home2 layout 4-3 (desktop) e 2-2-2-1 (smartphone).
+- Version bump: 0.1.195 -> 0.1.196.
+
+## 2026-01-26 (www dir auto-detect)
+- Fix: `/www/*` ora cerca automaticamente la cartella `www` (repo root / percorsi container / override `BUSPRO_WWW`) per evitare 404 quando la directory non è dove ci si aspetta.
+- Version bump: 0.1.196 -> 0.1.197.
+
+## 2026-01-26 (docker include www)
+- Fix: il build Docker ora copia `www/` dentro l’immagine (`/app/www`) così `GET /www/logo_ekonex.png` funziona anche in Home Assistant.
+- Version bump: 0.1.197 -> 0.1.198.
+
+## 2026-01-26 (logo ekonex in static)
+- UI: copiato `www/logo_ekonex.png` in `app/static/logo_ekonex.png` e Home2 ora lo carica da `/static/...` (più affidabile, niente 404).
+- Version bump: 0.1.198 -> 0.1.199.
+
+## 2026-01-26 (home2 logo x4)
+- UI: logo ekonex ingrandito ~4x su Home2 (responsive).
+- Version bump: 0.1.199 -> 0.1.200.
+
+## 2026-01-26 (home2 vertical centering)
+- UI: Home2 ora centra verticalmente logo + pulsanti nella pagina.
+- Version bump: 0.1.200 -> 0.1.201.
+
+## 2026-01-26 (home2 logo +15%)
+- UI: logo ekonex aumentato ~15% (responsive).
+- Version bump: 0.1.201 -> 0.1.202.
+
+## 2026-01-26 (home2 logo +15% again)
+- UI: logo ekonex aumentato ancora ~15% (responsive).
+- Version bump: 0.1.202 -> 0.1.203.
+
+## 2026-01-26 (home2 mobile 2 columns)
+- UI: su viewport stretti Home2 forza layout 2 colonne (2-2-2-2...) invece di una lista verticale.
+- Version bump: 0.1.203 -> 0.1.204.
+
+## 2026-01-26 (home2 mobile grid)
+- UI: su smartphone Home2 usa grid 2 colonne (più robusto di flex) per evitare layout a lista.
+- Version bump: 0.1.204 -> 0.1.205.
+
+## 2026-01-26 (home2 transparent tiles)
+- UI: Home2 pulsanti più “puliti” (tile trasparenti, focus su icona + testo).
+- Version bump: 0.1.205 -> 0.1.206.
+
+## 2026-01-26 (home2 square semi-transparent tiles)
+- UI: ripristinati tile con background (più chiari) ma ora quadrati (senza smussature) e con gradiente trasparente.
+- Version bump: 0.1.206 -> 0.1.207.
+
+## 2026-01-26 (home2 logo +15% again again)
+- UI: logo ekonex aumentato ancora ~15% (responsive).
+- Version bump: 0.1.207 -> 0.1.208.
+
+## 2026-01-26 (hidden back gesture)
+- User UI: long-press angolo in alto a sinistra per tornare indietro (fallback a `home2` se non c’è history).
+- Version bump: 0.1.208 -> 0.1.209.
+
+## 2026-01-26 (proxy external links)
+- Admin UI: gestione target proxy (name + base URL) e lista.
+- Server: aggiunta route `/ext/<name>/...` (reverse proxy) con rewrite best-effort per HTML/CSS, Location e cookie Path (per mantenere navigazione dentro l’add-on e avere back/gesture).
+- Version bump: 0.1.209 -> 0.1.210.
+
+## 2026-01-26 (proxy websockets)
+- Proxy: aggiunta route WebSocket `/extws/<name>/...` + script injected nelle pagine proxate per riscrivere `fetch`/XHR/WebSocket verso `/ext` e `/extws`.
+- Version bump: 0.1.210 -> 0.1.211.
+
+## 2026-01-26 (proxy assets + stream)
+- Proxy: aggiunti fallback `/assets/*` e `/api/stream` (streaming) usando il target corrente da Referer/cookie, per pagine che fanno richieste assolute.
+- Version bump: 0.1.211 -> 0.1.212.
+
+## 2026-01-26 (proxy back gesture)
+- Proxy: iniezione gesture “long-press angolo alto-sinistra” anche nelle pagine proxate (`/ext/...`) con fallback a `/home2`.
+- Version bump: 0.1.212 -> 0.1.213.
+
+## 2026-01-26 (proxy rewrite absolute api)
+- Proxy: migliorata riscrittura `fetch`/XHR anche per URL assoluti su stessa origin (`http://<addon>/api/...`) così le app legacy (porta 1977) non chiamano più `/api/...` diretto ma passano da `/ext/<name>/...`.
+- Version bump: 0.1.213 -> 0.1.214.
+
+## 2026-01-26 (proxy eventsource content-type)
+- Proxy: `/api/stream` ora forza `Content-Type: text/event-stream` (EventSource) e streaming line-based per evitare warning MIME type.
+- Version bump: 0.1.214 -> 0.1.215.
+
+## 2026-01-26 (ingress open web ui)
+- Fix: quando l’add-on è aperto via Ingress (pulsante “Apri interfaccia utente web”), la route `/` serve sempre la User UI (Home2) per evitare pagina Admin con errori `{"detail":"Not Found"}`.
+- Version bump: 0.1.215 -> 0.1.216.
+
+## 2026-01-26 (ingress double-slash)
+- Fix: normalizza path con `//` su Ingress (es. `.../hassio_ingress/<token>//`) per evitare 404 e far matchare correttamente `/`.
+- Version bump: 0.1.216 -> 0.1.217.
+
+## 2026-01-26 (ingress to admin)
+- Config: Ingress ora punta alla Admin UI (porta 8125) invece della User UI.
+- Version bump: 0.1.217 -> 0.1.218.
+
+## 2026-01-26 (ingress admin via user port)
+- Fix: Ingress rimane su porta 8124, ma se arriva da Ingress mostra Admin UI e sblocca i path admin sul USER_PORT (solo via header Ingress).
+- Version bump: 0.1.218 -> 0.1.219.
+
+## 2026-01-26 (ingress entry index.html)
+- Fix: `ingress_entry` ora punta a `index.html` (evita URL `.../hassio_ingress/<token>//` che in alcune versioni di HA può dare 404).
+- Server: aggiunta route `GET /index.html` che serve l’Admin UI.
+- Version bump: 0.1.219 -> 0.1.220.
+
+## 2026-01-26 (ingress admin cookie)
+- Fix: set cookie `buspro_ingress=1` quando aperto via Ingress, così le chiamate API della pagina Admin non vengono bloccate su USER_PORT anche se HA non inoltra gli header Ingress su tutte le richieste.
+- Version bump: 0.1.220 -> 0.1.221.
+
+## 2026-01-26 (admin ingress basePrefix)
+- Fix: Admin UI ora gestisce Ingress entry `index.html` (evita chiamate tipo `.../index.html/api/...` che causavano 404).
+- Version bump: 0.1.221 -> 0.1.222.
+
+## 2026-01-26 (proxy nav rewrite)
+- Proxy: migliorata riscrittura navigazione (link `/security/...` ecc) con intercept click + patch `location.assign/replace` e supporto attributi non quotati (`href=/...`).
+- Version bump: 0.1.222 -> 0.1.223.
+
+## 2026-01-26 (proxy unknown routes fallback)
+- Proxy: se è attivo un target (`buspro_px` cookie), route non-API tipo `/security/functions` vengono proxate invece di 404 (SPA fallback).
+- Version bump: 0.1.223 -> 0.1.224.
+
+## 2026-01-23 (buspro sniffer)
+- Aggiunto Sniffer telegrammi BusPro (RX) con start/stop, filtri (operate_code/src/dst), e download.
+- Salvataggio opzionale su `/share` in formato `jsonl` + download buffer se file non presente.
+- Admin UI: pannello Sniffer con pulsanti Start/Stop/Scarica/Pulisci.
+- Version bump: 0.1.169 -> 0.1.170.
+
+## 2026-01-23 (sniffer live)
+- Sniffer: endpoint `GET /api/sniffer/recent?limit=` per visualizzare gli ultimi telegrammi catturati.
+- Admin UI: sezione Live (ultimi telegrammi) aggiornata automaticamente.
+- Version bump: 0.1.170 -> 0.1.171.
+
+## 2026-01-25 (umidità 12-in-1)
+- Aggiunti sensori Umidità (tipo device `humidity`) con MQTT discovery + stati su topic `.../state/humidity/...`.
+- Listener telegrammi 12-in-1: parsing umidità da `ReadSensorsInOneStatusResponse` (0x1605) con fallback raw opcode 0x1630.
+- Admin UI: CRUD Umidità + realtime via WebSocket.
+- Version bump: 0.1.175 -> 0.1.176.
+
+## 2026-01-25 (luminosita 12-in-1)
+- Aggiunti sensori Luminosita (tipo device `illuminance`) con MQTT discovery + stati su topic `.../state/illuminance/...`.
+- Listener 12-in-1: parsing luminosita da `ReadSensorsInOneStatusResponse` (0x1605) con fallback raw opcode 0x1630.
+- Admin UI: CRUD Luminosita + realtime via WebSocket.
+- Version bump: 0.1.176 -> 0.1.177.
+
+## 2026-01-25 (illuminance fix 0x1646)
+- Fix: parsing luminosita anche da `ReadSensorStatusResponse` opcode raw 0x1646 (payload 16-bit) per evitare valore `?` in UI.
+- Version bump: 0.1.177 -> 0.1.178.
+
+## 2026-01-25 (illuminance fix 0x1605 alt format)
+- Fix: alcuni 12-in-1 inviano la luminosita (lux) nel payload 0x1605 come 16-bit in `payload[2:4]` e lasciano `payload[5:8]` a `0xFFFFFF`; aggiunto fallback per evitare valore `?` in UI.
+- Version bump: 0.1.178 -> 0.1.179.
+
+## 2026-01-25 (cover no% clones + groups)
+- MQTT discovery: aggiunte entita' cover clone "no%" (solo OPEN/CLOSE/STOP, senza posizione) per ogni cover e per ogni cover group; raggruppate sotto device `BusPro Cover no %`.
+- Version bump: 0.1.179 -> 0.1.180.
+
+## 2026-04-22 (RUN mixed scene applies OFF when ON/OFF disabled)
+- Runtime scenari BusPro (`run_light_scenario`): per scenari misti ON+OFF, `RUN` ora applica anche gli OFF quando `onoff_enabled` e' disattivo.
+- Mantiene comportamento legacy quando `onoff_enabled` e' attivo (evita OFF in RUN sugli scenari misti).
+- Caso coperto: scenario "Cinema" che deve lasciare accese solo alcune luci e spegnere le altre con RUN.
+- Version bump: 0.1.359 -> 0.1.360.
+
+## 2026-04-22 (admin dedicated guide page with blocks, figures, examples)
+- Nuova pagina Admin dedicata: `/admin-guide` con spiegazione completa addon "da zero" a blocchi.
+- Aggiunto link `Guida` nella navbar della pagina Admin (`index.html`) con apertura diretta.
+- Guida arricchita con:
+  - riferimenti a blocchi (A/B/C/D),
+  - Figura 1 (schema a blocchi inline SVG),
+  - esempi pratici guidati (VMC dimmer, scenario Vado via),
+  - checklist operativa e tabella troubleshooting.
+- Version bump: 0.1.357 -> 0.1.359.
+
+## 2026-04-17 (lights page quick nav to extra)
+- Pagina utente `/lights`: aggiunto pulsante top `Vai a extra` (`extraPageBtn`) accanto ai pulsanti esistenti.
+- Navigazione diretta a `/extra` con lo stesso feedback touch (`animatePress`) degli altri pulsanti.
+- Version bump: 0.1.356 -> 0.1.357.
+
+## 2026-04-17 (manifest arch deprecation fix: armv7 -> armhf)
+- Add-on manifest aggiornato per warning Supervisor: sostituito `armv7` con `armhf` in `arch`.
+- Aggiornato `build_from` corrispondente da `armv7-base` a `armhf-base`.
+- Version bump: 0.1.355 -> 0.1.356.
+
+## 2026-04-17 (RUN supports all-OFF scenarios for BusPro lights)
+- Runtime scenario (`run_light_scenario`): per target BusPro, `RUN` ora applica `OFF` quando lo scenario contiene solo stati OFF.
+- Mantiene protezione legacy sui mix ON/OFF: in `RUN` evita OFF solo se nello scenario esistono anche target ON.
+- Risolve il caso d'uso `Salva (solo spente)` che prima non spegneva con `RUN`.
+- Version bump: 0.1.354 -> 0.1.355.
+
+## 2026-04-17 (scenario quick save: only OFF + mobile-safe modal top)
+- UI scenari in `/lights`: aggiunto pulsante rapido `Salva (solo spente)` accanto a `solo accese` e `tutte`.
+- Logica `buildScenarioItems/saveScenario`: supportato filtro `onlyOff` (salva solo luci in stato OFF).
+- Mobile hardening (`max-width:600px`): header modal scenari in colonna con bottoni compatti per evitare overflow su smartphone.
+- Version bump: 0.1.353 -> 0.1.354.
+
+## 2026-04-17 (diagnostic logs for scenario ON/RUN vs combination path)
+- Aggiunti log runtime su `run_light_scenario` con: `command`, `desired`, conteggio `items`, `covers`, `combination_targets`.
+- Aggiunto log dedicato quando viene usato il path `combination_targets` con stato inviato (`ON`/`OFF`) e numero target.
+- Obiettivo: isolare con certezza se il percorso ON/RUN sta inviando solo combination o anche comandi legacy.
+- Version bump: 0.1.352 -> 0.1.353.
+
+## 2026-04-17 (preserve combination targets on normal scenario edits)
+- Fix store scenario update flow: `combination_targets` viene aggiornato solo se esplicitamente presente nel payload.
+- Evita che la UI standard (che non invia ancora il campo) lo azzeri involontariamente durante modifica/salvataggio.
+- Version bump: 0.1.351 -> 0.1.352.
+
+## 2026-04-17 (scenario combination on/off without logic module)
+- Aggiunto supporto opzionale `combination_targets` negli scenari luce (persistenza e validazione store).
+- `run_light_scenario`: se presenti `combination_targets`, invia `UniversalSwitchControl` (ON/OFF) e salta il burst ON/OFF canale-per-canale, riducendo traffico UDP e comandi conflittuali.
+- `BusproGateway`: aggiunti cache + invio `set_universal_switch(...)`.
+- Fix pybuspro `UniversalSwitch`: usa `SwitchStatusOnOff` (0/1) invece di `OnOff` (0/255) per payload coerente con `UniversalSwitchControl`.
+- Version bump: 0.1.350 -> 0.1.351.
+
+## 2026-01-25 (cover no% assumed_state)
+- MQTT discovery: per le entita' "no%" aggiunto `assumed_state: true` per avere sempre i comandi Up/Down/Stop disponibili anche se lo stato/posizione in HA e' desincronizzato.
+- Version bump: 0.1.180 -> 0.1.181.
+
+## 2026-01-25 (cover no% raw commands)
+- MQTT discovery: le entita' "no%" ora pubblicano su topic raw (`cmd/cover_raw/...` e `cmd/cover_group_raw/...`) che usano `cover_open_raw/cover_close_raw` per bypassare la logica posizione/auto-stop e forzare UP/DOWN anche quando HA pensa che sia gia' chiusa/aperta.
+- Version bump: 0.1.181 -> 0.1.182.
+
+
+## 2026-04-08 (sync repo)
+- Allineata la cartella locale a origin/main tramite fetch + reset sul commit 260a8dc.
+- Stato finale: main allineato a origin/main (versione 0.1.325), working tree pulito.
+
+
+## 2026-04-08 (admin scenario config)
+- Aggiunta sezione Admin 'Scenari: configurazione JSON' in / (index admin).
+- Nuove funzioni UI: selezione scenario, visualizzazione JSON, validazione JSON, salvataggio via API PUT /api/user/light_scenarios/{id}.
+- Nessuna modifica alla logica runtime di esecuzione scenari/tapparelle: intervento solo su interfaccia admin.
+
+- Version bump: 0.1.325 -> 0.1.326.
+
+
+## 2026-04-08 (scenario cover single parallel)
+- Esecuzione cover kind: single negli scenari: i comandi diretti (OPEN/CLOSE/STOP senza rampa) ora vengono schedulati in parallelo, non piu' in sequenza.
+- Obiettivo: ridurre lo sfasamento di partenza tra tapparelle nello stesso scenario.
+- Version bump: 0.1.326 -> 0.1.327.
+
+
+## 2026-04-08 (scenario button press feedback)
+- Pagina utente /scenarios: aggiunto feedback visivo di pressione (pressed/pulse/ripple) sui pulsanti azione scenario (Esegui/Stop/Accendi/Spegni) e sui pulsanti top.
+- Nessuna modifica alla logica di esecuzione scenari; intervento solo UI.
+- Version bump: 0.1.327 -> 0.1.328.
+
+
+## 2026-04-08 (scenario stop button state color)
+- UI scenari: bottone STOP grigio quando scenario non attivo e rosso quando stato scenario = ON.
+- Applicato sia nella pagina /scenarios sia nel modal scenari di /lights.
+- Mantiene animazione press al click come gli altri pulsanti.
+- Version bump: 0.1.328 -> 0.1.329.
+
+## 2026-04-08 (scenario running state for STOP)
+- Separato stato scenario `running` dallo stato ON/OFF: STOP ora segue solo l'esecuzione reale dello scenario (task attive).
+- API `/api/user/light_scenarios_status` estesa con mappa `running` per scenario.
+- Broadcast websocket aggiunto: `light_scenario_running` per aggiornare la UI in tempo reale senza impattare la logica ON/OFF.
+- UI `/scenarios` e modal scenari in `/lights` aggiornate: STOP rosso solo durante esecuzione; a fine scenario torna grigio.
+- Version bump: 0.1.329 -> 0.1.330.
+
+## 2026-04-08 (scenarios UI duplicate rows fix)
+- Fix pagina `/scenarios`: eliminato reload concorrente su eventi websocket (`light_scenario_state` / `light_scenario_running`) che poteva duplicare righe dopo `Esegui`.
+- Ora la pagina renderizza da cache locale e aggiorna solo lo stato visivo, senza richiamare `load()` ad ogni evento realtime.
+- Version bump: 0.1.330 -> 0.1.331.
+
+## 2026-04-08 (user scenarios trigger time + SVEGLIA trigger type)
+- Pagina utente `/scenarios`: aggiunto campo orario trigger per scenario con pulsante `Salva ora`; il salvataggio e' persistente (PUT scenario completo) e imposta trigger `time` attivo.
+- Editor scenari in `/lights?sc=1`: aggiunto nuovo tipo trigger `Sveglia (custom)`.
+- Backend trigger loop: supporto tipo `sveglia`, che usa l'orario del trigger del scenario chiamato `SVEGLIA`.
+- Normalizzazione store: trigger type `sveglia` ora accettato e persistito.
+- Version bump: 0.1.331 -> 0.1.332.
+
+# 2026-09-30 — CHANGE-2026-009 consumer Ksenia Smart Home
+
+- Aggiunto consumer MQTT dedicato del contratto Ksenia Smart Home 1.0.
+- Manifest, catalogo, availability, stati e command result vengono validati; nessun topic operativo viene ricostruito dal consumer.
+- Comandi capability-based con envelope correlato e successo soltanto dopo ACK `confirmed`.
+- Nuova pagina `/ksenia`, ramo di navigazione dedicato e conteggi Ksenia disponibili nello snapshot globale.
+- Sicurezza Ksenia esclusa con controlli hard-fail; assenza/offline/incompatibilità non bloccano HDL BusPro.
+- Version bump: 0.1.453 -> 0.1.454.
+
+# 2026-10-01 — Riallineamento CHANGE-2026-009 a Ksenia 5.2.106
+
+- Validazione `command_result` allineata allo schema producer aggiornato: versione, identificativi correlati, timestamp e `confirmation_source` obbligatoria per `confirmed`.
+- Il primo risultato terminale e' immutabile; esiti terminali tardivi o duplicati vengono ignorati.
+- Timeout consumer predefinito portato a 25 secondi, oltre il termine producer di 20 secondi, per ricevere l'unico esito terminale autorevole.
+- Fixture e test consumer riallineati al commit producer `67135e1`; confermati 13 test consumer e 14 test producer.
+- Version bump: 0.1.454 -> 0.1.455.
+
+# 2026-10-01 — Correzione pagina Ksenia sotto Ingress
+
+- Corretti gli URL relativi di API e asset per conservarli nel prefisso Ingress dell'add-on.
+- Aggiunta gestione esplicita delle risposte HTTP non JSON.
+- Version bump: 0.1.455 -> 0.1.456.
+# 2026-10-01 — CHANGE-2026-010 organizzazione globale multi-bus
+
+- Aggiunto archivio versionato e atomico `organization.json` per piani, stanze, gruppi, associazioni e icone.
+- Migrazione HDL idempotente da ordine gruppi e gruppi dispositivo esistenti, con backup e segnalazione collisioni.
+- Associazioni canoniche separate per bus: `hdl:<indirizzo>` e `ksenia:<device_id>`; driver futuri predisposti tramite `source`.
+- I dispositivi temporaneamente assenti diventano record orfani recuperabili e non vengono cancellati.
+- Icone MDI automatiche per classe/tipo con override manuale validato e persistente.
+- Nuova UI responsive nella pagina `Stanze, piani e gruppi`; archivio incluso nel backup e ripristino generale.
+- Version bump: 0.1.456 -> 0.1.457.
+# 2026-10-01 — CHANGE-2026-011 producer Smart Home per e-Face
+
+- Aggiunto il ramo additivo `smart_home` a `/api/user/snapshot`; il ramo legacy `devices` resta invariato.
+- Catalogo globale versionato con HDL, Ksenia, piani, stanze, gruppi, icone, disponibilità, stale, read-only e orfani.
+- ID canonici `source:device_id`; eventuali entity ID Home Assistant sono copiati soltanto quando dichiarati dal producer autorevole.
+- Nuovo endpoint comando Smart Home con risoluzione esclusivamente server-side e routing interno HDL/Ksenia.
+- Sicurezza Ksenia e famiglie non whitelist escluse; nessun endpoint accetta topic MQTT o indirizzi operativi arbitrari.
+- Pubblicati schema `smart-home-v1` e fixture consumer; aggiunti test di schema, collisione fra bus, stato, organizzazione e comandi.
+- Version bump: 0.1.457 -> 0.1.458.

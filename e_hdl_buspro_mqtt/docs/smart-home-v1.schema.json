@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ekonex.local/schemas/econtrol-smart-home-v1.json",
+  "title": "e-Control Hub Smart Home snapshot",
+  "type": "object",
+  "required": ["schema_version", "capability_model_version", "organization_schema_version", "command_endpoint_template", "realtime", "features", "floors", "rooms", "groups", "devices"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "capability_model_version": {"const": "1.0"},
+    "organization_schema_version": {"type": "integer", "minimum": 1},
+    "command_endpoint_template": {"const": "/api/user/smart-home/{source}/{device_id}/command"},
+    "realtime": {"type": "object", "required": ["mode", "supports_refresh"]},
+    "features": {"type": "object", "required": ["organization", "commands", "scenarios", "routines"]},
+    "floors": {"type": "array", "items": {"$ref": "#/$defs/named"}},
+    "rooms": {"type": "array", "items": {"allOf": [{"$ref": "#/$defs/named"}, {"type": "object", "required": ["floor_id"], "properties": {"floor_id": {"type": "string"}}}]}},
+    "groups": {"type": "array", "items": {"$ref": "#/$defs/named"}},
+    "devices": {"type": "array", "items": {"$ref": "#/$defs/device"}},
+    "routine_event_log": {"type": "object", "required": ["schema_version", "items"],
+      "properties": {"schema_version": {"const": "1.0"}, "items": {"type": "array", "items": {"$ref": "#/$defs/routine_event"}}}}
+  },
+  "$defs": {
+    "named": {"type": "object", "required": ["id", "name"], "properties": {"id": {"type": "string"}, "name": {"type": "string"}}},
+    "routine_selector": {"type": "object", "required": ["kind", "id"], "properties": {
+      "kind": {"enum": ["auth_id", "code_id", "trigger_id"]}, "id": {"type": "string", "minLength": 1}, "label": {"type": "string"}}},
+    "routine_descriptor": {"type": "object", "required": ["event_type", "actions", "selectors"], "properties": {
+      "event_type": {"type": "string"}, "actions": {"type": "array", "items": {"type": "string"}},
+      "selectors": {"type": "array", "items": {"$ref": "#/$defs/routine_selector"}}}},
+    "routine_event": {"type": "object", "required": ["event_id", "source", "device_id", "event_type", "action", "occurred_at", "selectors"], "properties": {
+      "event_id": {"type": "string", "minLength": 1}, "source": {"type": "string"}, "device_id": {"type": "string"},
+      "event_type": {"type": "string"}, "action": {"type": "string"}, "occurred_at": {"type": "string", "format": "date-time"},
+      "selectors": {"type": "array", "items": {"$ref": "#/$defs/routine_selector"}}}},
+    "device": {
+      "type": "object",
+      "required": ["id", "source", "device_id", "name", "device_class", "native_type", "native_id", "capabilities", "commands", "features", "read_only", "available", "stale", "state", "floor_id", "floor_name", "room_id", "room_name", "group_ids", "group_names", "categories", "orders", "visible", "favorite", "shortcut", "visual_category", "icon_auto", "icon_override", "icon", "orphaned"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*:.+$"},
+        "source": {"type": "string"}, "device_id": {"type": "string"}, "name": {"type": "string"},
+        "device_class": {"type": "string"}, "native_type": {"type": "string"}, "native_id": {"type": "string"},
+        "capabilities": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "commands": {"type": "array", "items": {"type": "object", "required": ["action", "value_type"]}},
+        "features": {"type": "object", "required": ["controllable", "realtime", "scenario", "routine_trigger", "routine_action"]},
+        "read_only": {"type": "boolean"}, "available": {"type": "boolean"}, "stale": {"type": "boolean"},
+        "floor_id": {"type": "string"}, "floor_name": {"type": "string"}, "room_id": {"type": "string"}, "room_name": {"type": "string"},
+        "group_ids": {"type": "array", "items": {"type": "string"}}, "group_names": {"type": "array", "items": {"type": "string"}},
+        "categories": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["lights", "extra", "covers", "comfort", "sensors", "security", "scenarios"]}},
+        "orders": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+        "visible": {"type": "boolean"}, "favorite": {"type": "boolean"}, "shortcut": {"type": "boolean"},
+        "visual_category": {"type": "string"},
+        "icon_auto": {"type": "string", "pattern": "^mdi:"}, "icon_override": {"type": "string"}, "icon": {"type": "string", "pattern": "^mdi:"},
+        "orphaned": {"type": "boolean"},
+        "routine_events": {"type": "array", "items": {"$ref": "#/$defs/routine_descriptor"}}
+      }
+    }
+  }
+}

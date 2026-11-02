@@ -1,0 +1,592 @@
+<devicedata>
+    <copyright>Copyright testing</copyright>
+    <creator>s.k</creator>
+    <manufacturer>00KWtesting</manufacturer>
+    <name>KW HDL Service r2</name>
+    <model>KW HDL Service r2</model>
+    <created>07/26/2015 3:41 AM</created>
+    <modified>07/26/2015 3:41 AM</modified>
+    <version>111</version>
+    <control>lua_gen</control>
+    <controlmethod>other</controlmethod>
+    <driver>DriverWorks</driver>
+    <combo>True</combo>
+    <OnlineCategory>others</OnlineCategory>
+    <proxies qty="1">
+        <proxy>inSona_HDL_Service</proxy>
+    </proxies>
+    <connections>
+        <connection>
+            <id>1</id>
+            <facing>6</facing>
+            <connectionname>HDL Service Interface</connectionname>
+            <type>1</type>
+            <consumer>False</consumer>
+            <audiosource>False</audiosource>
+            <videosource>False</videosource>
+            <linelevel>True</linelevel>
+            <classes>
+                <class>
+                    <classname>HDL_Service_Interface</classname>
+                    <autobind>True</autobind>
+                </class>
+            </classes>
+        </connection>
+    </connections>
+    <config>
+        <power_management_method>AlwaysOn</power_management_method>
+        <power_command_delay>0</power_command_delay>
+        <power_delay>0</power_delay>
+        <power_command_needed>False</power_command_needed>
+        <documentation>Documentazione da scrivere</documentation>
+        <script><![CDATA[--prova
+ProxyHelper = {};
+ProxyHelper.DriverVersion = "1.11";		
+ProxyHelper.CommandList = {};	
+--ProxyHelper.IsSendingCommand = false;
+g_ServerIPAddress = Properties["HDL IP Address"]
+g_ServerPort = tonumber(Properties["Communication Port"])	
+g_UDPSocket = nil;
+g_UDPReceiveInterval = tonumber(Properties["UDP Receive Interval"]);
+g_UDPSendInterval = tonumber(Properties["UDP Send Interval"]);
+g_UDPReceiveBuf = "";
+
+DriverHelper = {};
+DriverHelper.DebugMode = false;
+DriverHelper.DebugTime = 45;
+
+
+HDLCRCTab={
+	0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50a5, 0x60c6, 0x70e7,
+	0x8108, 0x9129, 0xa14a, 0xb16b, 0xc18c, 0xd1ad, 0xe1ce, 0xf1ef,
+	0x1231, 0x0210, 0x3273, 0x2252, 0x52b5, 0x4294, 0x72f7, 0x62d6,
+	0x9339, 0x8318, 0xb37b, 0xa35a, 0xd3bd, 0xc39c, 0xf3ff, 0xe3de,
+	0x2462, 0x3443, 0x0420, 0x1401, 0x64e6, 0x74c7, 0x44a4, 0x5485,
+	0xa56a, 0xb54b, 0x8528, 0x9509, 0xe5ee, 0xf5cf, 0xc5ac, 0xd58d,
+	0x3653, 0x2672, 0x1611, 0x0630, 0x76d7, 0x66f6, 0x5695, 0x46b4,
+	0xb75b, 0xa77a, 0x9719, 0x8738, 0xf7df, 0xe7fe, 0xd79d, 0xc7bc,
+	0x48c4, 0x58e5, 0x6886, 0x78a7, 0x0840, 0x1861, 0x2802, 0x3823,
+	0xc9cc, 0xd9ed, 0xe98e, 0xf9af, 0x8948, 0x9969, 0xa90a, 0xb92b,
+	0x5af5, 0x4ad4, 0x7ab7, 0x6a96, 0x1a71, 0x0a50, 0x3a33, 0x2a12,
+	0xdbfd, 0xcbdc, 0xfbbf, 0xeb9e, 0x9b79, 0x8b58, 0xbb3b, 0xab1a,
+	0x6ca6, 0x7c87, 0x4ce4, 0x5cc5, 0x2c22, 0x3c03, 0x0c60, 0x1c41,
+	0xedae, 0xfd8f, 0xcdec, 0xddcd, 0xad2a, 0xbd0b, 0x8d68, 0x9d49,
+	0x7e97, 0x6eb6, 0x5ed5, 0x4ef4, 0x3e13, 0x2e32, 0x1e51, 0x0e70,
+	0xff9f, 0xefbe, 0xdfdd, 0xcffc, 0xbf1b, 0xaf3a, 0x9f59, 0x8f78,
+	0x9188, 0x81a9, 0xb1ca, 0xa1eb, 0xd10c, 0xc12d, 0xf14e, 0xe16f,
+	0x1080, 0x00a1, 0x30c2, 0x20e3, 0x5004, 0x4025, 0x7046, 0x6067,
+	0x83b9, 0x9398, 0xa3fb, 0xb3da, 0xc33d, 0xd31c, 0xe37f, 0xf35e,
+	0x02b1, 0x1290, 0x22f3, 0x32d2, 0x4235, 0x5214, 0x6277, 0x7256,
+	0xb5ea, 0xa5cb, 0x95a8, 0x8589, 0xf56e, 0xe54f, 0xd52c, 0xc50d,
+	0x34e2, 0x24c3, 0x14a0, 0x0481, 0x7466, 0x6447, 0x5424, 0x4405,
+	0xa7db, 0xb7fa, 0x8799, 0x97b8, 0xe75f, 0xf77e, 0xc71d, 0xd73c,
+	0x26d3, 0x36f2, 0x0691, 0x16b0, 0x6657, 0x7676, 0x4615, 0x5634,
+	0xd94c, 0xc96d, 0xf90e, 0xe92f, 0x99c8, 0x89e9, 0xb98a, 0xa9ab,
+	0x5844, 0x4865, 0x7806, 0x6827, 0x18c0, 0x08e1, 0x3882, 0x28a3,
+	0xcb7d, 0xdb5c, 0xeb3f, 0xfb1e, 0x8bf9, 0x9bd8, 0xabbb, 0xbb9a,
+	0x4a75, 0x5a54, 0x6a37, 0x7a16, 0x0af1, 0x1ad0, 0x2ab3, 0x3a92,
+	0xfd2e, 0xed0f, 0xdd6c, 0xcd4d, 0xbdaa, 0xad8b, 0x9de8, 0x8dc9,
+	0x7c26, 0x6c07, 0x5c64, 0x4c45, 0x3ca2, 0x2c83, 0x1ce0, 0x0cc1,
+	0xef1f, 0xff3e, 0xcf5d, 0xdf7c, 0xaf9b, 0xbfba, 0x8fd9, 0x9ff8,
+	0x6e17, 0x7e36, 0x4e55, 0x5e74, 0x2e93, 0x3eb2, 0x0ed1, 0x1ef0
+};
+
+CMD_BUF = {
+	192,
+	168,
+	0,
+	101,
+    0x48,
+	0x44,
+	0x4C,
+	0x4D,
+	0x49,
+	0x52,
+	0x41,
+	0x43,
+	0x4C,
+	0x45,
+	0xAA,
+	0xAA,
+	0x0F,
+	0x03,
+	0xFE,
+	0xFF,
+	0xFE,
+	0x00,
+	0x31,
+	0x01,
+	0x44,
+	0x01,
+	0x64,
+	0x00,
+	0x00,
+	0x00,
+};
+
+HDLCmdHead = "HDLMIRACLE" .. string.char(0xAA) .. string.char(0xAA);
+
+function dbg(strDebugText)
+	--print(strDebugText) 
+end
+
+function DriverHelper.dbg(strDebugText)
+	if (DriverHelper.DebugMode) then 
+		print(strDebugText) 
+	end
+end
+function OnPropertyChanged(strProperty)
+	local propVal = Properties[strProperty];
+	DriverHelper.dbg("strProperty = "  .. strProperty .. " changed to: " .. propVal)
+	if (strProperty == "License") then
+		print("Cambio Properties Licenza");
+
+	elseif (strProperty == "Debug Mode") then
+		DriverHelper.DebugMode = (propVal == "true");
+		if (DriverHelper.DebugMode) then			
+			DriverHelper.DebugTimer = DriverHelper.AddTimer (DriverHelper.DebugTimer, DriverHelper.DebugTime, "MINUTES", false)
+		else
+			DriverHelper.DebugTimer = DriverHelper.KillTimer (DriverHelper.DebugTimer)
+		end	
+		C4:AllowExecute (DriverHelper.DebugMode)	
+	elseif (strProperty == "HDL IP Address") then
+		g_ServerIPAddress = propVal;
+		StartUdpSocket();
+	elseif (strProperty == "Communication Port") then
+		g_ServerPort = tonumber(Properties["Communication Port"])	
+		DriverHelper.dbg("ServerPort change to :"..g_ServerPort)
+		StartUdpSocket();
+	elseif (strProperty == "UDP Send Interval") then
+		g_UDPSendInterval = tonumber(Properties["UDP Send Interval"]);
+		DriverHelper.UDPSendTimer = DriverHelper.AddTimer(DriverHelper.UDPSendTimer, g_UDPSendInterval, "MILLISECONDS", true);
+	elseif (strProperty == "UDP Receive Interval") then
+		g_UDPReceiveInterval = tonumber(Properties["UDP Receive Interval"]);
+		DriverHelper.UDPReceiveTimer = DriverHelper.AddTimer(DriverHelper.UDPReceiveTimer, g_UDPReceiveInterval, "MILLISECONDS", true);
+	end
+end
+
+function ReceivedFromProxy(idBinding, strCommand, tParams)
+	DriverHelper.dbg("ReceivedFromProxy strCommand: " .. strCommand .. ", idBinding: " .. idBinding )   
+	if (nil ~= tParams) then for k,v in pairs(tParams) do dbg(k .. ": " .. v) end end
+	if (strCommand == "HDL_COMMAND") then
+		SendCommand(tParams);
+	end
+end
+
+function SendCommand(cmdData)
+	local hostip = C4:GetControllerNetworkAddress();
+	_, _, CMD_BUF[1], CMD_BUF[2], CMD_BUF[3], CMD_BUF[4] = string.find(hostip, "(%d+)%.(%d+)%.(%d+)%.(%d+)");
+	local cmdLen = #(CMD_BUF);	
+	if (cmdData["Command"] == "DLPConfirm") then
+		CMD_BUF[17] = 0x10;
+		CMD_BUF[18] = tonumber(cmdData["SubnetID"]);
+		CMD_BUF[19] = tonumber(cmdData["DeviceID"]);	
+		CMD_BUF[20] = 0xFF;
+		CMD_BUF[21] = 0xFE;		
+		CMD_BUF[22] = 0xE0;
+		CMD_BUF[23] = 0x1D;
+		CMD_BUF[24] = 0xFF;
+		CMD_BUF[25] = 0xFF;	
+		CMD_BUF[26] = tonumber(cmdData["ChannelID"]);
+		CMD_BUF[27] = 0;
+		CMD_BUF[28] = 0;
+		CMD_BUF[29] = 0;
+		CMD_BUF[30] = cmdData["SensorID"];
+		if (cmdData["Status"] == "255") then CMD_BUF[27] = 1 end
+	elseif (cmdData["Command"] == "HvacControl") then
+		local cmd_table = {POWER = 0x03, FanControl = 0x05, ModeControl = 0x06 ,SetAutoTemp = 0x08, SetCoolTemp = 0x04, SetHeatTemp = 0x07}
+		CMD_BUF[17] = 0x0D;
+		CMD_BUF[18] = 0x03;
+		CMD_BUF[19] = 0xFE;	
+		CMD_BUF[20] = 0xFF;
+		CMD_BUF[21] = 0xFE;
+		CMD_BUF[22] = 0xE3;
+		CMD_BUF[23] = 0xD8;
+		CMD_BUF[24] = tonumber(cmdData["SubnetID"]);
+		CMD_BUF[25] = tonumber(cmdData["DeviceID"]);
+		CMD_BUF[26] = cmd_table[cmdData.cmdname];
+		cmdLen = cmdLen - 3;
+		if (cmdData.cmdname == "POWER") then
+			CMD_BUF[27] = 0x01
+			if (cmdData.cmdcontent == "OFF") then CMD_BUF[27] = 0 end
+		elseif (cmdData.cmdname == "ModeControl") then
+			local mode_table = {Heat = 0x01, Cool = 0x00, Auto = 0x03}
+			CMD_BUF[27] = mode_table[cmdData.cmdcontent]
+		elseif (cmdData.cmdname == "FanControl") then
+			local fan_table = {Auto = 0x00, High = 0x01, Medium = 0x02, Low = 0x03}
+			CMD_BUF[27] = fan_table[cmdData.cmdcontent]
+		elseif (cmdData.cmdname == "CheckStatus") then
+			CMD_BUF[17] = 0x0C;
+			CMD_BUF[22] = 0xE3;
+			CMD_BUF[23] = 0xDA;
+			CMD_BUF[26] = cmdData.cmdcontent
+			cmdLen = cmdLen - 1;
+		else
+			CMD_BUF[27] = cmdData.cmdcontent
+		end
+	else
+		CMD_BUF[18] = 0x03;
+		CMD_BUF[19] = 0xFE;	
+		CMD_BUF[20] = 0xFF;
+		CMD_BUF[21] = 0xFE;			
+		CMD_BUF[22] = 0;
+		CMD_BUF[24] = tonumber(cmdData["SubnetID"]);
+		CMD_BUF[25] = tonumber(cmdData["DeviceID"]);	
+		CMD_BUF[26] = tonumber(cmdData["ChannelID"]);
+		CMD_BUF[27] = tonumber(cmdData["Level"]);
+		CMD_BUF[28] = 0;
+		CMD_BUF[29] = 0;
+		CMD_BUF[30] = 0;		
+		if (cmdData["Command"] == "Action") then
+			CMD_BUF[23] = 0x31;
+			CMD_BUF[17] = 0x0F;
+			if(cmdData["Time"] ~= nil ) then
+				CMD_BUF[29] = tonumber(cmdData["Time"]);
+			end
+			cmdLen = cmdLen - 1;
+		elseif (cmdData["Command"] == "CurtainControl") then
+			CMD_BUF[17] = 0x10;
+			CMD_BUF[22] = 0xE3;
+			CMD_BUF[23] = 0xE0;
+			if (cmdData["Level"] == "1") then
+				CMD_BUF[27] = 0x01;
+			elseif (cmdData["Level"] == "2") then
+				CMD_BUF[27] = 0x02;
+			elseif (cmdData["Level"] == "3") then
+				CMD_BUF[27] = 0x00;
+			end
+		--elseif (cmdData["Command"] == "BlindTimeControl") then
+			--CMD_BUF[17] = 0x0E;
+			--CMD_BUF[22] = 0xE8;
+			--CMD_BUF[23] = 0x02;
+			--CMD_BUF[27] = 0x00;
+			--CMD_BUF[28] = 0x00;
+			--cmdLen = cmdLen - 2
+		elseif (cmdData["Command"] == "TestUDP") then
+			CMD_BUF[17] = 0x0B;
+			CMD_BUF[23] = 0x0E;
+			CMD_BUF[24] = 0xFF;
+			CMD_BUF[25] = 0xFF;	
+			cmdLen = cmdLen -5
+		elseif (cmdData["Command"] == "QueryState") then
+			CMD_BUF[23] = 0x38;
+			CMD_BUF[17] = 0x0B;
+			cmdLen = cmdLen - 5;
+		elseif (cmdData["Command"] == "ActiveScene") then
+			dbg("Receive : "..cmdData["Command"])
+			CMD_BUF[17] = 0x0D;
+			CMD_BUF[23] = 0x02;
+			CMD_BUF[26] = tonumber(cmdData["AreaID"]);
+			CMD_BUF[27] = tonumber(cmdData["SceneID"]);
+			cmdLen = cmdLen - 3
+		end
+	end
+	local sendbuf = "";
+	for i=1, cmdLen do  
+		sendbuf = sendbuf .. string.char(CMD_BUF[i]);
+	end 	
+	local crcTable = {};
+	for i=17, cmdLen do  
+		table.insert(crcTable, CMD_BUF[i]);
+	end 
+	local c1, c2 = hdlPackCRC(crcTable);	
+
+	sendbuf = sendbuf .. string.char(c1) .. string.char(c2);
+	--hexdump(sendbuf)
+	if(cmdData["Command"] == "DLPConfirm") then
+		--ProxyHelper.SendCommand(sendbuf)				-- When call this function to send out a DLPConfirm packet, reply will not be in time and receive two trigger events 
+		g_UDPSocket:sendto(sendbuf, g_ServerIPAddress, g_ServerPort);
+		return
+	end	
+	ProxyHelper.AddCommandList(sendbuf)
+end
+
+function ProxyHelper.AddCommandList(cmd, pos)
+
+	if (pos ~= nil and #ProxyHelper.CommandList > 0 ) then
+		table.insert(ProxyHelper.CommandList, pos, cmd);
+	else
+		table.insert(ProxyHelper.CommandList, cmd);
+	end
+end
+
+function ProxyHelper.SendCommandList()
+	--if (ProxyHelper.IsSendingCommand) then return end
+	--ProxyHelper.IsSendingCommand = true;
+	if (#ProxyHelper.CommandList > 0) then
+		g_UDPSocket:sendto(ProxyHelper.CommandList[1], g_ServerIPAddress, g_ServerPort);
+		DriverHelper.dbg("Send Command to "..g_ServerIPAddress..":"..g_ServerPort)
+		table.remove(ProxyHelper.CommandList, 1);	
+		--ProxyHelper.IsSendingCommand = false;
+	end
+end
+
+function ProxyHelper.SendCommand(buf)
+	dbg("Send command right away ...")
+	g_UDPSocket:sendto(buf, g_ServerIPAddress, g_ServerPort);
+end
+
+function StartUdpSocket()
+	CloseUdpSocket();
+	g_UDPSocket = socket.udp();
+	g_UDPSocket:setsockname('*', g_ServerPort);
+	g_UDPSocket:settimeout(0);
+	DriverHelper.UDPSendTimer = DriverHelper.AddTimer(DriverHelper.UDPSendTimer, g_UDPSendInterval, "MILLISECONDS", true);
+	DriverHelper.UDPReceiveTimer = DriverHelper.AddTimer(DriverHelper.UDPReceiveTimer, g_UDPReceiveInterval, "MILLISECONDS", true);
+end
+
+function CloseUdpSocket()
+	DriverHelper.KillTimer(DriverHelper.UDPReceiveTimer);
+	DriverHelper.KillTimer(DriverHelper.UDPSendTimer)
+    if (g_UDPSocket) then
+        g_UDPSocket:close();
+		g_UDPSocket = nil;
+    end
+end
+
+function OnDriverDestroyed()
+	CloseUdpSocket();
+end
+
+function OnTimerExpired(idTimer)
+	if(idTimer == DriverHelper.UDPSendTimer) then
+		ProxyHelper.SendCommandList()
+	elseif(idTimer == DriverHelper.UDPReceiveTimer) then 
+		ReceiveUDPData();
+	elseif (idTimer == DriverHelper.DebugTimer) then
+		DriverHelper.DebugMode = false;
+		C4:UpdateProperty("Debug Mode", "false");
+		C4:AllowExecute (DriverHelper.DebugMode)
+	end
+end
+
+function ReceiveUDPData()
+
+	local data = g_UDPSocket:receive();	
+	if (data==nil) then return; end	
+
+	g_UDPReceiveBuf = g_UDPReceiveBuf .. data;
+	while #(g_UDPReceiveBuf)>=28 do
+		if (string.sub(g_UDPReceiveBuf, 5, 16) ~= HDLCmdHead) then
+			g_UDPReceiveBuf = string.sub(g_UDPReceiveBuf, 2);	
+		else
+			break;
+		end
+	end
+
+	if (#(g_UDPReceiveBuf)<28) then return; end
+	local dataLen = string.byte(g_UDPReceiveBuf,17) + 16;
+	data = string.sub(g_UDPReceiveBuf, 1, dataLen);
+	g_UDPReceiveBuf = string.sub(g_UDPReceiveBuf, dataLen + 1);
+	--hexdump(data)
+	local byteTable = {}
+	for i=1, #(data) do  
+		byteTable[i] = string.byte(data,i);
+	end 
+	if(byteTable[22]==0 and byteTable[23]==0x32 and byteTable[27]==0xF8) then
+		if (CheckHDLPackCRC(byteTable)) then
+			C4:SendToProxy(1, "HDL_STATE", {["Level"] = byteTable[28], ["SubnetID"]=byteTable[18], ["DeviceID"] = byteTable[19], ["ChannelID"]= byteTable[26]}, "NOTIFY");
+		end
+	elseif(byteTable[22]==0xE3 and byteTable[23]==0xE1 ) then
+		if (CheckHDLPackCRC(byteTable)) then
+			C4:SendToProxy(1, "HDL_Curtian_STATE", {["unicast"] = 1,["Level"] = byteTable[27], ["SubnetID"]=byteTable[18], ["DeviceID"] = byteTable[19], ["ChannelID"]= byteTable[26]}, "NOTIFY");
+		end
+	elseif(byteTable[22]==0xE3 and byteTable[23]==0xE4 ) then
+		if (CheckHDLPackCRC(byteTable)) then
+			for i = 1, 2 do
+				C4:SendToProxy(1, "HDL_Curtian_STATE", {["broadcast"] = 1,["Level"] = byteTable[25 + i], ["SubnetID"]=byteTable[18], ["DeviceID"] = byteTable[19], ["ChannelID"]= i}, "NOTIFY");
+			end
+		end
+	elseif (byteTable[22]==0 and byteTable[23]==0x39) then
+		if (CheckHDLPackCRC(byteTable)) then
+			for i = 1, byteTable[26] do
+				C4:SendToProxy(1, "HDL_STATE", {["Level"] = byteTable[26 + i], ["SubnetID"]=byteTable[18], ["DeviceID"] = byteTable[19], ["ChannelID"]=i}, "NOTIFY");
+			end	
+		end
+	elseif (byteTable[22]==0xE0 and byteTable[23]==0x1C) then
+		if (CheckHDLPackCRC(byteTable)) then
+			C4:SendToProxy(1, "HDL_DLP", {["Status"]=byteTable[27], ["SensorID"]=byteTable[30], ["SubnetID"]=byteTable[24], ["DeviceID"] = byteTable[25], ["ChannelID"]= byteTable[26]}, "NOTIFY");
+		end
+	elseif (byteTable[22]==0 and byteTable[23]==0x0F) then
+		if (CheckHDLPackCRC(byteTable)) then
+			DriverHelper.dbg("UDP communication is running normally,1 device found online,Subnet ID:"..byteTable[18].." Device ID:"..byteTable[19])
+		end
+	elseif (byteTable[22]==0xE3 and (byteTable[23]==0xD9 or byteTable[23]==0xDB or byteTable[23]==0xE5)) then	
+		if (CheckHDLPackCRC(byteTable)) then
+			if (byteTable[23] == 0xE5) then 
+				C4:SendToProxy(1, "HDL_HVAC_STATE", {["Data"]=byteTable[27], ["Command"]="CurrentTemp", ["SubnetID"]=byteTable[18], ["DeviceID"] = byteTable[19]}, "NOTIFY");
+			else
+				C4:SendToProxy(1, "HDL_HVAC_STATE", {["Data"]=byteTable[27], ["Command"]=byteTable[26], ["SubnetID"]=byteTable[18], ["DeviceID"] = byteTable[19]}, "NOTIFY");
+			end
+		end
+	end
+end
+
+function CheckHDLPackCRC(byteTable)
+	local dataLen = #(byteTable) - 2;
+	local crcTable = {};
+	for i=17, dataLen do  
+		table.insert(crcTable, byteTable[i]);
+	end 	
+	local c1, c2 = hdlPackCRC(crcTable);
+	return (byteTable[dataLen+1] == c1 and byteTable[dataLen+2]==c2);
+end
+
+function hdlPackCRC(tData)
+    local wdCRC =0;
+	local tCnt = #(tData);
+	local crc16hi = 0;
+	local crc16lo = 0;
+	for i=1,tCnt do
+		crc16lo = bit.band(wdCRC, 0xFF);
+		crc16hi = bit.rshift(wdCRC, 8);		
+		wdCRC = bit.lshift(crc16lo, 8);
+		local crc16hi =bit.bxor(crc16hi , tData[i]);
+		wdCRC = bit.bxor(wdCRC, HDLCRCTab[crc16hi + 1]);  
+    end
+
+	crc16lo = bit.band(wdCRC, 0xFF);
+	crc16hi = bit.rshift(wdCRC, 8);
+	return crc16hi,crc16lo;
+end
+
+function DriverHelper.AddTimer(timer, count, units, recur)
+	local newTimer
+	if (recur == nil) then recur = false end
+	if (timer and timer ~= 0) then DriverHelper.KillTimer (timer) end
+
+	newTimer = C4:AddTimer (count, units, recur)
+	return newTimer
+end
+
+function DriverHelper.KillAllTimers()
+	for k,v in pairs (DriverHelper or {}) do
+		if (type (v) == 'number') then
+			DriverHelper[k] = DriverHelper.KillTimer (DriverHelper[k])
+		end
+	end
+end
+
+function DriverHelper.KillTimer(timer)
+	if (timer and type (timer) == 'number') then
+		return (C4:KillTimer (timer))
+	else
+		return (0)
+	end
+end
+
+function DriverHelper.Print(data)
+	if (type(data) == 'table') then
+		for k, v in pairs (data) do 
+			dbg(k); 
+			DriverHelper.Print(v); 
+		end
+	elseif (type (data) ~= 'nil') then
+		dbg(data)
+	else
+		dbg('nil value');
+	end
+end
+
+function ExecuteCommand(strCommand, tParams)
+	DriverHelper.dbg("ExecuteCommand function called with : " .. strCommand)
+	if (strCommand == "LUA_ACTION" and tParams ~= nil) then
+		for cmd,cmdv in pairs(tParams) do
+			if cmd == "ACTION" then
+				if (cmdv == "TestUDP") then
+					SendCommand({["Command"] = cmdv})
+					print("Start to search available device,please wait")
+				end
+			else
+				dbg("From ExecuteCommand Function - Undefined Command, Key: " .. cmd .. "  Value: " .. cmdv)
+			end
+		end
+	elseif (strCommand == "Active license") then
+		print("BOTTONE Active license ..Execute strCommand == Active license");
+	end
+end
+
+function ReceivedAsync(ticketId, strData)
+	if (strData == "Error") then return end
+	print("ReceivedAsync(ticketId, strData)");
+end
+
+
+StartUdpSocket();
+bit = require("bit");
+C4:UpdateProperty("Driver Version", ProxyHelper.DriverVersion)
+C4:UpdateProperty("Debug Mode", "false")
+OnPropertyChanged("Communication Port")
+
+			
+		]]></script>
+        <actions>
+            <action>
+                <name>Test UDP Communication</name>
+                <command>TestUDP</command>
+            </action>
+        </actions>
+        <commands>
+            <command>
+                <name>TestUDP</name>
+                <description>Test UDP Communication</description>
+            </command>
+        </commands>
+        <properties>
+            <property>
+                <name>HDL IP Address</name>
+                <type>STRING</type>
+                <readonly>false</readonly>
+                <default />
+            </property>
+            <property>
+                <name>Communication Port</name>
+                <type>RANGED_INTEGER</type>
+                <readonly>false</readonly>
+                <default>6000</default>
+                <minimum>1</minimum>
+                <maximum>65535</maximum>
+            </property>
+            <property>
+                <name>UDP Send Interval</name>
+                <type>RANGED_INTEGER</type>
+                <readonly>false</readonly>
+                <default>50</default>
+                <minimum>1</minimum>
+                <maximum>100</maximum>
+            </property>
+            <property>
+                <name>UDP Receive Interval</name>
+                <type>RANGED_INTEGER</type>
+                <readonly>false</readonly>
+                <default>100</default>
+                <minimum>1</minimum>
+                <maximum>1000</maximum>
+            </property>
+            <property>
+                <name>Debug Mode</name>
+                <type>LIST</type>
+                <readonly>false</readonly>
+                <default>false</default>
+                <items>
+                    <item>true</item>
+                    <item>false</item>
+                </items>
+            </property>
+            <property>
+                <name>Driver Version</name>
+                <type>STRING</type>
+                <readonly>true</readonly>
+                <default />
+            </property>
+        </properties>
+    </config>
+</devicedata>
+
+
+
+
+
+
+
+	

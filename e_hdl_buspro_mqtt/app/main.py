@@ -1,0 +1,11649 @@
+from __future__ import annotations
+
+import asyncio 
+from copy import deepcopy
+import base64
+import html
+import json
+import logging
+import os 
+import socket
+import struct
+import time
+import threading
+import urllib.parse
+import urllib.request
+import urllib.error
+from typing import Any
+import re
+import shutil
+from datetime import datetime, timedelta, time as dt_time
+from zoneinfo import ZoneInfo
+
+from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from starlette.requests import ClientDisconnect
+
+from .buspro_gateway import BusproGateway, CoverKey, CoverState, LightKey, LightState
+from .discovery import (
+    cover_discovery,
+    cover_group_no_pct_discovery,
+    cover_no_pct_discovery,
+    dry_contact_discovery,
+    pir_discovery,
+    ultrasonic_discovery,
+    humidity_discovery,
+    illuminance_discovery,
+    air_quality_discovery,
+    gas_percent_discovery,
+    light_discovery,
+    rgb_light_discovery,
+    switch_discovery,
+    light_scenario_button_discovery,
+    light_scenario_switch_discovery,
+    scenario_ha_trigger_button_discovery,
+    slugify,
+    temperature_discovery,
+)
+from .icons import ensure_mdi_icons, parse_mdi_icon, placeholder_svg
+from .ha_catalog import build_ha_catalog
+from .ha_label_import import discover_labeled_entities
+from .bticino_manager import BticinoManager, INTEGRATIONS as BTICINO_INTEGRATIONS, MyHomeComponentInstaller
+from .ksenia_consumer import ContractError, KseniaSmartHomeConsumer
+from .knx_manager import HomeAssistantWebSocket, KnxManager, KnxNotConfigured
+from .modbus_manager import ModbusManager
+from .esphome_manager import EspHomeManager
+from .mqtt_manager import MqttManager, install_routes as install_mqtt_routes
+from .nuki_manager import NukiManager
+from .netatmo_direct import NetatmoDirect
+from .organization import OrganizationStore, hdl_presentation_class
+from .smart_home import build_smart_home, hdl_device_kind, validate_command_request
+from .activity_feed import ActivityFeed
+from .event_register_proxy import router as event_register_router
+from .system_resources import Resources
+from .integration_overview import overview as integration_overview
+from .mqtt_client import MqttClient
+from .realtime import RealtimeHub
+from .settings import AUTH_BASIC, AUTH_NONE, AUTH_TOKEN, AuthConfig, load_settings, read_options
+from .sniffer import TelegramSniffer
+from .store import StateStore
+
+_LOGGER = logging.getLogger("buspro_addon")
+
+class _TzFormatter(logging.Formatter):
+    def __init__(self, *args, tz_name: str = "Europe/Rome", **kwargs):
+        super().__init__(*args, **kwargs)
+        try:
+            self._tz = ZoneInfo(tz_name)
+        except Exception:
+            self._tz = ZoneInfo("UTC")
+
+    def formatTime(self, record, datefmt=None):
+        dt = datetime.fromtimestamp(record.created, tz=self._tz)
+        if datefmt:
+            return dt.strftime(datefmt)
+        return dt.isoformat()
+
+
+_log_tz = str(os.environ.get("BUSPRO_LOG_TZ") or os.environ.get("TZ") or "Europe/Rome").strip() or "Europe/Rome"
+_handler = logging.StreamHandler()
+_handler.setFormatter(
+    _TzFormatter(
+        "%(asctime)s %(levelname)s [%(name)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        tz_name=_log_tz,
+    )
+)
+logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler], force=True)
+
+ADDON_VERSION = "0.1.566.1"
+
+USER_PORT = 8124
+ADMIN_PORT = 8125
+
+
+def _configure_logging(debug: bool, debug_telegram: bool) -> None:
+    level = logging.DEBUG if debug else logging.INFO
+
+    root = logging.getLogger()
+    root.setLevel(level)
+
+    for name in (
+        "buspro_addon",
+        "buspro_gateway",
+        "paho",
+        "uvicorn",
+        "uvicorn.error",
+        "uvicorn.access",
+    ):
+        logging.getLogger(name).setLevel(level)
+
+    # Telegram/log dump e' molto rumoroso: abilitalo solo se richiesto esplicitamente.
+    tl = logging.DEBUG if debug_telegram else (logging.INFO if debug else logging.WARNING)
+    logging.getLogger("buspro.telegram").setLevel(tl)
+    logging.getLogger("buspro.log").setLevel(tl)
+
+
+def _normalize_ingress_base(base: str) -> str:
+    base = (base or "").strip()
+    if not base:
+        return ""
+    if not base.startswith("/"):
+        base = "/" + base
+    base = base.rstrip("/")
+    if base.endswith("/ingress"):
+        base = base[: -len("/ingress")]
+    return base
+
+
+def _is_ingress_headers(headers: dict[str, str]) -> bool:
+    return bool(
+        headers.get("x-ingress-path")
+        or headers.get("x-hassio-ingress")
+        or headers.get("x-hassio-key")
+        or headers.get("x-forwarded-prefix")
+    )
+
+
+def _unauthorized(mode: str) -> Response:
+    headers: dict[str, str] = {}
+    if mode == AUTH_BASIC:
+        headers["WWW-Authenticate"] = 'Basic realm="buspro"'
+    return Response(status_code=401, headers=headers)
+
+
+def _clean_backup_text(text: str) -> str:
+    # Make restore more tolerant to BOM/accidental prefixes/suffixes when pasting.
+    t = (text or "").strip()
+    if t.startswith("\ufeff"):
+        t = t.lstrip("\ufeff").strip()
+    if not t:
+        return ""
+    if not t.lstrip().startswith("{"):
+        a = t.find("{")
+        b = t.rfind("}")
+        if a != -1 and b != -1 and b > a:
+            t = t[a : b + 1].strip()
+    return t
+
+
+def _check_auth_headers(headers: dict[str, str], query: dict[str, str], auth: AuthConfig) -> bool:
+    if auth.mode == AUTH_NONE:
+        return True
+
+    header = headers.get("authorization")
+
+    if auth.mode == AUTH_TOKEN:
+        if not auth.token:
+            return False
+        if header and header.lower().startswith("bearer "):
+            return header[7:].strip() == auth.token
+        token_q = query.get("token")
+        return bool(token_q) and token_q == auth.token
+
+    if auth.mode == AUTH_BASIC:
+        if not auth.username or not auth.password:
+            return False
+        if not header or not header.lower().startswith("basic "):
+            return False
+        try:
+            raw = base64.b64decode(header[6:].strip()).decode("utf-8")
+            user, pw = raw.split(":", 1)
+            return user == auth.username and pw == auth.password
+        except Exception:
+            return False
+
+    return False
+
+
+def _request_client_info(request: Request) -> tuple[str, str, str]:
+    """Return (real_ip, proxy_ip, user_agent) for diagnostics/logging."""
+    real_ip = ""
+    try:
+        xff = str(request.headers.get("x-forwarded-for") or "").strip()
+        if xff:
+            real_ip = xff.split(",", 1)[0].strip()
+        if not real_ip:
+            real_ip = str(request.headers.get("x-real-ip") or "").strip()
+    except Exception:
+        real_ip = ""
+    try:
+        proxy_ip = str(getattr(request.client, "host", "") or "").strip()
+    except Exception:
+        proxy_ip = ""
+    try:
+        ua = str(request.headers.get("user-agent") or "").strip()
+    except Exception:
+        ua = ""
+    return real_ip or "-", proxy_ip or "-", ua or "-"
+
+
+def _parse_light_cmd(payload: str) -> tuple[bool, int | None]:
+    # Returns (on, brightness255)
+    s = payload.strip()
+    if not s:
+        raise ValueError("empty payload")
+
+    if s[0] == "{":
+        obj = json.loads(s)
+        state = str(obj.get("state") or "").upper()
+        on = state != "OFF"
+        br = obj.get("brightness")
+        if br is None:
+            return on, None
+        return on, int(br)
+
+    up = s.upper()
+    if up in ("ON", "OFF"):
+        return up == "ON", None
+
+    raise ValueError("unsupported payload")
+
+
+def _len_or_minus(value: Any) -> int:
+    try:
+        return len(value)
+    except Exception:
+        return -1
+
+
+def _read_proc_memory() -> dict[str, Any]:
+    out: dict[str, Any] = {"rss_mb": -1.0, "vms_mb": -1.0, "swap_mb": -1.0, "threads": -1}
+    try:
+        with open("/proc/self/status", "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    out["rss_mb"] = round(int(line.split()[1]) / 1024, 1)
+                elif line.startswith("VmSize:"):
+                    out["vms_mb"] = round(int(line.split()[1]) / 1024, 1)
+                elif line.startswith("VmSwap:"):
+                    out["swap_mb"] = round(int(line.split()[1]) / 1024, 1)
+                elif line.startswith("Threads:"):
+                    out["threads"] = int(line.split()[1])
+    except Exception:
+        pass
+    return out
+
+
+def _task_name(task: asyncio.Task[Any]) -> str:
+    try:
+        name = task.get_name()
+        if name and not name.startswith("Task-"):
+            return name
+    except Exception:
+        pass
+    try:
+        coro = task.get_coro()
+        return str(getattr(coro, "__qualname__", "") or getattr(coro, "__name__", "") or type(coro).__name__)
+    except Exception:
+        return "unknown"
+
+
+def _async_task_summary() -> tuple[int, str]:
+    try:
+        tasks = list(asyncio.all_tasks())
+    except Exception:
+        return -1, ""
+    counts: dict[str, int] = {}
+    for task in tasks:
+        name = _task_name(task)
+        counts[name] = counts.get(name, 0) + 1
+    top = sorted(counts.items(), key=lambda it: (-it[1], it[0]))[:12]
+    return len(tasks), ",".join(f"{k}:{v}" for k, v in top)
+
+
+def _memory_debug_snapshot(api: FastAPI, store: StateStore, mqtt: MqttClient, hub: RealtimeHub) -> dict[str, Any]:
+    snap: dict[str, Any] = _read_proc_memory()
+    task_count, task_top = _async_task_summary()
+    snap["tasks"] = task_count
+    snap["task_top"] = task_top
+
+    try:
+        status = mqtt.status()
+        snap["mqtt_clients"] = 1
+        snap["mqtt_connected"] = int(bool(status.connected))
+        snap["mqtt_error"] = status.last_error or ""
+        snap["mqtt_subscriptions"] = _len_or_minus(getattr(mqtt, "_subscriptions", None))
+    except Exception as e:
+        snap["mqtt_clients"] = 0
+        snap["mqtt_connected"] = 0
+        snap["mqtt_error"] = str(e)
+        snap["mqtt_subscriptions"] = -1
+
+    snap["ws_clients"] = _len_or_minus(getattr(hub, "_clients", None))
+
+    try:
+        raw = store.read_raw()
+    except Exception:
+        raw = {}
+    ui = raw.get("ui", {}) if isinstance(raw, dict) else {}
+    snap["devices"] = _len_or_minus(raw.get("devices", []) if isinstance(raw, dict) else [])
+    snap["states"] = _len_or_minus(raw.get("states", {}) if isinstance(raw, dict) else {})
+    snap["ha_devices"] = _len_or_minus(ui.get("ha_devices", []) if isinstance(ui, dict) else [])
+    snap["group_order"] = _len_or_minus(ui.get("group_order", []) if isinstance(ui, dict) else [])
+    snap["cover_groups"] = _len_or_minus(ui.get("cover_groups", []) if isinstance(ui, dict) else [])
+    snap["light_scenarios"] = _len_or_minus(ui.get("light_scenarios", []) if isinstance(ui, dict) else [])
+    snap["scenario_ha_triggers"] = _len_or_minus(ui.get("scenario_ha_triggers", []) if isinstance(ui, dict) else [])
+    snap["proxy_targets"] = _len_or_minus(ui.get("proxy_targets", []) if isinstance(ui, dict) else [])
+    snap["guard_cameras"] = _len_or_minus(ui.get("guard_cameras", []) if isinstance(ui, dict) else [])
+
+    state_names = (
+        "ha_states",
+        "ha_caps",
+        "_last_light_state",
+        "_last_cover_state",
+        "_last_cover_group_state",
+        "_last_temp_value",
+        "_last_humidity_value",
+        "_last_illuminance_value",
+        "_last_dry_contact_state",
+        "_last_pir_state",
+        "_last_ultrasonic_state",
+        "_last_air_quality",
+        "_last_gas_percent",
+        "cover_groups_by_gid",
+        "cover_group_membership",
+        "temp_index",
+        "dry_contact_index",
+        "air_index",
+        "pir_index",
+        "ultrasonic_index",
+        "cover_sim_tasks",
+        "scenario_tasks",
+        "scenario_running",
+        "scenario_trigger_last",
+    )
+    for name in state_names:
+        snap[name] = _len_or_minus(getattr(api.state, name, None))
+
+    try:
+        sniffer_status = api.state.sniffer.status()
+        snap["sniffer_enabled"] = int(bool(sniffer_status.get("enabled")))
+        snap["sniffer_buffer"] = int(sniffer_status.get("buffer_len") or 0)
+        snap["sniffer_buffer_max"] = int(sniffer_status.get("buffer_max") or 0)
+        snap["sniffer_matched"] = int(sniffer_status.get("matched") or 0)
+        snap["sniffer_dropped"] = int(sniffer_status.get("dropped") or 0)
+    except Exception:
+        snap["sniffer_enabled"] = 0
+        snap["sniffer_buffer"] = -1
+        snap["sniffer_buffer_max"] = -1
+        snap["sniffer_matched"] = -1
+        snap["sniffer_dropped"] = -1
+
+    return snap
+
+
+async def _memory_debug_loop(api: FastAPI, store: StateStore, mqtt: MqttClient, hub: RealtimeHub) -> None:
+    while True:
+        try:
+            snap = _memory_debug_snapshot(api, store, mqtt, hub)
+            detail = " ".join(f"{k}={v}" for k, v in snap.items())
+            _LOGGER.info("memory_diag %s", detail)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            _LOGGER.exception("memory_diag failed")
+        await asyncio.sleep(60)
+
+
+def create_app() -> FastAPI: 
+    api = FastAPI()
+    api.include_router(event_register_router)
+    resource_monitor = Resources()
+    api.state.runtime_lock = threading.Lock()
+    api.state.runtime_refcount = 0
+    api.state.runtime_started = False
+
+    static_dir = os.path.join(os.path.dirname(__file__), "static")
+    api.mount("/static", StaticFiles(directory=static_dir), name="static")
+    ui_icons_dir = os.environ.get("BUSPRO_UI_ICONS", "/data/ui_icons")
+    api.state.ui_icons_dir = ui_icons_dir
+    try:
+        os.makedirs(os.path.join(ui_icons_dir, "mdi"), exist_ok=True)
+        api.mount("/static/ui-icons", StaticFiles(directory=os.path.join(ui_icons_dir, "mdi")), name="ui-icons")
+    except Exception:
+        pass
+
+    def _resolve_www_dir() -> str | None:
+        candidates: list[str] = []
+        env = str(os.environ.get("BUSPRO_WWW") or "").strip()
+        if env:
+            candidates.append(env)
+
+        here = os.path.dirname(__file__)
+        candidates.extend(
+            [
+                os.path.abspath(os.path.join(here, "..", "www")),
+                os.path.abspath(os.path.join(here, "..", "..", "www")),
+                os.path.abspath(os.path.join(os.getcwd(), "www")),
+                "/www",
+                "/app/www",
+                "/data/www",
+                "/config/www",
+            ]
+        )
+
+        for c in candidates:
+            try:
+                if c and os.path.isdir(c):
+                    return c
+            except Exception:
+                continue
+        return None
+
+    api.state.www_dir = _resolve_www_dir()
+
+    store = StateStore(os.environ.get("BUSPRO_STATE", "/data/state.json"))
+    api.state.store = store
+    organization_path = os.environ.get(
+        "ECONTROL_ORGANIZATION",
+        os.path.join(os.path.dirname(store.path), "organization.json"),
+    )
+    organization = OrganizationStore(organization_path)
+    api.state.organization = organization
+    knx_path = os.environ.get(
+        "ECONTROL_KNX_MANAGER",
+        os.path.join(os.path.dirname(store.path), "knx_manager.json"),
+    )
+    knx_manager = KnxManager(knx_path, str(os.environ.get("SUPERVISOR_TOKEN") or "").strip())
+    api.state.knx_manager = knx_manager
+    api.state.knx_states = {}
+    bticino_path = os.environ.get(
+        "ECONTROL_BTICINO_MANAGER",
+        os.path.join(os.path.dirname(store.path), "bticino_manager.json"),
+    )
+    bticino_manager = BticinoManager(bticino_path, str(os.environ.get("SUPERVISOR_TOKEN") or "").strip())
+    api.state.bticino_manager = bticino_manager
+    netatmo_direct = NetatmoDirect(os.environ.get(
+        "ECONTROL_NETATMO",
+        os.path.join(os.path.dirname(store.path), "netatmo_direct.json"),
+    ))
+    api.state.netatmo_direct = netatmo_direct
+    myhome_installer = MyHomeComponentInstaller(os.environ.get("HOME_ASSISTANT_CONFIG", "/config"))
+    api.state.myhome_installer = myhome_installer
+    modbus_path = os.environ.get("ECONTROL_MODBUS_MANAGER", os.path.join(os.path.dirname(store.path), "modbus_manager.json"))
+    modbus_manager = ModbusManager(modbus_path, str(os.environ.get("SUPERVISOR_TOKEN") or "").strip(), os.environ.get("HOME_ASSISTANT_CONFIG", "/config"))
+    api.state.modbus_manager = modbus_manager
+    esphome_path = os.environ.get("ECONTROL_ESPHOME_MANAGER", os.path.join(os.path.dirname(store.path), "esphome_manager.json"))
+    esphome_manager = EspHomeManager(esphome_path, str(os.environ.get("SUPERVISOR_TOKEN") or "").strip())
+    api.state.esphome_manager = esphome_manager
+    mqtt_manager = MqttManager(os.environ.get("ECONTROL_MQTT_MANAGER", os.path.join(os.path.dirname(store.path), "mqtt_manager.json")),
+                               str(os.environ.get("SUPERVISOR_TOKEN") or "").strip(), lambda *args, **kwargs: _ha_request(*args, **kwargs))
+    api.state.mqtt_manager = mqtt_manager
+    esphome_ha_ws = HomeAssistantWebSocket(str(os.environ.get("SUPERVISOR_TOKEN") or "").strip()) if str(os.environ.get("SUPERVISOR_TOKEN") or "").strip() else None
+
+    icons_dir = os.environ.get("BUSPRO_ICONS", "/data/icons")
+    api.state.icons_dir = icons_dir
+    api.state.icon_lock = asyncio.Lock()
+
+    hub = RealtimeHub()
+    api.state.hub = hub
+
+    options = read_options()
+    settings = load_settings(options)
+    api.state.settings = settings
+    guard_enabled = bool(getattr(settings, "guard_enabled", False))
+    _configure_logging(settings.debug, settings.debug_telegram)
+    # Optional: force the source IPv4 embedded in telegrams (BUSPRO_LOCAL_IP).
+    try:
+        if str(getattr(settings.gateway, "local_ip", "") or "").strip():
+            os.environ["BUSPRO_LOCAL_IP"] = str(getattr(settings.gateway, "local_ip")).strip()
+    except Exception:
+        pass
+
+    mqtt = MqttClient(
+        host=settings.mqtt.host,
+        port=settings.mqtt.port,
+        username=settings.mqtt.username,
+        password=settings.mqtt.password,
+        client_id=settings.mqtt.client_id,
+    )
+    api.state.mqtt = mqtt
+    ksenia_mqtt = MqttClient(
+        host=settings.mqtt.host,
+        port=settings.mqtt.port,
+        username=settings.mqtt.ksenia_username,
+        password=settings.mqtt.ksenia_password,
+        client_id=settings.mqtt.ksenia_client_id,
+    )
+    ksenia = KseniaSmartHomeConsumer(ksenia_mqtt)
+    api.state.ksenia = ksenia
+    nuki_mqtt = MqttClient(
+        host=settings.mqtt.host, port=settings.mqtt.port,
+        username=settings.mqtt.username, password=settings.mqtt.password,
+        client_id=f"{settings.mqtt.client_id}_nuki",
+    )
+    nuki_manager = NukiManager(
+        os.environ.get("ECONTROL_NUKI_MANAGER", os.path.join(os.path.dirname(store.path), "nuki_manager.json")),
+        nuki_mqtt,
+    )
+    api.state.nuki_manager = nuki_manager
+    activity_feed = ActivityFeed(os.environ.get("ECONTROL_ACTIVITY_DB", os.path.join(os.path.dirname(store.path), "activity_feed.sqlite3")))
+    api.state.activity_feed = activity_feed
+    # Driver adapters register catalog providers and command handlers here.  The
+    # Smart Home contract and endpoint never need source-specific routing changes.
+    api.state.smart_home_sources = {}
+    api.state.smart_home_event_sources = {}
+    api.state.smart_home_command_handlers = {}
+    api.state.smart_home_sources["knx"] = lambda: knx_manager.store.catalog(getattr(api.state, "knx_states", {}) or {})
+    api.state.smart_home_sources["myhome_scs"] = lambda: bticino_manager.store.catalog("myhome_scs", getattr(api.state, "ha_states", {}) or {})
+    api.state.smart_home_sources["home_plus_control"] = lambda: bticino_manager.store.catalog("home_plus_control", getattr(api.state, "ha_states", {}) or {})
+    api.state.smart_home_sources["modbus"] = lambda: modbus_manager.store.catalog(getattr(api.state, "ha_states", {}) or {})
+    api.state.smart_home_sources["esphome"] = lambda: esphome_manager.store.catalog(getattr(api.state, "ha_states", {}) or {})
+    api.state.smart_home_sources["mqtt"] = lambda: mqtt_manager.store.catalog(mqtt_manager.states)
+    api.state.smart_home_sources["nuki"] = nuki_manager.store.catalog
+    api.state.smart_home_event_sources["nuki"] = nuki_manager.store.routine_access_events
+    api.state.smart_home_sources["ha"] = lambda: build_ha_catalog(
+        store.list_ha_devices(),
+        getattr(api.state, "ha_states", {}) or {},
+        getattr(api.state, "ha_caps", {}) or {},
+    )
+    api.state.organization_sources = {
+        "knx": knx_manager.store.organization_catalog,
+        "myhome_scs": lambda: bticino_manager.store.organization_catalog("myhome_scs"),
+        "home_plus_control": lambda: bticino_manager.store.organization_catalog("home_plus_control"),
+        "modbus": modbus_manager.store.organization_catalog,
+        "esphome": esphome_manager.store.organization_catalog,
+        "mqtt": mqtt_manager.store.organization_catalog,
+        "nuki": nuki_manager.store.organization_catalog,
+        "ha": lambda: build_ha_catalog(
+            store.list_ha_devices(),
+            getattr(api.state, "ha_states", {}) or {},
+            getattr(api.state, "ha_caps", {}) or {},
+            include_disabled=True,
+        ),
+    }
+
+    def _organization_devices() -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for dev in store.list_devices():
+            addr = str(dev.get("addr") or f"{dev.get('subnet_id')}.{dev.get('device_id')}.{dev.get('channel')}")
+            rows.append({
+                "source": "hdl", "device_id": addr, "name": dev.get("name") or addr,
+                "device_class": hdl_presentation_class(dev), "icon_auto": dev.get("icon") or "",
+            })
+        for dev in ksenia.snapshot().get("devices") or []:
+            rows.append({
+                "source": "ksenia", "device_id": dev.get("device_id"),
+                "name": dev.get("name") or dev.get("device_id"), "device_class": dev.get("device_class"),
+                "icon_auto": dev.get("icon_override") or dev.get("icon") or "",
+            })
+        organization_sources = dict(api.state.smart_home_sources)
+        organization_sources.update(api.state.organization_sources)
+        for source, provider in organization_sources.items():
+            try:
+                source_devices = provider() or []
+            except Exception:
+                logger.exception("Smart Home catalog provider failed: %s", source)
+                continue
+            for dev in source_devices:
+                rows.append({
+                    "source": source, "device_id": dev.get("device_id"),
+                    "name": dev.get("name") or dev.get("device_id"), "device_class": dev.get("device_class"),
+                    "icon_auto": dev.get("icon_override") or dev.get("icon") or "",
+                })
+        return rows
+
+    organization_sync_cache: dict[str, Any] = {}
+
+    def _organization_revision():
+        try:
+            stat = os.stat(organization.path)
+            return (stat.st_mtime_ns, stat.st_size, stat.st_ino)
+        except FileNotFoundError:
+            return None
+
+    def _sync_organization() -> dict[str, Any]:
+        # Full MQTT registries can contain thousands of entities. Revalidate only
+        # changed metadata, not every state snapshot. Disk revision also catches
+        # policy edits, restores and external replacements; never cache states.
+        with organization._lock:
+            catalog = _organization_devices()
+            revision = _organization_revision()
+            if (organization_sync_cache.get("catalog") == catalog
+                    and organization_sync_cache.get("revision") == revision
+                    and "result" in organization_sync_cache):
+                return deepcopy(organization_sync_cache["result"])
+            organization.migrate_hdl(store.list_devices(), store.get_group_order())
+            organization.migrate_hdl_presentation_v2(store.list_devices())
+            organization.sync_devices(catalog)
+            active_nuki = {str(item.get("device_id") or "") for item in nuki_manager.store.organization_catalog()}
+            result = organization.reconcile_nuki_devices(active_nuki)
+            organization_sync_cache.update(catalog=deepcopy(catalog), revision=_organization_revision(), result=deepcopy(result))
+            return result
+
+    # Home Assistant (Core) integration via Supervisor token (no user token required)
+    def _ha_enabled() -> bool:
+        try:
+            tok = str(os.environ.get("SUPERVISOR_TOKEN") or "").strip()
+            return bool(tok)
+        except Exception:
+            return False
+
+    def _ha_base_url() -> str:
+        # Supervisor Core proxy (works inside add-on containers)
+        return "http://supervisor/core"
+
+    def _ha_headers() -> dict[str, str]:
+        tok = str(os.environ.get("SUPERVISOR_TOKEN") or "").strip()
+        if not tok:
+            return {}
+        return {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"}
+
+    def _ha_request(method: str, path: str, *, payload: dict[str, Any] | None = None, timeout_s: int = 8) -> Any:
+        base = _ha_base_url().rstrip("/")
+        url = base + "/" + path.lstrip("/")
+        headers = _ha_headers()
+        data: bytes | None = None
+        if payload is not None:
+            data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(url=url, method=method.upper(), data=data)
+        for k, v in headers.items():
+            req.add_header(k, v)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+                raw = resp.read()
+                try:
+                    return json.loads(raw.decode("utf-8", errors="replace"))
+                except Exception:
+                    return raw.decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as e:
+            try:
+                body = e.read().decode("utf-8", errors="replace")
+            except Exception:
+                body = ""
+            raise HTTPException(status_code=int(getattr(e, "code", 502) or 502), detail=body or str(e))
+        except (socket.timeout, TimeoutError):
+            raise HTTPException(status_code=504, detail="timeout")
+        except urllib.error.URLError as e:
+            raise HTTPException(status_code=502, detail=str(e.reason or e))
+
+    def _supervisor_request(method: str, path: str, *, timeout_s: int = 20) -> Any:
+        token = str(os.environ.get("SUPERVISOR_TOKEN") or "").strip()
+        if not token:
+            raise HTTPException(status_code=503, detail="Supervisor API not available")
+        request = urllib.request.Request(
+            url="http://supervisor/" + path.lstrip("/"),
+            method=method.upper(),
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=timeout_s) as response:
+                raw = response.read()
+            return json.loads(raw.decode("utf-8", errors="replace")) if raw else {"result": "ok"}
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            raise HTTPException(status_code=int(exc.code or 502), detail=detail or str(exc))
+        except (urllib.error.URLError, socket.timeout, TimeoutError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+
+    def _ha_upload_file(filename: str, content: bytes, *, timeout_s: int = 120) -> str:
+        token = str(os.environ.get("SUPERVISOR_TOKEN") or "").strip()
+        boundary = "----ekonex" + os.urandom(12).hex()
+        safe_name = filename.replace('"', "_")
+        body = (
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{safe_name}\"\r\n"
+            "Content-Type: application/octet-stream\r\n\r\n"
+        ).encode("utf-8") + content + f"\r\n--{boundary}--\r\n".encode("ascii")
+        req = urllib.request.Request(
+            url=_ha_base_url().rstrip("/") + "/api/file_upload",
+            method="POST",
+            data=body,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+                result = json.loads(resp.read().decode("utf-8", errors="replace"))
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            raise HTTPException(status_code=int(exc.code or 502), detail=detail or str(exc))
+        file_id = str(result.get("file_id") or "") if isinstance(result, dict) else ""
+        if not file_id:
+            raise HTTPException(status_code=502, detail="Il motore di integrazione non ha restituito un identificativo di caricamento")
+        return file_id
+
+    def _ha_fetch(path: str, *, timeout_s: int = 8, use_auth: bool = True) -> tuple[bytes, str]:
+        base = _ha_base_url().rstrip("/")
+        url = base + "/" + path.lstrip("/")
+        headers = _ha_headers() if use_auth else {}
+        req = urllib.request.Request(url=url, method="GET")
+        for k, v in headers.items():
+            req.add_header(k, v)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+                raw = resp.read()
+                ctype = resp.headers.get("Content-Type") or "application/octet-stream"
+                return raw, ctype
+        except urllib.error.HTTPError as e:
+            try:
+                body = e.read().decode("utf-8", errors="replace")
+            except Exception:
+                body = ""
+            raise HTTPException(status_code=int(getattr(e, "code", 502) or 502), detail=body or str(e))
+        except (socket.timeout, TimeoutError):
+            raise HTTPException(status_code=504, detail="timeout")
+        except urllib.error.URLError as e:
+            raise HTTPException(status_code=502, detail=str(e.reason or e))
+
+    def _ha_snapshot_via_service(eid: str, *, timeout_s: int = 10) -> tuple[bytes, str]:
+        slug = (slugify(eid) or "camera").replace("-", "_")
+        filename = f"/config/www/e_guard_{slug}.jpg"
+        _ha_request(
+            "POST",
+            "/api/services/camera/snapshot",
+            payload={"entity_id": eid, "filename": filename},
+            timeout_s=timeout_s,
+        )
+        # Prefer direct filesystem read (avoids HA /local auth issues).
+        try:
+            for _ in range(3):
+                try:
+                    with open(filename, "rb") as f:
+                        raw = f.read()
+                    return raw, "image/jpeg"
+                except FileNotFoundError:
+                    time.sleep(0.2)
+        except Exception:
+            pass
+        local_path = f"/local/e_guard_{slug}.jpg"
+        try:
+            raw, ctype = _ha_fetch(local_path, timeout_s=timeout_s, use_auth=True)
+        except HTTPException as e:
+            if e.status_code in (401, 403):
+                raw, ctype = _ha_fetch(local_path, timeout_s=timeout_s, use_auth=False)
+            else:
+                raise
+        if not ctype:
+            ctype = "image/jpeg"
+        return raw, ctype
+
+    def _dahua_snapshot_fetch(
+        host: str,
+        user: str,
+        password: str,
+        channel: int,
+        *,
+        url_override: str | None = None,
+        timeout_s: int = 8,
+    ) -> tuple[bytes, str]:
+        if url_override:
+            raw_url = str(url_override).strip()
+            if not raw_url:
+                raise HTTPException(status_code=400, detail="dahua_url empty")
+            if "{channel}" in raw_url:
+                raw_url = raw_url.replace("{channel}", str(int(channel)))
+            if raw_url.startswith("http://") or raw_url.startswith("https://"):
+                url = raw_url
+            else:
+                url = "http://" + raw_url
+            parsed = urllib.parse.urlparse(url)
+            host = parsed.hostname or ""
+            if not host:
+                raise HTTPException(status_code=400, detail="dahua_url invalid host")
+            if parsed.port:
+                base_url = f"{parsed.scheme}://{host}:{parsed.port}".rstrip("/")
+            else:
+                base_url = f"{parsed.scheme}://{host}".rstrip("/")
+            if (not user) and parsed.username:
+                user = urllib.parse.unquote(parsed.username)
+            if (not password) and parsed.password:
+                password = urllib.parse.unquote(parsed.password)
+            # Strip userinfo from URL to avoid leaking credentials in logs/proxies.
+            if parsed.username or parsed.password:
+                netloc = f"{host}:{parsed.port}" if parsed.port else host
+                url = urllib.parse.urlunparse(
+                    (parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment)
+                )
+        else:
+            base = str(host or "").strip()
+            if not base:
+                raise HTTPException(status_code=400, detail="dahua_host missing")
+            if base.startswith("http://") or base.startswith("https://"):
+                base_url = base.rstrip("/")
+            else:
+                base_url = "http://" + base
+            url = f"{base_url}/cgi-bin/snapshot.cgi?channel={int(channel)}"
+        mgr = urllib.request.HTTPPasswordMgrWithDefaultRealm()
+        mgr.add_password(None, base_url, user, password)
+        handler = urllib.request.HTTPDigestAuthHandler(mgr)
+        opener = urllib.request.build_opener(handler)
+        req = urllib.request.Request(url=url, method="GET")
+        try:
+            with opener.open(req, timeout=timeout_s) as resp:
+                raw = resp.read()
+                ctype = resp.headers.get("Content-Type") or "image/jpeg"
+                return raw, ctype
+        except urllib.error.HTTPError as e:
+            try:
+                body = e.read().decode("utf-8", errors="replace")
+            except Exception:
+                body = ""
+            raise HTTPException(status_code=int(getattr(e, "code", 502) or 502), detail=body or str(e))
+        except (socket.timeout, TimeoutError):
+            raise HTTPException(status_code=504, detail="timeout")
+        except urllib.error.URLError as e:
+            raise HTTPException(status_code=502, detail=str(e.reason or e))
+
+    def _ha_snapshot_trigger(eid: str, *, timeout_s: int = 10) -> None:
+        slug = (slugify(eid) or "camera").replace("-", "_")
+        filename = f"/config/www/e_guard_{slug}.jpg"
+        _ha_request(
+            "POST",
+            "/api/services/camera/snapshot",
+            payload={"entity_id": eid, "filename": filename},
+            timeout_s=timeout_s,
+        )
+
+    def _ha_state_str(v: Any) -> str:
+        return str(v or "").strip().lower()
+
+    def _ha_friendly_name(st: dict[str, Any]) -> str:
+        try:
+            attrs = st.get("attributes") or {}
+            if isinstance(attrs, dict):
+                return str(attrs.get("friendly_name") or "").strip()
+        except Exception:
+            return ""
+        return ""
+
+    def _ha_light_is_dimmable(st: dict[str, Any]) -> bool:
+        try:
+            attrs = st.get("attributes") or {}
+            if not isinstance(attrs, dict):
+                return False
+            if attrs.get("brightness") is not None:
+                return True
+            scm = attrs.get("supported_color_modes")
+            if isinstance(scm, list):
+                modes = [str(x or "").strip().lower() for x in scm if str(x or "").strip()]
+                return any(m and m != "onoff" for m in modes)
+            if isinstance(scm, str):
+                return scm.strip().lower() != "onoff"
+        except Exception:
+            return False
+        return False
+
+    def _map_ha_state_to_light(st: dict[str, Any]) -> dict[str, Any]:
+        eid = str(st.get("entity_id") or "").strip().lower()
+        s = _ha_state_str(st.get("state"))
+        if s in ("unavailable", "unknown", ""):
+            state = "?"
+        else:
+            state = "ON" if s == "on" else "OFF"
+        attrs = st.get("attributes") or {}
+        br_i: int | None = None
+        if isinstance(attrs, dict) and attrs.get("brightness") is not None:
+            try:
+                br_i = int(attrs.get("brightness"))
+            except Exception:
+                br_i = None
+        brightness = 0
+        if state == "ON":
+            brightness = max(0, min(255, br_i)) if br_i is not None else 255
+        return {"entity_id": eid, "state": state, "brightness": brightness}
+
+    def _map_ha_state_to_switch(st: dict[str, Any]) -> dict[str, Any]:
+        eid = str(st.get("entity_id") or "").strip().lower()
+        s = _ha_state_str(st.get("state"))
+        if s in ("unavailable", "unknown", ""):
+            state = "?"
+        else:
+            state = "ON" if s == "on" else "OFF"
+        return {"entity_id": eid, "state": state}
+
+    def _map_ha_state_generic(st: dict[str, Any]) -> dict[str, Any]:
+        """Keep the HA state contract needed by generic eFace cards."""
+        eid = str(st.get("entity_id") or "").strip().lower()
+        attrs = st.get("attributes") or {}
+        if not isinstance(attrs, dict):
+            attrs = {}
+        raw_state = st.get("state")
+        state = "" if raw_state is None else str(raw_state)
+        return {
+            "entity_id": eid,
+            "state": state,
+            "available": state.strip().lower() not in ("unavailable", "unknown", ""),
+            "attributes": dict(attrs),
+            "last_changed": st.get("last_changed"),
+            "last_updated": st.get("last_updated"),
+        }
+
+    def _map_ha_state_to_cover(st: dict[str, Any]) -> dict[str, Any]:
+        eid = str(st.get("entity_id") or "").strip().lower()
+        s = _ha_state_str(st.get("state"))
+        if s in ("unavailable", "unknown", ""):
+            state = "?"
+        elif s == "open":
+            state = "OPEN"
+        elif s == "closed":
+            state = "CLOSED"
+        elif s == "opening":
+            state = "OPENING"
+        elif s == "closing":
+            state = "CLOSING"
+        else:
+            state = "STOP"
+        attrs = st.get("attributes") or {}
+        pos: int | None = None
+        if isinstance(attrs, dict) and attrs.get("current_position") is not None:
+            try:
+                pos = int(attrs.get("current_position"))
+                pos = max(0, min(100, pos))
+            except Exception:
+                pos = None
+        return {"entity_id": eid, "state": state, "position": pos}
+
+    def _ha_cover_supports_position(st: dict[str, Any]) -> bool:
+        attrs = st.get("attributes") or {}
+        if not isinstance(attrs, dict):
+            return False
+        try:
+            # Home Assistant CoverEntityFeature.SET_POSITION
+            return bool(int(attrs.get("supported_features") or 0) & 4)
+        except Exception:
+            return False
+
+    def _invert_cover_command(command: str) -> str:
+        value = str(command or "").strip().upper()
+        if value == "OPEN":
+            return "CLOSE"
+        if value == "CLOSE":
+            return "OPEN"
+        return value
+
+    def _ha_cover_is_inverted(entity_id: str) -> bool:
+        eid = str(entity_id or "").strip().lower()
+        if not eid:
+            return False
+        for item in store.list_ha_devices():
+            if str(item.get("entity_id") or "").strip().lower() == eid:
+                return bool(item.get("invert_cover"))
+        return False
+
+    def _map_ha_state_to_lock(st: dict[str, Any]) -> dict[str, Any]:
+        eid = str(st.get("entity_id") or "").strip().lower()
+        s = _ha_state_str(st.get("state"))
+        if s in ("unavailable", "unknown", ""):
+            state = "?"
+        elif s == "on":
+            state = "UNLOCKED"
+        elif s == "off":
+            state = "LOCKED"
+        elif s in ("locked", "locking"):
+            state = "LOCKED" if s == "locked" else "LOCKING"
+        elif s in ("unlocked", "unlocking"):
+            state = "UNLOCKED" if s == "unlocked" else "UNLOCKING"
+        elif s == "jammed":
+            state = "JAMMED"
+        elif s == "opening":
+            state = "OPENING"
+        else:
+            state = s.upper()
+        attrs = st.get("attributes") or {}
+        if not isinstance(attrs, dict):
+            attrs = {}
+
+        def _pick_attr(*keys: str) -> Any:
+            for k in keys:
+                if k in attrs and attrs.get(k) is not None:
+                    return attrs.get(k)
+            return None
+
+        def _pick_int(*keys: str, min_v: int | None = None, max_v: int | None = None) -> int | None:
+            v = _pick_attr(*keys)
+            if v is None:
+                return None
+            try:
+                iv = int(float(v))
+            except Exception:
+                return None
+            if min_v is not None:
+                iv = max(min_v, iv)
+            if max_v is not None:
+                iv = min(max_v, iv)
+            return iv
+
+        def _pick_bool(*keys: str) -> bool | None:
+            v = _pick_attr(*keys)
+            if v is None:
+                return None
+            if isinstance(v, bool):
+                return v
+            s2 = str(v).strip().lower()
+            if s2 in ("1", "true", "on", "yes", "y"):
+                return True
+            if s2 in ("0", "false", "off", "no", "n"):
+                return False
+            return None
+
+        metrics: dict[str, Any] = {}
+        bat = _pick_int("battery_level", "battery", "battery_percentage", min_v=0, max_v=100)
+        if bat is not None:
+            metrics["battery_level"] = bat
+        bat_low = _pick_bool("battery_low", "low_battery")
+        if bat_low is not None:
+            metrics["battery_low"] = bat_low
+        rssi = _pick_int("rssi")
+        if rssi is not None:
+            metrics["rssi"] = rssi
+        lqi = _pick_int("linkquality", "lqi", min_v=0, max_v=255)
+        if lqi is not None:
+            metrics["linkquality"] = lqi
+        tamper = _pick_attr("tamper", "problem")
+        if tamper is not None:
+            metrics["tamper"] = tamper
+
+        return {"entity_id": eid, "state": state, "metrics": metrics}
+
+    def _ha_state_num(st: dict[str, Any], *, keys: list[str] | None = None, min_v: int | None = None, max_v: int | None = None) -> int | None:
+        if not isinstance(st, dict):
+            return None
+        attrs = st.get("attributes") or {}
+        if not isinstance(attrs, dict):
+            attrs = {}
+        if keys:
+            for k in keys:
+                if attrs.get(k) is None:
+                    continue
+                try:
+                    iv = int(float(attrs.get(k)))
+                    if min_v is not None:
+                        iv = max(min_v, iv)
+                    if max_v is not None:
+                        iv = min(max_v, iv)
+                    return iv
+                except Exception:
+                    continue
+        raw = st.get("state")
+        try:
+            iv = int(float(raw))
+            if min_v is not None:
+                iv = max(min_v, iv)
+            if max_v is not None:
+                iv = min(max_v, iv)
+            return iv
+        except Exception:
+            return None
+
+    def _ha_state_bool(st: dict[str, Any], *, keys: list[str] | None = None) -> bool | None:
+        if not isinstance(st, dict):
+            return None
+        attrs = st.get("attributes") or {}
+        if not isinstance(attrs, dict):
+            attrs = {}
+        vals: list[Any] = []
+        if keys:
+            for k in keys:
+                if k in attrs:
+                    vals.append(attrs.get(k))
+        vals.append(st.get("state"))
+        for v in vals:
+            if v is None:
+                continue
+            if isinstance(v, bool):
+                return v
+            s = str(v).strip().lower()
+            if s in ("1", "true", "on", "yes", "y", "open", "detected", "active"):
+                return True
+            if s in ("0", "false", "off", "no", "n", "closed", "clear", "inactive"):
+                return False
+        return None
+
+    def _merge_lock_external_metrics(lock_metrics: dict[str, Any], by_eid: dict[str, dict[str, Any]], metric_map: dict[str, str]) -> dict[str, Any]:
+        out = dict(lock_metrics or {})
+        beid = str(metric_map.get("battery_level") or "").strip().lower()
+        if beid and isinstance(by_eid.get(beid), dict):
+            v = _ha_state_num(by_eid.get(beid) or {}, keys=["battery_level", "battery", "battery_percentage"], min_v=0, max_v=100)
+            if v is not None:
+                out["battery_level"] = v
+        bleid = str(metric_map.get("battery_low") or "").strip().lower()
+        if bleid and isinstance(by_eid.get(bleid), dict):
+            v = _ha_state_bool(by_eid.get(bleid) or {}, keys=["battery_low", "low_battery"])
+            if v is not None:
+                out["battery_low"] = v
+        reid = str(metric_map.get("rssi") or "").strip().lower()
+        if reid and isinstance(by_eid.get(reid), dict):
+            v = _ha_state_num(by_eid.get(reid) or {}, keys=["rssi"])
+            if v is not None:
+                out["rssi"] = v
+        leid = str(metric_map.get("linkquality") or "").strip().lower()
+        if leid and isinstance(by_eid.get(leid), dict):
+            v = _ha_state_num(by_eid.get(leid) or {}, keys=["linkquality", "lqi"], min_v=0, max_v=255)
+            if v is not None:
+                out["linkquality"] = v
+        teid = str(metric_map.get("tamper") or "").strip().lower()
+        if teid and isinstance(by_eid.get(teid), dict):
+            st = by_eid.get(teid) or {}
+            attrs = st.get("attributes") or {}
+            if not isinstance(attrs, dict):
+                attrs = {}
+            if attrs.get("tamper") is not None:
+                out["tamper"] = attrs.get("tamper")
+            elif attrs.get("problem") is not None:
+                out["tamper"] = attrs.get("problem")
+            else:
+                raw = str(st.get("state") or "").strip()
+                if raw and raw.lower() not in ("unknown", "unavailable"):
+                    out["tamper"] = raw
+        return out
+
+    def _list_user_devices() -> list[dict[str, Any]]:
+        devices = list(store.list_devices())
+        caps: dict[str, Any] = getattr(api.state, "ha_caps", {}) or {}
+        ha = store.list_ha_devices()
+        for it in ha:
+            try:
+                if bool(it.get("eface_only")):
+                    continue
+                eid = str(it.get("entity_id") or "").strip().lower()
+                if not eid or "." not in eid:
+                    continue
+                domain = str(it.get("domain") or eid.split(".", 1)[0]).strip().lower()
+                page = str(it.get("page") or "").strip().lower() or ("covers" if domain == "cover" else "lights")
+                name_override = str(it.get("name") or "").strip()
+                group = str(it.get("group") or "").strip()
+                icon = str(it.get("icon") or "").strip()
+                cap = caps.get(eid) if isinstance(caps, dict) else None
+                cap_name = str((cap or {}).get("name") or "").strip() if isinstance(cap, dict) else ""
+                name = name_override or cap_name or eid
+
+                if domain == "cover" and page == "locks":
+                    devices.append(
+                        {
+                            "type": "lock",
+                            "origin": "ha",
+                            "entity_id": eid,
+                            "domain": domain,
+                            "page": page,
+                            "name": name,
+                            "group": group,
+                            "icon": icon,
+                            "open_supported": True,
+                        }
+                    )
+                elif domain == "cover":
+                    use_position = False
+                    if isinstance(cap, dict) and cap.get("use_position") is not None:
+                        use_position = bool(cap.get("use_position"))
+                    devices.append(
+                        {
+                            "type": "cover",
+                            "origin": "ha",
+                            "entity_id": eid,
+                            "page": page,
+                            "name": name,
+                            "group": group,
+                            "icon": icon,
+                            "use_position": use_position,
+                            "invert_cover": bool(it.get("invert_cover")),
+                            "curtain_mode": bool(it.get("curtain_mode")),
+                        }
+                    )
+                elif domain == "lock" or (domain == "switch" and page == "locks"):
+                    open_supported = False
+                    if isinstance(cap, dict) and cap.get("open_supported") is not None:
+                        open_supported = bool(cap.get("open_supported"))
+                    devices.append(
+                        {
+                            "type": "lock",
+                            "origin": "ha",
+                            "entity_id": eid,
+                            "page": page,
+                            "name": name,
+                            "group": group,
+                            "icon": icon,
+                            "open_supported": open_supported if domain == "lock" else False,
+                        }
+                    )
+                else:
+                    is_dimmable = False
+                    if domain == "light":
+                        if isinstance(cap, dict) and cap.get("dimmable") is not None:
+                            is_dimmable = bool(cap.get("dimmable"))
+                        else:
+                            is_dimmable = True
+                    devices.append(
+                        {
+                            "type": "light",
+                            "origin": "ha",
+                            "entity_id": eid,
+                            "domain": domain,
+                            "page": page,
+                            "name": name,
+                            "group": group,
+                            "dimmable": is_dimmable if domain == "light" else False,
+                            "icon": icon,
+                            "category": "switch" if domain == "switch" else "Luci",
+                        }
+                    )
+            except Exception:
+                continue
+        return devices
+
+    def _list_eface_devices() -> list[dict[str, Any]]:
+        """Return classic user devices plus HA entities explicitly routed to eFace."""
+        devices = _list_user_devices()
+        caps: dict[str, Any] = getattr(api.state, "ha_caps", {}) or {}
+        for it in store.list_ha_devices():
+            if not bool(it.get("eface_only")):
+                continue
+            eid = str(it.get("entity_id") or "").strip().lower()
+            if not eid or "." not in eid:
+                continue
+            domain = str(it.get("domain") or eid.split(".", 1)[0]).strip().lower()
+            cap = caps.get(eid) if isinstance(caps, dict) else None
+            cap = cap if isinstance(cap, dict) else {}
+            devices.append(
+                {
+                    "type": domain,
+                    "domain": domain,
+                    "origin": "ha",
+                    "entity_id": eid,
+                    "page": "eface",
+                    "eface_only": True,
+                    "name": str(it.get("name") or "").strip() or str(cap.get("name") or "").strip() or eid,
+                    "group": str(it.get("group") or "").strip(),
+                    "icon": str(it.get("icon") or "").strip() or str(cap.get("icon") or "").strip(),
+                    "dimmable": bool(cap.get("dimmable")) if domain == "light" else False,
+                    "use_position": bool(cap.get("use_position")) if domain == "cover" else False,
+                    "open_supported": bool(cap.get("open_supported")) if domain == "lock" else False,
+                }
+            )
+        return devices
+
+    api.state.loop = None
+    api.state.gateway = None
+    api.state.sniffer = TelegramSniffer(share_dir="/share", maxlen=5000)
+    api.state.cover_sim_tasks = {}
+    api.state.scenario_tasks = {}
+    api.state.scenario_running = {}
+    api.state.scenario_trigger_last = {}
+    api.state.memory_debug_task = None
+    api.state.sun_cache = {"ts": 0.0, "next_rising": None, "next_setting": None}
+
+    @api.middleware("http")
+    async def ingress_path_middleware(request: Request, call_next):
+        base = request.headers.get("x-forwarded-prefix") or request.headers.get("x-ingress-path") or ""
+        base = _normalize_ingress_base(base)
+
+        if not base:
+            path = request.scope.get("path") or ""
+            if path.startswith("/local_"):
+                seg = path.split("/", 3)
+                if len(seg) > 1:
+                    base = "/" + seg[1]
+
+        if base:
+            path = request.scope.get("path") or ""
+            if path == base:
+                request.scope["root_path"] = base
+                request.scope["path"] = "/"
+            elif path.startswith(base + "/"):
+                request.scope["root_path"] = base
+                request.scope["path"] = path[len(base):] or "/"
+
+        # Some ingress URLs can end up with a double slash (e.g. .../hassio_ingress/<token>//).
+        # Normalize repeated slashes so our routing matches "/" etc.
+        try:
+            p = str(request.scope.get("path") or "")
+            while "//" in p:
+                p = p.replace("//", "/")
+            if not p.startswith("/"):
+                p = "/" + p
+            request.scope["path"] = p
+        except Exception:
+            pass
+
+        return await call_next(request)
+
+    @api.middleware("http")
+    async def auth_middleware(request: Request, call_next):
+        if request.url.path in ("/health",):
+            return await call_next(request)
+
+        options_ = read_options()
+        settings_ = load_settings(options_)
+        headers = {k.lower(): v for k, v in request.headers.items()}
+        query = dict(request.query_params)
+        port = None
+        try:
+            port = int((request.scope.get("server") or ("", 0))[1])
+        except Exception:
+            port = None
+
+        # User port: allow ingress bypass and use user_auth
+        if port == USER_PORT:
+            if _is_ingress_headers(headers):
+                return await call_next(request)
+            if not _check_auth_headers(headers, query, settings_.user_auth):
+                return _unauthorized(settings_.user_auth.mode)
+            return await call_next(request)
+
+        # Admin port: always enforce auth (no ingress bypass)
+        if not _check_auth_headers(headers, query, settings_.auth):
+            return _unauthorized(settings_.auth.mode)
+
+        return await call_next(request)
+
+    @api.middleware("http")
+    async def port_gate_middleware(request: Request, call_next):
+        # Block admin-only endpoints on USER_PORT.
+        try:
+            port = int((request.scope.get("server") or ("", 0))[1])
+        except Exception:
+            port = None
+        if port != USER_PORT:
+            return await call_next(request)
+
+        # When opened via Home Assistant Ingress, allow full UI/API access on USER_PORT.
+        try:
+            headers = {k.lower(): v for k, v in request.headers.items()}
+            if _is_ingress_headers(headers):
+                return await call_next(request)
+        except Exception:
+            pass
+        try:
+            if str(request.cookies.get("buspro_ingress") or "") == "1":
+                return await call_next(request)
+        except Exception:
+            pass
+
+        path = request.url.path or "/"
+        if path in ("/health", "/ws", "/favicon.ico") or path.startswith("/static/"):
+            return await call_next(request)
+        if path in ("/manifest.webmanifest", "/sw.js"):
+            return await call_next(request)
+        if path.startswith("/www/"):
+            return await call_next(request)
+        if path.startswith("/ext/"):
+            return await call_next(request)
+        if path.startswith("/extws/"):
+            return await call_next(request)
+
+        # User pages
+        if path in ("/", "/home", "/home2", "/home_plus", "/e-face", "/lights", "/covers", "/extra", "/scenarios", "/locks", "/ksenia"):
+            return await call_next(request) 
+        if guard_enabled and path == "/e-guard":
+            return await call_next(request)
+
+        # User allowed APIs (read-only + control)
+        if path.startswith("/api/control/"):
+            return await call_next(request)
+        if path.startswith("/api/user/smart-home/") and path.endswith("/command") and request.method.upper() == "POST":
+            return await call_next(request)
+        if path == "/api/integrations/ksenia" and request.method.upper() == "GET":
+            return await call_next(request)
+        if path.startswith("/api/integrations/ksenia/command/") and request.method.upper() == "POST":
+            return await call_next(request)
+        if path.startswith("/api/user/light_scenarios"):
+            return await call_next(request)
+        if path == "/api/user/light_scenarios_status" and request.method.upper() == "GET":
+            return await call_next(request)
+        if path == "/api/user/scenario_ha_triggers" and request.method.upper() == "GET":
+            return await call_next(request)
+        if guard_enabled and path == "/api/guard_cameras" and request.method.upper() == "GET":
+            return await call_next(request)
+        if guard_enabled and path == "/api/e_guard/snapshot" and request.method.upper() == "GET":
+            return await call_next(request)
+        if guard_enabled and path == "/api/e_guard/diag" and request.method.upper() == "GET":
+            return await call_next(request)
+        if path == "/api/user/devices" and request.method.upper() == "GET":
+            return await call_next(request)
+        if path in ("/api/user/snapshot", "/api/eface/snapshot", "/api/user/routine-access-events", "/api/user/activity-feed") and request.method.upper() == "GET":
+            return await call_next(request)
+        if path == "/api/ui_log":
+            return await call_next(request)
+        if path.startswith("/api/icons/mdi/"):
+            return await call_next(request)
+        if path == "/api/devices" and request.method.upper() == "GET":
+            return await call_next(request)
+        if path == "/api/cover_groups" and request.method.upper() == "GET":
+            return await call_next(request)
+        if path in ("/api/meta", "/api/buspro/status", "/api/mqtt/status"):
+            return await call_next(request)
+        if path == "/api/smart_link_log" and request.method.upper() == "POST":
+            return await call_next(request)
+        if path == "/api/stream":
+            return await call_next(request)
+        if path.startswith("/assets/"):
+            return await call_next(request)
+
+        # If a proxy target is active (cookie set by /ext), allow unknown non-/api paths
+        # so the SPA fallback can proxy routes like /security/functions instead of 404.
+        try:
+            px = str(request.cookies.get("buspro_px") or "").strip()
+            if px and store.find_proxy_target(name=px):
+                if not path.startswith("/api/"):
+                    return await call_next(request)
+        except Exception:
+            pass
+
+        # Everything else is admin-only
+        return JSONResponse({"detail": "Not Found"}, status_code=404)
+
+    @api.get("/favicon.ico")
+    async def favicon_ico():
+        return Response(status_code=204)
+
+    @api.get("/manifest.webmanifest", include_in_schema=False)
+    async def webmanifest():
+        cfg = store.get_pwa_config()
+        icon_url = str(cfg.get("icon_url") or "/static/e-face-nobg.png")
+        start_url = str(cfg.get("start_url") or "/home2")
+        if not start_url.startswith("/"):
+            start_url = "/" + start_url
+        data = {
+            "name": cfg.get("name") or "Ekonex",
+            "short_name": cfg.get("short_name") or (cfg.get("name") or "Ekonex"),
+            "start_url": start_url,
+            "scope": "/",
+            "display": "standalone",
+            "background_color": cfg.get("background_color") or "#05070b",
+            "theme_color": cfg.get("theme_color") or "#05070b",
+            "icons": [
+                {"src": icon_url, "sizes": "192x192", "type": "image/png"},
+                {"src": icon_url, "sizes": "512x512", "type": "image/png"},
+            ],
+        }
+        return Response(content=json.dumps(data, ensure_ascii=False), media_type="application/manifest+json")
+
+    @api.get("/sw.js", include_in_schema=False)
+    async def service_worker():
+        # Minimal SW: cache static assets, network-first for navigations.
+        sw = f"""
+// buspro minimal service worker
+const CACHE = 'buspro-pwa-{ADDON_VERSION}';
+const PRECACHE = [
+  '/manifest.webmanifest',
+  '/static/logo_ekonex.png',
+  '/static/e-face-nobg.png',
+];
+
+self.addEventListener('install', (event) => {{
+  event.waitUntil((async () => {{
+    const cache = await caches.open(CACHE);
+    await cache.addAll(PRECACHE);
+    self.skipWaiting();
+  }})());
+}});
+
+self.addEventListener('activate', (event) => {{
+  event.waitUntil((async () => {{
+    const keys = await caches.keys();
+    await Promise.all(keys.map((k) => (k !== CACHE ? caches.delete(k) : Promise.resolve())));
+    self.clients.claim();
+  }})());
+}});
+
+self.addEventListener('fetch', (event) => {{
+  const req = event.request;
+  const url = new URL(req.url);
+  if (req.method !== 'GET' || url.origin !== self.location.origin) return;
+
+  // Navigation: always ask the network/browser cache to reload HTML pages.
+  if (req.mode === 'navigate') {{
+    event.respondWith((async () => {{
+      try {{
+        const res = await fetch(new Request(req, {{ cache: 'reload' }}));
+        return res;
+      }} catch (e) {{
+        return new Response('Offline', {{ status: 503 }});
+      }}
+    }})());
+    return;
+  }}
+
+  // Static: cache first
+  if (url.pathname.startsWith('/static/')) {{
+    event.respondWith((async () => {{
+      const cache = await caches.open(CACHE);
+      const cached = await cache.match(req);
+      if (cached) return cached;
+      const res = await fetch(req);
+      try {{ cache.put(req, res.clone()); }} catch (e) {{}}
+      return res;
+    }})());
+  }}
+}});
+""".strip()
+        return Response(content=sw, media_type="application/javascript", headers={"Cache-Control": "no-cache"})
+
+    @api.get("/www/{asset_path:path}")
+    async def www_asset(asset_path: str):
+        base_raw = getattr(api.state, "www_dir", None)
+        base = os.path.abspath(str(base_raw or ""))
+        if not base_raw or not base or not os.path.isdir(base):
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        rel = str(asset_path or "").lstrip("/").replace("\\", "/")
+        if not rel or rel.startswith(".") or "/.." in f"/{rel}":
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        full = os.path.abspath(os.path.join(base, rel))
+        if not full.startswith(base):
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        if not os.path.exists(full) or not os.path.isfile(full):
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        try:
+            return FileResponse(full)
+        except Exception:
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+
+    def _rewrite_location(*, name: str, upstream_base: str, location: str) -> str:
+        loc = str(location or "").strip()
+        if not loc:
+            return loc
+        try:
+            base = urllib.parse.urlparse(upstream_base)
+            if loc.startswith("/"):
+                return f"/ext/{name}{loc}"
+            u = urllib.parse.urlparse(loc)
+            if u.scheme and u.netloc:
+                if u.scheme == base.scheme and u.netloc == base.netloc:
+                    return f"/ext/{name}{u.path or '/'}" + (("?" + u.query) if u.query else "") + (("#" + u.fragment) if u.fragment else "")
+        except Exception:
+            pass
+        return loc
+
+    def _proxy_name_from_request(request: Request) -> str | None:
+        # Prefer referer, fallback to cookie (set by /ext responses).
+        ref = str(request.headers.get("referer") or "")
+        if ref:
+            try:
+                p = urllib.parse.urlparse(ref)
+                seg = (p.path or "").split("/")
+                # /ext/<name>/...
+                if len(seg) >= 3 and seg[1] == "ext" and seg[2]:
+                    name = seg[2]
+                    _LOGGER.debug("proxy_name resolved via referer: name=%s path=%s referer=%s", name, request.url.path, ref)
+                    return name
+            except Exception:
+                pass
+        try:
+            c = request.cookies.get("buspro_px")
+            if c:
+                name = str(c).strip() or None
+                if name:
+                    _LOGGER.debug("proxy_name resolved via cookie: name=%s path=%s", name, request.url.path)
+                return name
+        except Exception:
+            pass
+        _LOGGER.debug(
+            "proxy_name missing: path=%s referer=%s cookie_buspro_px=%s",
+            request.url.path,
+            ref or "-",
+            str(request.cookies.get("buspro_px") or "") or "-",
+        )
+        return None
+
+    def _rewrite_set_cookie_path(*, name: str, header_value: str) -> str:
+        s = str(header_value or "")
+        parts = [p.strip() for p in s.split(";")]
+        out: list[str] = []
+        for p in parts:
+            if p.lower().startswith("path="):
+                out.append(f"Path=/ext/{name}/")
+                continue
+            if p.lower().startswith("domain="):
+                # strip Domain to keep cookie host-only under our domain
+                continue
+            out.append(p)
+        return "; ".join([x for x in out if x])
+
+    def _rewrite_body_text(*, name: str, text: str, content_type: str) -> str:
+        # Best-effort rewrite of root-absolute references (/foo) to /ext/{name}/foo
+        # Works for many simple UIs (NVR/router/HA pages), not guaranteed.
+        s = text
+        prefix = f"/ext/{name}/"
+        try:
+            # html attributes
+            for attr in ("href", "src", "action", "poster", "data-src", "data-href"):
+                s = s.replace(f'{attr}="/', f'{attr}="{prefix}')
+                s = s.replace(f"{attr}='/", f"{attr}='{prefix}")
+                # unquoted (href=/foo)
+                s = re.sub(rf"(?i)(\\b{re.escape(attr)}\\s*=\\s*)/(?!ext/)", rf"\\1{prefix}", s)
+            # CSS url(/...)
+            s = s.replace("url(/", f"url({prefix}")
+            s = s.replace("url('/", f"url('{prefix}")
+            s = s.replace('url("/', f'url("{prefix}')
+        except Exception:
+            return text
+        return s
+
+    def _proxy_smart_redirect_js(*, name: str) -> str:
+        # Minimal injection for strict pass-through apps such as e-SunMind:
+        # no proxy rewriting, only local/remote redirect diagnostics.
+        return f"""
+<script>
+(function() {{
+  var NAME = {json.dumps(name)};
+  var cacheKey = 'buspro.smart_redirect.v1';
+  function cleanUrl(v) {{
+    return String(v || '').trim().replace(/[/]+$/, '');
+  }}
+  function hostOf(v) {{
+    try {{
+      var u = new URL(String(v || ''), window.location.href);
+      return {{host: String(u.host || '').toLowerCase(), hostname: String(u.hostname || '').toLowerCase()}};
+    }} catch(e) {{
+      var s = String(v || '').trim().replace(/^https?:[/][/]/i, '').replace(/[/].*$/, '').toLowerCase();
+      return {{host: s, hostname: s.split(':')[0] || s}};
+    }}
+  }}
+  function currentPath() {{
+    return String(window.location.pathname || '/') + String(window.location.search || '') + String(window.location.hash || '');
+  }}
+  function pageTarget(origin) {{
+    var base = cleanUrl(origin);
+    return base ? (base + currentPath()) : '';
+  }}
+  function writeCache(mode) {{
+    try {{ localStorage.setItem(cacheKey, JSON.stringify({{mode: mode, ts: Date.now(), page: 'ext:' + NAME}})); }} catch(e) {{}}
+  }}
+  function logRedirect(cfg, mode, target, reason, extra) {{
+    if (!cfg || !cfg.debug) return;
+    try {{
+      var body = JSON.stringify({{
+        target: 'page_redirect:ext:' + NAME,
+        host: String(window.location.host || window.location.hostname || ''),
+        mode: String(mode || ''),
+        selected: String(target || ''),
+        reason: String(reason || '') + (extra ? (' ' + String(extra).slice(0, 120)) : '')
+      }});
+      var url = new URL('/api/smart_link_log', window.location.href).toString();
+      if (navigator.sendBeacon) {{
+        navigator.sendBeacon(url, new Blob([body], {{type: 'application/json'}}));
+      }} else {{
+        fetch(url, {{method: 'POST', headers: {{'Content-Type': 'application/json'}}, body: body, keepalive: true}}).catch(function() {{}});
+      }}
+    }} catch(e) {{}}
+  }}
+  function fetchWithTimeoutNoCors(url, timeoutMs) {{
+    var ms = Math.max(100, Math.min(5000, Number(timeoutMs || 500)));
+    var init = {{method: 'GET', mode: 'no-cors', cache: 'no-store'}};
+    if (typeof AbortController !== 'undefined') {{
+      var controller = new AbortController();
+      init.signal = controller.signal;
+      var timer = setTimeout(function() {{ try {{ controller.abort(); }} catch(e) {{}} }}, ms);
+      return fetch(url, init).then(function(resp) {{
+        try {{ clearTimeout(timer); }} catch(e) {{}}
+        return resp;
+      }}, function(err) {{
+        try {{ clearTimeout(timer); }} catch(e) {{}}
+        throw err;
+      }});
+    }}
+    return Promise.race([
+      fetch(url, init),
+      new Promise(function(_, reject) {{ setTimeout(function() {{ reject(new Error('timeout')); }}, ms); }})
+    ]);
+  }}
+  function imageProbe(url, timeoutMs) {{
+    var ms = Math.max(100, Math.min(5000, Number(timeoutMs || 500)));
+    return new Promise(function(resolve, reject) {{
+      var done = false;
+      var img = new Image();
+      var timer = setTimeout(function() {{
+        if (done) return;
+        done = true;
+        try {{ img.onload = null; img.onerror = null; img.src = ''; }} catch(e) {{}}
+        reject(new Error('image_timeout'));
+      }}, ms);
+      img.onload = function() {{
+        if (done) return;
+        done = true;
+        try {{ clearTimeout(timer); }} catch(e) {{}}
+        resolve(true);
+      }};
+      img.onerror = function() {{
+        if (done) return;
+        done = true;
+        try {{ clearTimeout(timer); }} catch(e) {{}}
+        reject(new Error('image_error'));
+      }};
+      img.src = url;
+    }});
+  }}
+  function localReachable(localBase, timeoutMs) {{
+    var t = Date.now();
+    var health = localBase + '/health?smart_redirect=1&t=' + t;
+    var img = localBase + '/static/e-face-nobg.png?smart_redirect=1&t=' + t;
+    return fetchWithTimeoutNoCors(health, timeoutMs).catch(function(fetchErr) {{
+      return imageProbe(img, timeoutMs).catch(function(imgErr) {{
+        var msg = ((fetchErr && (fetchErr.message || fetchErr.name)) || 'fetch_error') + '+' + ((imgErr && imgErr.message) || 'image_error');
+        throw new Error(msg);
+      }});
+    }});
+  }}
+  function run(cfg) {{
+    if (!cfg || !cfg.redirect_enabled) return;
+    try {{ if (new URL(window.location.href).searchParams.get('noredirect') === '1') return; }} catch(e) {{}}
+    var localBase = cleanUrl(cfg.local_base_url || 'http://192.168.3.24:8124');
+    var remoteBase = cleanUrl(cfg.remote_base_url || window.location.origin);
+    var localInfo = hostOf(localBase || cfg.local_host);
+    var here = hostOf(window.location.href);
+    if (localInfo.host && (here.host === localInfo.host || here.hostname === localInfo.hostname)) {{
+      writeCache('local');
+      logRedirect(cfg, 'local', window.location.href, 'already_local', '');
+      return;
+    }}
+    var timeoutMs = Math.max(100, Math.min(5000, Number(cfg.redirect_timeout_ms || 500)));
+    var target = pageTarget(localBase);
+    if (!target) return;
+    function check(reason) {{
+      var okReason = reason === 'initial' ? 'probe_ok' : (reason || 'probe_ok');
+      var failReason = reason === 'initial' ? 'probe_failed' : (reason || 'probe_failed');
+      localReachable(localBase, timeoutMs).then(function() {{
+        writeCache('local');
+        logRedirect(cfg, 'local', target, okReason, 'timeout_ms=' + timeoutMs);
+        if (window.location.href !== target) window.location.replace(target);
+      }}, function(err) {{
+        writeCache('remote');
+        logRedirect(cfg, 'remote', pageTarget(remoteBase) || window.location.href, failReason, (err && (err.message || err.name)) || '');
+        setTimeout(function() {{ check('retry'); }}, 10000);
+      }});
+    }}
+    try {{
+      window.addEventListener('online', function() {{ check('online'); }});
+      window.addEventListener('focus', function() {{ check('focus'); }});
+      document.addEventListener('visibilitychange', function() {{ if (!document.hidden) check('visible'); }});
+    }} catch(e) {{}}
+    check('initial');
+  }}
+  fetch(new URL('/api/meta', window.location.href).toString(), {{cache: 'no-store'}})
+    .then(function(resp) {{ return resp && resp.ok ? resp.json() : null; }})
+    .then(function(meta) {{ run(meta && meta.smart_links && typeof meta.smart_links === 'object' ? meta.smart_links : null); }})
+    .catch(function() {{}});
+}})();
+</script>
+""".strip()
+
+    def _proxy_bootstrap_js(*, name: str, upstream_base: str) -> str:
+        # Injected into HTML pages served via /ext to keep fetch/XHR/WebSocket inside the proxy.
+        base = urllib.parse.urlparse(upstream_base)
+        upstream_host = base.netloc
+        return f"""
+<script>
+// buspro proxy bootstrap (best-effort)
+(function() {{
+  var PROXY_PREFIX = '/ext/{name}';
+  var WS_PREFIX = '/extws/{name}';
+  var UPSTREAM_HOST = {json.dumps(upstream_host)};
+  // NOTE: keep debug transport syntax very conservative for embedded webviews.
+  var DEBUG_URL = PROXY_PREFIX + '/__debug/bootstrap';
+  var T0 = Date.now();
+  var DEBUG_SENT = false;
+  function _enc(v) {{
+    try {{ return encodeURIComponent(String(v || '')); }} catch(e) {{ return ''; }}
+  }}
+  function sendDbg(kind, msg) {{
+    try {{
+      var u = DEBUG_URL
+        + '?k=' + _enc(kind)
+        + '&dt=' + _enc(Date.now() - T0)
+        + '&m=' + _enc(msg || '')
+        + '&rs=' + _enc(document && document.readyState ? document.readyState : '');
+      var i = new Image();
+      i.src = u;
+    }} catch(e) {{}}
+  }}
+  (function smartLocalRemoteRedirectExt() {{
+    var cacheKey = 'buspro.smart_redirect.v1';
+    function cleanUrl(v) {{
+      return String(v || '').trim().replace(/[/]+$/, '');
+    }}
+    function hostOf(v) {{
+      try {{
+        var u = new URL(String(v || ''), window.location.href);
+        return {{
+          host: String(u.host || '').toLowerCase(),
+          hostname: String(u.hostname || '').toLowerCase()
+        }};
+      }} catch(e) {{
+        var s = String(v || '').trim().replace(/^https?:[/][/]/i, '').replace(/[/].*$/, '').toLowerCase();
+        return {{host: s, hostname: s.split(':')[0] || s}};
+      }}
+    }}
+    function currentPath() {{
+      return String(window.location.pathname || '/') + String(window.location.search || '') + String(window.location.hash || '');
+    }}
+    function pageTarget(origin) {{
+      var base = cleanUrl(origin);
+      if (!base) return '';
+      return base + currentPath();
+    }}
+    function writeCache(mode) {{
+      try {{
+        localStorage.setItem(cacheKey, JSON.stringify({{mode: mode, ts: Date.now(), page: 'ext:{name}'}}));
+      }} catch(e) {{}}
+    }}
+    function logRedirect(cfg, mode, target, reason, extra) {{
+      if (!cfg || !cfg.debug) return;
+      try {{
+        var body = JSON.stringify({{
+          target: 'page_redirect:ext:{name}',
+          host: String(window.location.host || window.location.hostname || ''),
+          mode: String(mode || ''),
+          selected: String(target || ''),
+          reason: String(reason || '') + (extra ? (' ' + String(extra).slice(0, 120)) : '')
+        }});
+        var url = new URL('/api/smart_link_log', window.location.href).toString();
+        if (navigator.sendBeacon) {{
+          navigator.sendBeacon(url, new Blob([body], {{type: 'application/json'}}));
+        }} else {{
+          fetch(url, {{method: 'POST', headers: {{'Content-Type': 'application/json'}}, body: body, keepalive: true}}).catch(function() {{}});
+        }}
+      }} catch(e) {{}}
+    }}
+    function fetchWithTimeoutNoCors(url, timeoutMs) {{
+      var ms = Math.max(100, Math.min(5000, Number(timeoutMs || 500)));
+      var init = {{method: 'GET', mode: 'no-cors', cache: 'no-store'}};
+      if (typeof AbortController !== 'undefined') {{
+        var controller = new AbortController();
+        init.signal = controller.signal;
+        var timer = setTimeout(function() {{ try {{ controller.abort(); }} catch(e) {{}} }}, ms);
+        return fetch(url, init).then(function(resp) {{
+          try {{ clearTimeout(timer); }} catch(e) {{}}
+          return resp;
+        }}, function(err) {{
+          try {{ clearTimeout(timer); }} catch(e) {{}}
+          throw err;
+        }});
+      }}
+      return Promise.race([
+        fetch(url, init),
+        new Promise(function(_, reject) {{ setTimeout(function() {{ reject(new Error('timeout')); }}, ms); }})
+      ]);
+    }}
+    function imageProbe(url, timeoutMs) {{
+      var ms = Math.max(100, Math.min(5000, Number(timeoutMs || 500)));
+      return new Promise(function(resolve, reject) {{
+        var done = false;
+        var img = new Image();
+        var timer = setTimeout(function() {{
+          if (done) return;
+          done = true;
+          try {{ img.onload = null; img.onerror = null; img.src = ''; }} catch (e) {{}}
+          reject(new Error('image_timeout'));
+        }}, ms);
+        img.onload = function() {{
+          if (done) return;
+          done = true;
+          try {{ clearTimeout(timer); }} catch (e) {{}}
+          resolve(true);
+        }};
+        img.onerror = function() {{
+          if (done) return;
+          done = true;
+          try {{ clearTimeout(timer); }} catch (e) {{}}
+          reject(new Error('image_error'));
+        }};
+        img.src = url;
+      }});
+    }}
+    function localReachable(localBase, timeoutMs) {{
+      var t = Date.now();
+      var health = localBase + '/health?smart_redirect=1&t=' + t;
+      var img = localBase + '/static/e-face-nobg.png?smart_redirect=1&t=' + t;
+      return fetchWithTimeoutNoCors(health, timeoutMs).catch(function(fetchErr) {{
+        return imageProbe(img, timeoutMs).catch(function(imgErr) {{
+          var msg = ((fetchErr && (fetchErr.name || fetchErr.message)) || 'fetch_error') + '+' + ((imgErr && imgErr.message) || 'image_error');
+          throw new Error(msg);
+        }});
+      }});
+    }}
+    function run(cfg) {{
+      if (!cfg || !cfg.redirect_enabled) return;
+      try {{
+        if (new URL(window.location.href).searchParams.get('noredirect') === '1') return;
+      }} catch(e) {{}}
+      var localBase = cleanUrl(cfg.local_base_url || 'http://192.168.3.24:8124');
+      var remoteBase = cleanUrl(cfg.remote_base_url || window.location.origin);
+      var localInfo = hostOf(localBase || cfg.local_host);
+      var here = hostOf(window.location.href);
+      if (localInfo.host && (here.host === localInfo.host || here.hostname === localInfo.hostname)) {{
+        writeCache('local');
+        logRedirect(cfg, 'local', window.location.href, 'already_local', '');
+        return;
+      }}
+      var timeoutMs = Math.max(100, Math.min(5000, Number(cfg.redirect_timeout_ms || 500)));
+      var target = pageTarget(localBase);
+      if (!target) return;
+      var lastCheck = 0;
+      var checking = false;
+      var retryTimer = null;
+      function scheduleRetry() {{
+        if (retryTimer) return;
+        retryTimer = setTimeout(function() {{
+          retryTimer = null;
+          check('retry');
+        }}, 10000);
+      }}
+      function check(reason) {{
+        var now = Date.now();
+        if (checking || (now - lastCheck) < 1200) return;
+        checking = true;
+        lastCheck = now;
+        var okReason = reason === 'initial' ? 'probe_ok' : (reason || 'probe_ok');
+        var failReason = reason === 'initial' ? 'probe_failed' : (reason || 'probe_failed');
+        localReachable(localBase, timeoutMs).then(function() {{
+          checking = false;
+          writeCache('local');
+          logRedirect(cfg, 'local', target, okReason, 'timeout_ms=' + timeoutMs);
+          if (window.location.href !== target) window.location.replace(target);
+        }}, function(err) {{
+          checking = false;
+          writeCache('remote');
+        logRedirect(cfg, 'remote', pageTarget(remoteBase) || window.location.href, failReason, (err && (err.message || err.name)) || '');
+          scheduleRetry();
+        }});
+      }}
+      try {{
+        window.addEventListener('online', function() {{ check('online'); }});
+        window.addEventListener('focus', function() {{ check('focus'); }});
+        document.addEventListener('visibilitychange', function() {{ if (!document.hidden) check('visible'); }});
+      }} catch(e) {{}}
+      check('initial');
+    }}
+    fetch(new URL('/api/meta', window.location.href).toString(), {{cache: 'no-store'}})
+      .then(function(resp) {{ return resp && resp.ok ? resp.json() : null; }})
+      .then(function(meta) {{
+        var cfg = meta && meta.smart_links && typeof meta.smart_links === 'object' ? meta.smart_links : null;
+        run(cfg);
+      }})
+      .catch(function(err) {{ sendDbg('smart_redirect_meta_error', (err && err.message) ? err.message : String(err || 'error')); }});
+  }})();
+  try {{
+    window.addEventListener('load', function() {{
+      if (DEBUG_SENT) return;
+      DEBUG_SENT = true;
+      sendDbg('load', '');
+    }});
+    // Do not capture global script parse errors here: embedded WebViews can emit
+    // non-actionable SyntaxError events for document-level scripts and flood logs.
+    window.addEventListener('unhandledrejection', function(ev) {{
+      var reason = '';
+      try {{
+        reason = (ev && ev.reason) ? String(ev.reason) : '';
+      }} catch(e) {{}}
+      sendDbg('promise_rejection', reason);
+    }});
+    setTimeout(function() {{
+      if (DEBUG_SENT) return;
+      sendDbg('bootstrap_timeout', '');
+    }}, 8000);
+  }} catch(e) {{}}
+  // Hidden back gesture: long-press top-left corner (works even on proxied pages).
+  (function() {{
+    var CORNER = 70;
+    var HOLD_MS = 450;
+    var timer = null;
+    function inCornerXY(x, y) {{ return Number(x) <= CORNER && Number(y) <= CORNER; }}
+    function clear() {{ if (timer) {{ clearTimeout(timer); timer = null; }} }}
+    function goHome() {{ try {{ window.location.href = new URL('/home2', window.location.href).toString(); }} catch(e) {{}} }}
+    function doBack() {{
+      try {{
+        // In proxied apps, prefer going back to our Home2 (SPA routers often swallow history.back()).
+        if (String(window.location.pathname || '').startsWith(PROXY_PREFIX + '/') || String(window.location.pathname || '') === PROXY_PREFIX) {{
+          goHome();
+          return;
+        }}
+        if (window.history && window.history.length > 1) {{
+          window.history.back();
+          return;
+        }}
+      }} catch(e) {{}}
+      goHome();
+    }}
+    function arm() {{
+      if (timer) return;
+      timer = setTimeout(function() {{ timer = null; doBack(); }}, HOLD_MS);
+    }}
+    function onPointerDown(e) {{
+      try {{
+        if (!inCornerXY(e.clientX, e.clientY)) return;
+        arm();
+      }} catch(ex) {{}}
+    }}
+    function onTouchStart(e) {{
+      try {{
+        var t = (e.touches && e.touches[0]) ? e.touches[0] : null;
+        if (!t) return;
+        if (!inCornerXY(t.clientX, t.clientY)) return;
+        arm();
+      }} catch(ex) {{}}
+    }}
+    document.addEventListener('pointerdown', onPointerDown, {{ passive: true }});
+    document.addEventListener('pointerup', clear, {{ passive: true }});
+    document.addEventListener('pointercancel', clear, {{ passive: true }});
+    document.addEventListener('pointermove', function(e) {{ if (!timer) return; try {{ if (!inCornerXY(e.clientX, e.clientY)) clear(); }} catch(ex) {{ clear(); }} }}, {{ passive: true }});
+    document.addEventListener('touchstart', onTouchStart, {{ passive: true }});
+    document.addEventListener('touchend', clear, {{ passive: true }});
+    document.addEventListener('touchcancel', clear, {{ passive: true }});
+    document.addEventListener('mousedown', onPointerDown, {{ passive: true }});
+    document.addEventListener('mouseup', clear, {{ passive: true }});
+    document.addEventListener('mousemove', function(e) {{ if (!timer) return; try {{ if (!inCornerXY(e.clientX, e.clientY)) clear(); }} catch(ex) {{ clear(); }} }}, {{ passive: true }});
+  }})();
+
+  function abs(u) {{ try {{ return new URL(u, window.location.href).toString(); }} catch(e) {{ return String(u||''); }} }}
+  function rewriteNav(u) {{
+    var s = String(u||'');
+    if (!s) return s;
+    if (s.startsWith(PROXY_PREFIX) || s.startsWith(WS_PREFIX)) return s;
+    if (s.startsWith('ext/{name}')) return '/' + s;
+    if (s.startsWith('extws/{name}')) return '/' + s;
+    if (s.startsWith('#')) return s;
+    if (s.startsWith('/')) return PROXY_PREFIX + s;
+    try {{
+      var parsed = new URL(s, window.location.href);
+      if (parsed && parsed.host && parsed.host === window.location.host) {{
+        var p = (parsed.pathname || '/');
+        if (p.startsWith(PROXY_PREFIX) || p === PROXY_PREFIX || p.startsWith(WS_PREFIX) || p === WS_PREFIX) {{
+          return p + (parsed.search||'') + (parsed.hash||'');
+        }}
+        return PROXY_PREFIX + p + (parsed.search||'') + (parsed.hash||'');
+      }}
+      if (parsed && parsed.host && parsed.host === UPSTREAM_HOST) {{
+        var p = (parsed.pathname || '/');
+        if (p.startsWith(PROXY_PREFIX) || p === PROXY_PREFIX || p.startsWith(WS_PREFIX) || p === WS_PREFIX) {{
+          return p + (parsed.search||'') + (parsed.hash||'');
+        }}
+        return PROXY_PREFIX + p + (parsed.search||'') + (parsed.hash||'');
+      }}
+    }} catch(e) {{}}
+    return s;
+  }}
+  function rewritePath(u) {{
+    var s = String(u||'');
+    if (!s) return s;
+    if (s.startsWith(PROXY_PREFIX) || s.startsWith(WS_PREFIX)) return s;
+    if (s.startsWith('ext/{name}')) return '/' + s;
+    if (s.startsWith('extws/{name}')) return '/' + s;
+    if (s.startsWith('/')) return PROXY_PREFIX + s;
+    // Absolute URL on same origin (our add-on) -> force through proxy
+    try {{
+      var parsed = new URL(s, window.location.href);
+      if (parsed && parsed.host && parsed.host === window.location.host) {{
+        var p = (parsed.pathname || '/');
+        if (p.startsWith(PROXY_PREFIX) || p === PROXY_PREFIX || p.startsWith(WS_PREFIX) || p === WS_PREFIX) {{
+          return p + (parsed.search||'') + (parsed.hash||'');
+        }}
+        if (p && p.startsWith('/')) return PROXY_PREFIX + p + (parsed.search||'') + (parsed.hash||'');
+      }}
+      // Absolute URL pointing to upstream host -> force through proxy
+      if (parsed && parsed.host && parsed.host === UPSTREAM_HOST) {{
+        var p = (parsed.pathname || '/');
+        if (p.startsWith(PROXY_PREFIX) || p === PROXY_PREFIX || p.startsWith(WS_PREFIX) || p === WS_PREFIX) {{
+          return p + (parsed.search||'') + (parsed.hash||'');
+        }}
+        return PROXY_PREFIX + p + (parsed.search||'') + (parsed.hash||'');
+      }}
+    }} catch(e) {{}}
+    return s;
+  }}
+
+  // Intercept clicks on absolute paths (e.g. /security/functions) and keep them inside /ext/<name>/...
+  try {{
+    document.addEventListener('click', function(e) {{
+      try {{
+        var t = e.target;
+        if (!t) return;
+        var a = (t.closest && t.closest('a')) ? t.closest('a') : null;
+        if (!a) return;
+        var hrefAttr = a.getAttribute('href') || '';
+        if (!hrefAttr) return;
+        if (hrefAttr.startsWith('#') || hrefAttr.startsWith('mailto:') || hrefAttr.startsWith('tel:')) return;
+        var rewritten = rewriteNav(hrefAttr);
+        if (rewritten !== hrefAttr) {{
+          e.preventDefault();
+          e.stopPropagation();
+          window.location.href = abs(rewritten);
+        }}
+      }} catch(ex) {{}}
+    }}, true);
+    document.addEventListener('submit', function(e) {{
+      try {{
+        var f = e.target;
+        if (!f || !f.getAttribute) return;
+        var action = f.getAttribute('action') || '';
+        if (!action) return;
+        var rewritten = rewriteNav(action);
+        if (rewritten !== action) f.setAttribute('action', rewritten);
+      }} catch(ex) {{}}
+    }}, true);
+  }} catch(e) {{}}
+
+  // Best-effort patch for location.assign/replace and window.open used by some apps
+  try {{
+    var _open = window.open;
+    if (typeof _open === 'function') {{
+      window.open = function(url, target, features) {{
+        try {{ url = abs(rewriteNav(url)); }} catch(e) {{}}
+        return _open.call(window, url, target, features);
+      }};
+    }}
+  }} catch(e) {{}}
+  try {{
+    var loc = window.location;
+    var _assign = loc.assign ? loc.assign.bind(loc) : null;
+    var _replace = loc.replace ? loc.replace.bind(loc) : null;
+    if (_assign) loc.assign = function(u) {{ return _assign(abs(rewriteNav(u))); }};
+    if (_replace) loc.replace = function(u) {{ return _replace(abs(rewriteNav(u))); }};
+  }} catch(e) {{}}
+  // fetch wrapper
+  try {{
+    var _fetch = window.fetch;
+    if (typeof _fetch === 'function') {{
+      window.fetch = function(input, init) {{
+        try {{
+          if (typeof input === 'string') {{
+            return _fetch(rewritePath(input), init);
+          }}
+          if (input && typeof input.url === 'string') {{
+            var u = rewritePath(input.url);
+            if (u !== input.url) {{
+              var req = new Request(abs(u), input);
+              return _fetch(req, init);
+            }}
+          }}
+        }} catch(e) {{}}
+        return _fetch(input, init);
+      }};
+    }}
+  }} catch(e) {{}}
+  // XHR wrapper
+  try {{
+    var X = window.XMLHttpRequest;
+    if (X && X.prototype && typeof X.prototype.open === 'function') {{
+      var _open = X.prototype.open;
+      X.prototype.open = function(method, url) {{
+        try {{
+          var u = rewritePath(url);
+          var args = Array.prototype.slice.call(arguments);
+          args[1] = abs(u);
+          return _open.apply(this, args);
+        }} catch(e) {{}}
+        return _open.apply(this, arguments);
+      }};
+    }}
+  }} catch(e) {{}}
+  // EventSource wrapper (important on iOS where referer/cookies can be inconsistent in embedded webviews)
+  try {{
+    var _ES = window.EventSource;
+    if (typeof _ES === 'function') {{
+      window.EventSource = function(url, conf) {{
+        try {{
+          var u = abs(rewritePath(url));
+          var es = conf ? new _ES(u, conf) : new _ES(u);
+          try {{
+            var sent = false;
+            es.addEventListener('error', function() {{
+              if (sent) return;
+              sent = true;
+              sendDbg('es_error', u + ' state=' + es.readyState);
+            }});
+          }} catch(e) {{}}
+          return es;
+        }} catch(e) {{
+          sendDbg('es_create_error', String(e && e.message ? e.message : e));
+          return conf ? new _ES(url, conf) : new _ES(url);
+        }}
+      }};
+      window.EventSource.prototype = _ES.prototype;
+    }}
+  }} catch(e) {{}}
+  // WebSocket wrapper
+  try {{
+    var _WS = window.WebSocket;
+    if (typeof _WS === 'function') {{
+      window.WebSocket = function(url, protocols) {{
+        try {{
+          var u = String(url||'');
+          if (u.startsWith('/')) {{
+            u = WS_PREFIX + u;
+          }} else {{
+            var parsed = new URL(u, window.location.href);
+            if (parsed && parsed.host && parsed.host === UPSTREAM_HOST) {{
+              u = WS_PREFIX + (parsed.pathname || '/');
+              if (parsed.search) u += parsed.search;
+            }}
+          }}
+          var absu = abs(u);
+          var ws = protocols ? new _WS(absu, protocols) : new _WS(absu);
+          try {{
+            var errSent = false;
+            var closeSent = false;
+            ws.addEventListener('error', function() {{
+              if (errSent) return;
+              errSent = true;
+              sendDbg('ws_error', absu);
+            }});
+            ws.addEventListener('close', function(ev) {{
+              if (closeSent) return;
+              closeSent = true;
+              var code = ev && ev.code ? ev.code : 0;
+              var reason = ev && ev.reason ? ev.reason : '';
+              sendDbg('ws_close', absu + ' code=' + code + ' reason=' + reason);
+            }});
+          }} catch(e) {{}}
+          return ws;
+        }} catch(e) {{
+          sendDbg('ws_create_error', String(e && e.message ? e.message : e));
+          return protocols ? new _WS(url, protocols) : new _WS(url);
+        }}
+      }};
+      window.WebSocket.prototype = _WS.prototype;
+      window.WebSocket.OPEN = _WS.OPEN;
+      window.WebSocket.CLOSED = _WS.CLOSED;
+      window.WebSocket.CLOSING = _WS.CLOSING;
+      window.WebSocket.CONNECTING = _WS.CONNECTING;
+    }}
+  }} catch(e) {{}}
+}})();
+</script>
+""".strip()
+
+    def _fetch_upstream(
+        method: str,
+        url: str,
+        headers: dict[str, str],
+        body: bytes | None,
+        timeout_s: int = 120,
+    ) -> tuple[int, dict[str, list[str]], bytes]:
+        req = urllib.request.Request(url=url, method=method.upper())
+        for k, v in headers.items():
+            req.add_header(k, v)
+        data = body if body is not None and method.upper() not in ("GET", "HEAD") else None
+        try:
+            with urllib.request.urlopen(req, data=data, timeout=max(5, int(timeout_s or 120))) as resp:
+                status = int(getattr(resp, "status", 200))
+                raw_headers = resp.headers
+                out_headers: dict[str, list[str]] = {}
+                for k in raw_headers.keys():
+                    vals = raw_headers.get_all(k) or []
+                    out_headers[k] = [str(x) for x in vals]
+                payload = resp.read()
+                return status, out_headers, payload
+        except urllib.error.HTTPError as e:
+            # Propagate upstream HTTP errors (404/401/500) instead of masking them as 502.
+            status = int(getattr(e, "code", 502) or 502)
+            raw_headers = getattr(e, "headers", None)
+            out_headers: dict[str, list[str]] = {}
+            if raw_headers is not None:
+                for k in raw_headers.keys():
+                    vals = raw_headers.get_all(k) or []
+                    out_headers[k] = [str(x) for x in vals]
+            try:
+                payload = e.read()
+            except Exception:
+                payload = b""
+            return status, out_headers, payload
+
+    def _hop_by_hop_header(name: str) -> bool:
+        return name.lower() in {
+            "connection",
+            "keep-alive",
+            "proxy-authenticate",
+            "proxy-authorization",
+            "te",
+            "trailers",
+            "transfer-encoding",
+            "upgrade",
+        }
+
+    @api.api_route("/ext/{name}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
+    @api.api_route("/ext/{name}/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
+    async def ext_proxy(name: str, request: Request, path: str = ""):
+        # User-side reverse proxy for configured local targets.
+        normalized_name = str(name or "").strip().lower().replace("_", "-")
+        is_sunmind = normalized_name == "e-sunmind"
+        target = store.find_proxy_target(name=name)
+        if not target:
+            _LOGGER.debug("ext_proxy target not found: name=%s path=%s", name, request.url.path)
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        upstream_base = str(target.get("base_url") or "").strip()
+        if not upstream_base:
+            _LOGGER.debug("ext_proxy empty upstream_base: name=%s path=%s", name, request.url.path)
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+
+        # Guard against duplicated proxy prefix (e.g. /ext/core/ext/core/...)
+        try:
+            dup = f"ext/{name}/"
+            p = str(path or "")
+            while p.startswith(dup):
+                p = p[len(dup) :]
+            if p == f"ext/{name}":
+                p = ""
+            path = p
+        except Exception:
+            pass
+
+        # Route SSE/long-poll stream through dedicated proxy path with long timeout.
+        try:
+            p_stream = str(path or "").strip().lstrip("/")
+            if p_stream == "api/stream":
+                _LOGGER.debug("ext_proxy delegating stream endpoint: name=%s path=%s", name, request.url.path)
+                return await _api_stream_proxy_for_name(name=name, request=request)
+        except Exception:
+            pass
+
+        # Client-side bootstrap diagnostics emitted by injected proxy JS.
+        try:
+            p_dbg = str(path or "").strip().lstrip("/")
+            if p_dbg == "__debug/bootstrap":
+                msg = ""
+                try:
+                    if request.method.upper() == "GET":
+                        q = request.query_params
+                        msg = json.dumps(
+                            {
+                                "kind": q.get("k", ""),
+                                "dt": q.get("dt", ""),
+                                "m": q.get("m", ""),
+                                "rs": q.get("rs", ""),
+                            },
+                            ensure_ascii=False,
+                        )[:2000]
+                    else:
+                        raw = await request.body()
+                        msg = raw.decode("utf-8", errors="replace")[:2000] if raw else ""
+                except Exception:
+                    msg = ""
+                kind = ""
+                try:
+                    obj = json.loads(msg) if msg else {}
+                    if isinstance(obj, dict):
+                        kind = str(obj.get("kind") or "")
+                except Exception:
+                    kind = ""
+                log_fn = _LOGGER.warning if kind in (
+                    "js_error",
+                    "promise_rejection",
+                    "bootstrap_timeout",
+                    "ws_error",
+                    "ws_close",
+                    "ws_create_error",
+                    "es_error",
+                    "es_create_error",
+                ) else _LOGGER.debug
+                real_ip, proxy_ip, ua = _request_client_info(request)
+                log_fn(
+                    "ext_proxy bootstrap_debug: name=%s real_ip=%s proxy_ip=%s ua=%s payload=%s",
+                    name,
+                    real_ip,
+                    proxy_ip,
+                    ua,
+                    msg,
+                )
+                return Response(status_code=204)
+        except Exception:
+            pass
+
+        # Keep browser URL aligned with base_url query on proxy root.
+        # Example: base_url=http://host:1980/?view=user and open /ext/name/
+        # -> redirect to /ext/name/?view=user (only if no current query).
+        try:
+            parsed_base = urllib.parse.urlparse(upstream_base)
+            p0 = str(path or "").strip()
+            is_root_proxy = (not p0) or (p0 == "/")
+            if is_root_proxy and not (request.url.query or "").strip() and parsed_base.query:
+                dst = f"/ext/{name}/?{parsed_base.query}"
+                _LOGGER.debug("ext_proxy root redirect with base query: name=%s dst=%s", name, dst)
+                return RedirectResponse(url=dst, status_code=307)
+        except Exception:
+            pass
+
+        q = request.url.query or ""
+        base_parsed = urllib.parse.urlparse(upstream_base)
+        base_no_query = urllib.parse.urlunparse(
+            (base_parsed.scheme, base_parsed.netloc, base_parsed.path, base_parsed.params, "", base_parsed.fragment)
+        )
+        base = base_no_query.rstrip("/") + "/"
+        path_for_upstream = str(path or "").lstrip("/")
+        try:
+            # If base_url already contains an app path (for example
+            # http://host:8080/thermostats), links such as /thermostats/1
+            # must resolve to /thermostats/1, not /thermostats/thermostats/1.
+            # Root app endpoints rewritten by the bootstrap (for example /api/cmd)
+            # must still resolve from the upstream origin root, not from /thermostats.
+            base_path = (base_parsed.path or "").strip("/")
+            rootish_prefixes = ("api/", "assets/", "static/", "ws", "socket.io/")
+            if base_path and (path_for_upstream == base_path or path_for_upstream.startswith(base_path + "/")):
+                path_for_upstream = path_for_upstream[len(base_path) :].lstrip("/")
+            elif base_path and path_for_upstream.startswith(rootish_prefixes):
+                base = urllib.parse.urlunparse(
+                    (base_parsed.scheme, base_parsed.netloc, "/", "", "", "")
+                )
+        except Exception:
+            pass
+        upstream_url = urllib.parse.urljoin(base, path_for_upstream)
+
+        # Preserve query defined in base_url (e.g. http://host:1980/?view=user)
+        # for root proxy calls (/ext/<name>/), then merge request query params.
+        # Deduplicate identical pairs to avoid ...?view=user&view=user.
+        merged_q = ""
+        p1 = str(path or "").strip()
+        pairs: list[tuple[str, str]] = []
+        if (not p1 or p1 == "/") and base_parsed.query:
+            pairs.extend(urllib.parse.parse_qsl(base_parsed.query, keep_blank_values=True))
+        if q:
+            pairs.extend(urllib.parse.parse_qsl(q, keep_blank_values=True))
+        if pairs:
+            seen: set[tuple[str, str]] = set()
+            uniq: list[tuple[str, str]] = []
+            for kv in pairs:
+                if kv in seen:
+                    continue
+                seen.add(kv)
+                uniq.append(kv)
+            merged_q = urllib.parse.urlencode(uniq, doseq=True)
+        if merged_q:
+            upstream_url = upstream_url + ("&" if "?" in upstream_url else "?") + merged_q
+        _LOGGER.debug(
+            "ext_proxy request: name=%s method=%s src_path=%s upstream=%s real_ip=%s proxy_ip=%s ua=%s",
+            name,
+            request.method,
+            request.url.path,
+            upstream_url,
+            _request_client_info(request)[0],
+            _request_client_info(request)[1],
+            _request_client_info(request)[2],
+        )
+
+        # Forward headers (subset)
+        fwd_headers: dict[str, str] = {}
+        for k, v in request.headers.items():
+            lk = k.lower()
+            if lk in ("host", "content-length"):
+                continue
+            if lk.startswith("sec-"):
+                continue
+            if lk == "origin":
+                continue
+            if is_sunmind and lk == "accept-encoding":
+                continue
+            fwd_headers[k] = v
+        # Avoid conditional cache revalidation (304) on proxied resources.
+        # Some embedded WebViews can keep stale bundles and break bootstrap.
+        for hk in ("If-None-Match", "If-Modified-Since", "If-Match", "If-Unmodified-Since", "If-Range"):
+            fwd_headers.pop(hk, None)
+            fwd_headers.pop(hk.lower(), None)
+
+        try:
+            body = await request.body()
+        except ClientDisconnect:
+            _LOGGER.debug("ext_proxy client disconnected before request body read: name=%s path=%s", name, request.url.path)
+            return Response(status_code=499)
+        try:
+            status, upstream_headers, payload = await asyncio.to_thread(
+                _fetch_upstream,
+                request.method,
+                upstream_url,
+                fwd_headers,
+                body,
+                120,
+            )
+        except urllib.error.URLError as e:
+            reason = getattr(e, "reason", e)
+            _LOGGER.warning(
+                "ext_proxy upstream unavailable: name=%s upstream=%s error=%s",
+                name,
+                upstream_url,
+                reason,
+            )
+            return JSONResponse({"detail": "Upstream unavailable"}, status_code=502)
+        except Exception:
+            _LOGGER.exception("ext_proxy upstream error: name=%s upstream=%s", name, upstream_url)
+            return JSONResponse({"detail": "Upstream error"}, status_code=502)
+        _LOGGER.debug(
+            "ext_proxy response: name=%s status=%s upstream=%s bytes=%s",
+            name,
+            status,
+            upstream_url,
+            len(payload or b""),
+        )
+
+        # Build response headers
+        out_headers: dict[str, str] = {}
+        set_cookie_out: list[str] = []
+        content_type = ""
+        for k, vals in upstream_headers.items():
+            if _hop_by_hop_header(k):
+                continue
+            lk = k.lower()
+            if lk == "content-length":
+                continue
+            if lk == "location" and vals:
+                out_headers["Location"] = _rewrite_location(name=name, upstream_base=upstream_base, location=vals[-1])
+                continue
+            if lk == "set-cookie":
+                for sv in vals:
+                    set_cookie_out.append(_rewrite_set_cookie_path(name=name, header_value=sv))
+                continue
+            if lk == "content-type" and vals:
+                content_type = vals[-1]
+            # Keep last value for most headers
+            if vals:
+                out_headers[k] = vals[-1]
+
+        # Rewrite HTML/CSS bodies best-effort.
+        # For e-SunMind keep strict pass-through, but still inject the minimal
+        # smart redirect logger into HTML so local/remote decisions are visible.
+        ct = (content_type or "").lower()
+        if (not is_sunmind) and payload and ("text/html" in ct or "text/css" in ct):
+            try:
+                charset = "utf-8"
+                if "charset=" in ct:
+                    charset = ct.split("charset=", 1)[1].split(";", 1)[0].strip() or "utf-8"
+                text = payload.decode(charset, errors="replace")
+                text2 = _rewrite_body_text(name=name, text=text, content_type=content_type)
+                if "text/html" in ct:
+                    inj = _proxy_bootstrap_js(name=name, upstream_base=upstream_base)
+                    if "</head>" in text2:
+                        text2 = text2.replace("</head>", inj + "\n</head>", 1)
+                    elif "</body>" in text2:
+                        text2 = text2.replace("</body>", inj + "\n</body>", 1)
+                    else:
+                        text2 = inj + "\n" + text2
+                payload = text2.encode(charset, errors="replace")
+            except Exception:
+                pass
+        elif is_sunmind and payload and "text/html" in ct:
+            try:
+                charset = "utf-8"
+                if "charset=" in ct:
+                    charset = ct.split("charset=", 1)[1].split(";", 1)[0].strip() or "utf-8"
+                text = payload.decode(charset, errors="replace")
+                inj = _proxy_smart_redirect_js(name=name)
+                if "</head>" in text:
+                    text = text.replace("</head>", inj + "\n</head>", 1)
+                elif "</body>" in text:
+                    text = text.replace("</body>", inj + "\n</body>", 1)
+                else:
+                    text = inj + "\n" + text
+                payload = text.encode(charset, errors="replace")
+            except Exception:
+                pass
+
+        # Disable cache while debugging WebView issues.
+        if "text/html" in ct or "text/css" in ct or "javascript" in ct or (
+            is_sunmind and str(path or "").strip().lstrip("/").startswith("assets/")
+        ):
+            out_headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            out_headers["Pragma"] = "no-cache"
+            out_headers["Expires"] = "0"
+            out_headers.pop("ETag", None)
+            out_headers.pop("etag", None)
+            out_headers.pop("Last-Modified", None)
+            out_headers.pop("last-modified", None)
+
+        # Enforce stable MIME for proxied static assets when upstream is ambiguous.
+        if is_sunmind:
+            p_norm = str(path or "").strip().lstrip("/").lower()
+            if p_norm.endswith(".js"):
+                out_headers["Content-Type"] = "application/javascript; charset=utf-8"
+            elif p_norm.endswith(".css"):
+                out_headers["Content-Type"] = "text/css; charset=utf-8"
+
+        resp = Response(content=payload, status_code=int(status), headers=out_headers)
+        for sc in set_cookie_out:
+            resp.headers.append("Set-Cookie", sc)
+        try:
+            resp.set_cookie("buspro_px", name, path="/", samesite="lax")
+        except Exception:
+            pass
+        return resp
+
+    @api.api_route("/ext/{name}/assets/{asset_path:path}", methods=["GET", "HEAD"])
+    async def assets_proxy_named(name: str, asset_path: str, request: Request):
+        _LOGGER.debug("assets_proxy_named: name=%s asset=%s path=%s", name, asset_path, request.url.path)
+        return await ext_proxy(name=name, path=f"assets/{asset_path}", request=request)
+
+    @api.api_route("/assets/{asset_path:path}", methods=["GET", "HEAD"])
+    async def assets_proxy(asset_path: str, request: Request):
+        name = _proxy_name_from_request(request)
+        if not name:
+            _LOGGER.debug("assets_proxy missing proxy_name: asset=%s path=%s", asset_path, request.url.path)
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        return await ext_proxy(name=name, path=f"assets/{asset_path}", request=request)
+
+    async def _api_stream_proxy_for_name(name: str, request: Request):
+        target = store.find_proxy_target(name=name)
+        if not target:
+            _LOGGER.debug("api_stream_proxy target not found: name=%s", name)
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        upstream_base = str(target.get("base_url") or "").strip()
+        if not upstream_base:
+            _LOGGER.debug("api_stream_proxy empty upstream_base: name=%s", name)
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+
+        q = request.url.query or ""
+        base_parsed = urllib.parse.urlparse(upstream_base)
+        if (base_parsed.path or "").strip("/"):
+            base = urllib.parse.urlunparse((base_parsed.scheme, base_parsed.netloc, "/", "", "", ""))
+        else:
+            base = upstream_base.rstrip("/") + "/"
+        upstream_url = urllib.parse.urljoin(base, "api/stream")
+        if q:
+            upstream_url = upstream_url + ("&" if "?" in upstream_url else "?") + q
+        _LOGGER.debug("api_stream_proxy start: name=%s upstream=%s", name, upstream_url)
+
+        # EventSource expects text/event-stream (some upstreams omit/lie on HEAD).
+        media_type = "text/event-stream"
+
+        queue: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=40)
+        stop = threading.Event()
+
+        def _safe_queue_put(item: bytes | None) -> None:
+            try:
+                queue.put_nowait(item)
+            except asyncio.QueueFull:
+                if item is None:
+                    try:
+                        queue.get_nowait()
+                    except Exception:
+                        pass
+                    try:
+                        queue.put_nowait(None)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        def _run():
+            try:
+                req = urllib.request.Request(url=upstream_url, method="GET", headers={"Accept": "text/event-stream"})
+                with urllib.request.urlopen(req, timeout=300) as resp:
+                    while not stop.is_set():
+                        # SSE is line-oriented; read line-by-line to flush quickly.
+                        chunk = resp.readline()
+                        if not chunk:
+                            break
+                        try:
+                            api.state.loop.call_soon_threadsafe(_safe_queue_put, bytes(chunk))
+                        except Exception:
+                            break
+            except Exception:
+                _LOGGER.exception("api_stream_proxy upstream stream error: name=%s upstream=%s", name, upstream_url)
+            finally:
+                try:
+                    api.state.loop.call_soon_threadsafe(_safe_queue_put, None)
+                except Exception:
+                    pass
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+
+        async def gen():
+            try:
+                while True:
+                    item = await queue.get()
+                    if item is None:
+                        break
+                    yield item
+            finally:
+                stop.set()
+
+        headers = {"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"}
+        return StreamingResponse(gen(), media_type=media_type, headers=headers)
+
+    @api.api_route("/ext/{name}/api/stream", methods=["GET"])
+    async def api_stream_proxy_named(name: str, request: Request):
+        real_ip, proxy_ip, ua = _request_client_info(request)
+        _LOGGER.debug(
+            "api_stream_proxy_named: name=%s path=%s real_ip=%s proxy_ip=%s ua=%s",
+            name,
+            request.url.path,
+            real_ip,
+            proxy_ip,
+            ua,
+        )
+        return await _api_stream_proxy_for_name(name=name, request=request)
+
+    @api.api_route("/api/stream", methods=["GET"])
+    async def api_stream_proxy(request: Request):
+        # Some panels use SSE / long-poll endpoints at /api/stream
+        name = _proxy_name_from_request(request)
+        if not name:
+            _LOGGER.debug("api_stream_proxy missing proxy_name: path=%s", request.url.path)
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        return await _api_stream_proxy_for_name(name=name, request=request)
+
+    @api.websocket("/extws/{name}/{path:path}")
+    async def ext_ws(websocket: WebSocket, name: str, path: str):
+        await websocket.accept()
+        target = store.find_proxy_target(name=name)
+        if not target:
+            _LOGGER.debug("ext_ws target not found: name=%s path=%s", name, path)
+            await websocket.close(code=1008)
+            return
+        upstream_base = str(target.get("base_url") or "").strip()
+        if not upstream_base:
+            _LOGGER.debug("ext_ws empty upstream_base: name=%s path=%s", name, path)
+            await websocket.close(code=1011)
+            return
+
+        # Guard against duplicated proxy prefix (e.g. /extws/core/extws/core/...)
+        try:
+            dup = f"extws/{name}/"
+            p = str(path or "")
+            while p.startswith(dup):
+                p = p[len(dup) :]
+            if p == f"extws/{name}":
+                p = ""
+            path = p
+        except Exception:
+            pass
+
+        base = urllib.parse.urlparse(upstream_base)
+        scheme = "wss" if base.scheme == "https" else "ws"
+        upstream_ws = f"{scheme}://{base.netloc}/" + str(path or "").lstrip("/")
+        q = websocket.url.query or ""
+        if q:
+            upstream_ws = upstream_ws + ("&" if "?" in upstream_ws else "?") + q
+        _LOGGER.debug("ext_ws connect: name=%s upstream=%s", name, upstream_ws)
+
+        try:
+            import websockets  # type: ignore
+        except Exception:
+            await websocket.close(code=1011)
+            return
+
+        # Forward cookies/auth headers to upstream.
+        extra_headers: list[tuple[str, str]] = []
+        try:
+            for k, v in websocket.headers.items():
+                lk = k.lower()
+                if lk in ("cookie", "authorization"):
+                    extra_headers.append((k, v))
+        except Exception:
+            pass
+
+        try:
+            async with websockets.connect(upstream_ws, extra_headers=extra_headers, ping_interval=None) as upstream:
+                async def c2u():
+                    try:
+                        while True:
+                            msg = await websocket.receive()
+                            t = msg.get("type")
+                            if t == "websocket.disconnect":
+                                break
+                            if t != "websocket.receive":
+                                continue
+                            if "text" in msg and msg["text"] is not None:
+                                await upstream.send(msg["text"])
+                            elif "bytes" in msg and msg["bytes"] is not None:
+                                await upstream.send(msg["bytes"])
+                    except Exception:
+                        return
+
+                async def u2c():
+                    try:
+                        async for m in upstream:
+                            if isinstance(m, (bytes, bytearray)):
+                                await websocket.send_bytes(bytes(m))
+                            else:
+                                await websocket.send_text(str(m))
+                    except Exception:
+                        return
+
+                t1 = asyncio.create_task(c2u())
+                t2 = asyncio.create_task(u2c())
+                done, pending = await asyncio.wait({t1, t2}, return_when=asyncio.FIRST_COMPLETED)
+                for p in pending:
+                    p.cancel()
+        except Exception:
+            _LOGGER.exception("ext_ws proxy error: name=%s upstream=%s", name, upstream_ws)
+            try:
+                await websocket.close(code=1011)
+            except Exception:
+                pass
+
+    def _rgb_groups() -> dict[str, dict[str, Any]]:
+        groups: dict[str, dict[str, Any]] = {}
+        for dev in store.list_devices():
+            if str(dev.get("type") or "light").strip().lower() != "light":
+                continue
+            name = str(dev.get("rgb_group") or "").strip()
+            channel = str(dev.get("rgb_channel") or "").strip().lower()
+            if not name or channel not in ("red", "green", "blue") or not bool(dev.get("dimmable", True)):
+                continue
+            gid = slugify(name)
+            group = groups.setdefault(
+                gid,
+                {
+                    "id": gid,
+                    "name": name,
+                    "category": str(dev.get("category") or "Luci"),
+                    "icon": str(dev.get("icon") or "mdi:led-strip-variant"),
+                    "channels": {},
+                },
+            )
+            group["channels"].setdefault(channel, dev)
+        return {gid: group for gid, group in groups.items() if len(group.get("channels") or {}) >= 2}
+
+    def _rgb_state_payload(group: dict[str, Any]) -> dict[str, Any]:
+        states = store.get_states()
+        values = {"red": 0, "green": 0, "blue": 0}
+        for color, dev in (group.get("channels") or {}).items():
+            addr = f"{int(dev['subnet_id'])}.{int(dev['device_id'])}.{int(dev['channel'])}"
+            st = states.get(f"light:{addr}") or {}
+            if str(st.get("state") or "").strip().upper() == "ON":
+                try:
+                    values[color] = max(0, min(255, int(st.get("brightness") or 0)))
+                except Exception:
+                    values[color] = 0
+        brightness = max(values.values())
+        if brightness > 0:
+            color = {k[0]: max(0, min(255, round(v * 255 / brightness))) for k, v in values.items()}
+            return {"state": "ON", "brightness": brightness, "color": color}
+        previous = states.get(f"rgb:{str(group.get('id') or '').strip()}") or {}
+        payload: dict[str, Any] = {"state": "OFF"}
+        if isinstance(previous, dict):
+            if previous.get("brightness") is not None:
+                payload["brightness"] = previous.get("brightness")
+            if isinstance(previous.get("color"), dict):
+                payload["color"] = dict(previous.get("color") or {})
+        return payload
+
+    def _publish_rgb_state(group: dict[str, Any]) -> None:
+        gid = str(group.get("id") or "").strip()
+        if gid:
+            payload = _rgb_state_payload(group)
+            store.set_rgb_group_state(group_id=gid, payload=payload)
+            mqtt.publish(f"{settings.mqtt.base_topic}/state/rgb/{gid}", payload, retain=True)
+
+    def _publish_rgb_state_for_device(dev: dict[str, Any]) -> None:
+        name = str(dev.get("rgb_group") or "").strip()
+        if not name:
+            return
+        group = _rgb_groups().get(slugify(name))
+        if group:
+            _publish_rgb_state(group)
+
+    def _publish_light_state(dev: dict[str, Any], st: LightState) -> None:
+        subnet = int(dev["subnet_id"])
+        did = int(dev["device_id"])
+        ch = int(dev["channel"])
+        topic = f"{settings.mqtt.base_topic}/state/light/{subnet}/{did}/{ch}"
+        payload: dict[str, Any] = {"state": "ON" if st.is_on else "OFF"}
+        if bool(dev.get("dimmable", True)):
+            payload["brightness"] = int(st.brightness or 0)
+        store.set_light_state(subnet_id=subnet, device_id=did, channel=ch, state=payload["state"], brightness=payload.get("brightness"))
+        mqtt.publish(topic, payload, retain=True)
+        _publish_rgb_state_for_device(dev)
+
+    async def _run_rgb_command(gid: str, raw_payload: str) -> None:
+        group = _rgb_groups().get(str(gid or "").strip())
+        gw: BusproGateway | None = api.state.gateway
+        if not group or gw is None:
+            return
+        try:
+            obj = json.loads(str(raw_payload or "{}"))
+        except Exception:
+            obj = {"state": str(raw_payload or "").strip().upper()}
+        if not isinstance(obj, dict):
+            return
+        desired = str(obj.get("state") or "ON").strip().upper()
+        channels = group.get("channels") or {}
+        if desired == "OFF":
+            values = {"red": 0, "green": 0, "blue": 0}
+        else:
+            current = _rgb_state_payload(group)
+            current_color = current.get("color") if isinstance(current.get("color"), dict) else {"r": 255, "g": 255, "b": 255}
+            requested_color = obj.get("color") if isinstance(obj.get("color"), dict) else current_color
+            try:
+                brightness = int(obj.get("brightness", current.get("brightness", 255)))
+            except Exception:
+                brightness = 255
+            brightness = max(0, min(255, brightness))
+            values = {}
+            for color, short in (("red", "r"), ("green", "g"), ("blue", "b")):
+                try:
+                    component = max(0, min(255, int(requested_color.get(short, 0))))
+                except Exception:
+                    component = 0
+                values[color] = round(component * brightness / 255)
+        for color in ("red", "green", "blue"):
+            dev = channels.get(color)
+            if not dev:
+                continue
+            value = int(values.get(color, 0))
+            await gw.set_light(
+                subnet_id=int(dev["subnet_id"]),
+                device_id=int(dev["device_id"]),
+                channel=int(dev["channel"]),
+                on=value > 0,
+                brightness255=value,
+            )
+
+    def _publish_cover_state(dev: dict[str, Any], st: CoverState) -> None:
+        subnet = int(dev["subnet_id"])
+        did = int(dev["device_id"])
+        ch = int(dev["channel"])
+        state_topic = f"{settings.mqtt.base_topic}/state/cover_state/{subnet}/{did}/{ch}"
+        pos_topic = f"{settings.mqtt.base_topic}/state/cover_pos/{subnet}/{did}/{ch}"
+        state = str(st.state).upper()
+        use_pos = bool(dev.get("use_position"))
+        pos = int(st.position) if (use_pos and st.position is not None) else None
+        store.set_cover_state(subnet_id=subnet, device_id=did, channel=ch, state=state, position=pos)
+        mqtt.publish(state_topic, state, retain=True)
+        # Always update position topic to avoid stale retained values in HA.
+        if pos is not None:
+            mqtt.publish(pos_topic, str(pos), retain=True)
+        else:
+            mqtt.publish(pos_topic, "", retain=True)
+
+    def _publish_temp_value(dev: dict[str, Any], value: float, ts: float | None = None) -> None:
+        subnet = int(dev["subnet_id"])
+        did = int(dev["device_id"])
+        sensor_id = int(dev["channel"])
+        topic = f"{settings.mqtt.base_topic}/state/temp/{subnet}/{did}/{sensor_id}"
+
+        decimals = 1
+        try:
+            decimals = int(dev.get("decimals") if dev.get("decimals") is not None else 1)
+        except Exception:
+            decimals = 1
+        decimals = max(0, min(3, decimals))
+
+        # Reduce chatter: publish only if the rounded value changed
+        addr = f"{subnet}.{did}.{sensor_id}"
+        last_t: dict[str, float] = getattr(api.state, "_last_temp_value", {}) or {}
+        rounded = float(round(float(value), decimals))
+        if addr in last_t and float(last_t[addr]) == rounded:
+            return
+        last_t[addr] = rounded
+        api.state._last_temp_value = last_t
+
+        store.set_temp_state(subnet_id=subnet, device_id=did, channel=sensor_id, value=float(value), ts=ts)
+        mqtt.publish(topic, f"{rounded:.{decimals}f}", retain=True)
+
+    def _publish_humidity_value(dev: dict[str, Any], value: float, ts: float | None = None) -> None:
+        subnet = int(dev["subnet_id"])
+        did = int(dev["device_id"])
+        sensor_id = int(dev["channel"])
+        topic = f"{settings.mqtt.base_topic}/state/humidity/{subnet}/{did}/{sensor_id}"
+
+        decimals = 0
+        try:
+            decimals = int(dev.get("decimals") if dev.get("decimals") is not None else 0)
+        except Exception:
+            decimals = 0
+        decimals = max(0, min(3, decimals))
+
+        # Reduce chatter: publish only if the rounded value changed
+        addr = f"{subnet}.{did}.{sensor_id}"
+        last_h: dict[str, float] = getattr(api.state, "_last_humidity_value", {}) or {}
+        rounded = float(round(float(value), decimals))
+        if addr in last_h and float(last_h[addr]) == rounded:
+            return
+        last_h[addr] = rounded
+        api.state._last_humidity_value = last_h
+
+        store.set_humidity_state(subnet_id=subnet, device_id=did, channel=sensor_id, value=float(value), ts=ts)
+        mqtt.publish(topic, f"{rounded:.{decimals}f}", retain=True)
+
+    def _publish_illuminance_value(dev: dict[str, Any], value: float, ts: float | None = None) -> None:
+        subnet = int(dev["subnet_id"])
+        did = int(dev["device_id"])
+        sensor_id = int(dev["channel"])
+        topic = f"{settings.mqtt.base_topic}/state/illuminance/{subnet}/{did}/{sensor_id}"
+
+        decimals = 0
+        try:
+            decimals = int(dev.get("decimals") if dev.get("decimals") is not None else 0)
+        except Exception:
+            decimals = 0
+        decimals = max(0, min(3, decimals))
+
+        scale: float | None = None
+        offset: float | None = None
+        try:
+            scale = float(dev.get("lux_scale")) if dev.get("lux_scale") is not None else None
+        except Exception:
+            scale = None
+        try:
+            offset = float(dev.get("lux_offset")) if dev.get("lux_offset") is not None else None
+        except Exception:
+            offset = None
+
+        v = float(value)
+        if scale is not None:
+            v = v * float(scale)
+        if offset is not None:
+            v = v + float(offset)
+
+        # Reduce chatter: publish only if the rounded value changed
+        addr = f"{subnet}.{did}.{sensor_id}"
+        last_lx: dict[str, float] = getattr(api.state, "_last_illuminance_value", {}) or {}
+        rounded = float(round(float(v), decimals))
+        if addr in last_lx and float(last_lx[addr]) == rounded:
+            return
+        last_lx[addr] = rounded
+        api.state._last_illuminance_value = last_lx
+
+        store.set_illuminance_state(subnet_id=subnet, device_id=did, channel=sensor_id, value=float(v), ts=ts)
+        mqtt.publish(topic, f"{rounded:.{decimals}f}", retain=True)
+
+    def _air_level_to_text(level: int) -> str:
+        if int(level) == 0:
+            return "clean"
+        if int(level) == 1:
+            return "mild"
+        if int(level) == 2:
+            return "moderate"
+        if int(level) == 3:
+            return "severe"
+        return "unknown"
+
+    def _publish_air_quality(dev: dict[str, Any], level: int, ts: float | None = None) -> None:
+        subnet = int(dev["subnet_id"])
+        did = int(dev["device_id"])
+        sensor_id = int(dev["channel"])
+        topic = f"{settings.mqtt.base_topic}/state/air_quality/{subnet}/{did}/{sensor_id}"
+
+        addr = f"{subnet}.{did}.{sensor_id}"
+        last_a: dict[str, str] = getattr(api.state, "_last_air_quality", {}) or {}
+        text = _air_level_to_text(int(level))
+        if addr in last_a and str(last_a[addr]) == text:
+            return
+        last_a[addr] = text
+        api.state._last_air_quality = last_a
+
+        store.set_air_quality_state(subnet_id=subnet, device_id=did, channel=sensor_id, state=text, ts=ts)
+        mqtt.publish(topic, text, retain=True)
+
+    def _publish_gas_percent(dev: dict[str, Any], value: float, ts: float | None = None) -> None:
+        subnet = int(dev["subnet_id"])
+        did = int(dev["device_id"])
+        sensor_id = int(dev["channel"])
+        topic = f"{settings.mqtt.base_topic}/state/gas_percent/{subnet}/{did}/{sensor_id}"
+
+        addr = f"{subnet}.{did}.{sensor_id}"
+        last_g: dict[str, float] = getattr(api.state, "_last_gas_percent", {}) or {}
+        rounded = float(round(float(value), 0))
+        if addr in last_g and float(last_g[addr]) == rounded:
+            return
+        last_g[addr] = rounded
+        api.state._last_gas_percent = last_g
+
+        store.set_gas_percent_state(subnet_id=subnet, device_id=did, channel=sensor_id, value=float(rounded), ts=ts)
+        mqtt.publish(topic, f"{rounded:.0f}", retain=True)
+
+    def _publish_pir_state(dev: dict[str, Any], state: str, ts: float | None = None) -> None:
+        subnet = int(dev["subnet_id"])
+        did = int(dev["device_id"])
+        sensor_id = int(dev["channel"])
+        topic = f"{settings.mqtt.base_topic}/state/pir/{subnet}/{did}/{sensor_id}"
+
+        state_u = str(state or "").upper()
+        if state_u not in ("ON", "OFF"):
+            return
+
+        addr = f"{subnet}.{did}.{sensor_id}"
+        last_p: dict[str, str] = getattr(api.state, "_last_pir_state", {}) or {}
+        if addr in last_p and str(last_p[addr]) == state_u:
+            return
+        last_p[addr] = state_u
+        api.state._last_pir_state = last_p
+
+        store.set_pir_state(subnet_id=subnet, device_id=did, channel=sensor_id, state=state_u, ts=ts)
+        mqtt.publish(topic, state_u, retain=True)
+
+    def _publish_ultrasonic_state(dev: dict[str, Any], state: str, ts: float | None = None) -> None:
+        subnet = int(dev["subnet_id"])
+        did = int(dev["device_id"])
+        sensor_id = int(dev["channel"])
+        topic = f"{settings.mqtt.base_topic}/state/ultrasonic/{subnet}/{did}/{sensor_id}"
+
+        state_u = str(state or "").upper()
+        if state_u not in ("ON", "OFF"):
+            return
+
+        addr = f"{subnet}.{did}.{sensor_id}"
+        last_u: dict[str, str] = getattr(api.state, "_last_ultrasonic_state", {}) or {}
+        if addr in last_u and str(last_u[addr]) == state_u:
+            return
+        last_u[addr] = state_u
+        api.state._last_ultrasonic_state = last_u
+
+        store.set_ultrasonic_state(subnet_id=subnet, device_id=did, channel=sensor_id, state=state_u, ts=ts)
+        mqtt.publish(topic, state_u, retain=True)
+
+    def _publish_dry_contact_state(dev: dict[str, Any], state: str, ts: float | None = None, payload_x: int | None = None) -> None:
+        subnet = int(dev["subnet_id"])
+        did = int(dev["device_id"])
+        input_id = int(dev["channel"])
+        topic = f"{settings.mqtt.base_topic}/state/dry_contact/{subnet}/{did}/{input_id}"
+        attrs_topic = f"{settings.mqtt.base_topic}/state/dry_contact_attr/{subnet}/{did}/{input_id}"
+
+        state_u = str(state or "").upper()
+        if state_u not in ("ON", "OFF"):
+            return
+
+        store.set_dry_contact_state(subnet_id=subnet, device_id=did, channel=input_id, state=state_u, ts=ts, payload_x=payload_x)
+        mqtt.publish(topic, state_u, retain=True)
+        mqtt.publish(
+            attrs_topic,
+            {
+                "subnet_id": subnet,
+                "device_id": did,
+                "input_id": input_id,
+                "x": int(payload_x) if payload_x is not None else None,
+                "ts": float(ts) if ts is not None else None,
+            },
+            retain=True,
+        )
+
+    def _cover_group_config_topic(*, gid: str) -> str:
+        nid = f"buspro_{settings.gateway.host.replace('.', '_')}_{settings.gateway.port}"
+        return f"{settings.mqtt.discovery_prefix}/cover/{nid}/group_{gid}/config"
+
+    def _cover_group_no_pct_config_topic(*, gid: str) -> str:
+        nid = f"buspro_{settings.gateway.host.replace('.', '_')}_{settings.gateway.port}"
+        return f"{settings.mqtt.discovery_prefix}/cover/{nid}/group_{gid}_no_pct/config"
+
+    def _light_scenario_config_topic(*, sid: str) -> str:
+        nid = f"buspro_{settings.gateway.host.replace('.', '_')}_{settings.gateway.port}"
+        return f"{settings.mqtt.discovery_prefix}/button/{nid}/light_scenario_{sid}/config"
+
+    def _light_scenario_switch_config_topic(*, sid: str) -> str:
+        nid = f"buspro_{settings.gateway.host.replace('.', '_')}_{settings.gateway.port}"
+        return f"{settings.mqtt.discovery_prefix}/switch/{nid}/light_scenario_{sid}_switch/config"
+
+    def _light_scenario_state_topic(*, sid: str) -> str:
+        sid2 = str(sid or "").strip()
+        return f"{settings.mqtt.base_topic}/state/light_scenario/{sid2}"
+
+    def _scenario_ha_trigger_config_topic(*, trigger_id: str) -> str:
+        nid = f"buspro_{settings.gateway.host.replace('.', '_')}_{settings.gateway.port}"
+        tid = str(trigger_id or "").strip()
+        return f"{settings.mqtt.discovery_prefix}/button/{nid}/scenario_ha_trigger_{tid}/config"
+
+    def _rebuild_light_scenario_index() -> None:
+        membership: dict[str, set[str]] = {}
+        cover_groups = store.list_cover_groups()
+        cover_groups_by_gid = {str(g.get("id") or "").strip(): g for g in cover_groups if isinstance(g, dict)}
+        for sc in store.list_light_scenarios():
+            sid = str(sc.get("id") or "").strip()
+            if not sid:
+                continue
+            # Lights/switches
+            items = sc.get("items") or []
+            if isinstance(items, list):
+                for it in items:
+                    if not isinstance(it, dict):
+                        continue
+                    eid = str(it.get("entity_id") or "").strip()
+                    if eid:
+                        membership.setdefault(eid, set()).add(sid)
+                        continue
+                    try:
+                        subnet_id = int(it.get("subnet_id"))
+                        device_id = int(it.get("device_id"))
+                        channel = int(it.get("channel"))
+                    except Exception:
+                        continue
+                    addr = f"{subnet_id}.{device_id}.{channel}"
+                    membership.setdefault(addr, set()).add(sid)
+            # Covers
+            covers = sc.get("covers") or []
+            if not isinstance(covers, list):
+                continue
+            for it in covers:
+                if not isinstance(it, dict):
+                    continue
+                kind = str(it.get("kind") or "single").strip().lower()
+                if kind == "ha":
+                    eid = str(it.get("entity_id") or "").strip().lower()
+                    if eid:
+                        membership.setdefault(eid, set()).add(sid)
+                    continue
+                if kind == "group":
+                    gid = str(it.get("group_id") or "").strip()
+                    if not gid:
+                        continue
+                    g = cover_groups_by_gid.get(gid)
+                    if not g:
+                        continue
+                    for m in (g.get("members") or []):
+                        addr = str(m or "").strip()
+                        if addr:
+                            membership.setdefault(addr, set()).add(sid)
+                    continue
+                try:
+                    subnet_id = int(it.get("subnet_id"))
+                    device_id = int(it.get("device_id"))
+                    channel = int(it.get("channel"))
+                except Exception:
+                    continue
+                addr = f"{subnet_id}.{device_id}.{channel}"
+                membership.setdefault(addr, set()).add(sid)
+        api.state.light_scenario_membership = membership
+
+    def _scenario_switch_state(sc: dict[str, Any]) -> str:
+        # Rule (user choice #2): ON iff all scenario items (lights + covers) match configured state.
+        items = sc.get("items") or []
+        covers = sc.get("covers") or []
+        if not isinstance(items, list):
+            items = []
+        if not isinstance(covers, list):
+            covers = []
+        if not items and not covers:
+            return "OFF"
+        states = store.get_states()
+        ha_states: dict[str, Any] = getattr(api.state, "ha_states", {}) or {}
+
+        def _normalize_cover_state(val: str) -> str:
+            v = str(val or "").strip().upper()
+            if v in ("OPEN", "OPENING", "CLOSE", "CLOSED", "CLOSING", "STOP", "STOPPED"):
+                return "CLOSED" if v == "CLOSE" else ("STOP" if v == "STOPPED" else v)
+            if v in ("OPENING", "CLOSING"):
+                return v
+            if v in ("OPEN", "OPENED"):
+                return "OPEN"
+            if v in ("CLOSED", "CLOSE"):
+                return "CLOSED"
+            return v
+
+        def _cover_matches(cmd: str, st_state: str | None, st_pos: int | None) -> bool:
+            cmd_u = str(cmd or "").upper()
+            st_u = _normalize_cover_state(st_state or "")
+            pos_i = int(st_pos) if st_pos is not None else None
+            if cmd_u == "OPEN":
+                if pos_i is not None:
+                    return pos_i >= 95
+                return st_u in ("OPEN", "OPENING")
+            if cmd_u == "CLOSE":
+                if pos_i is not None:
+                    return pos_i <= 5
+                return st_u in ("CLOSED", "CLOSING")
+            # STOP: consider OK if not moving
+            if st_u in ("OPENING", "CLOSING"):
+                return False
+            return True
+
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            eid = str(it.get("entity_id") or "").strip()
+            if eid:
+                st = ha_states.get(eid) if isinstance(ha_states, dict) else None
+                if not isinstance(st, dict):
+                    return "OFF"
+                desired = str(it.get("state") or "").strip().upper()
+                if desired not in ("ON", "OFF"):
+                    return "OFF"
+                if str(st.get("state") or "").upper() != desired:
+                    return "OFF"
+                continue
+            try:
+                subnet_id = int(it.get("subnet_id"))
+                device_id = int(it.get("device_id"))
+                channel = int(it.get("channel"))
+            except Exception:
+                continue
+            addr = f"{subnet_id}.{device_id}.{channel}"
+            st = states.get(f"light:{addr}") or {}
+            if not isinstance(st, dict):
+                return "OFF"
+            desired = str(it.get("state") or "").strip().upper()
+            if desired not in ("ON", "OFF"):
+                return "OFF"
+            if str(st.get("state") or "").upper() != desired:
+                return "OFF"
+
+        # Covers
+        if covers:
+            for it in covers:
+                if not isinstance(it, dict):
+                    continue
+                cmd = str(it.get("command") or "").strip().upper()
+                if cmd not in ("OPEN", "CLOSE", "STOP"):
+                    continue
+                kind = str(it.get("kind") or "single").strip().lower()
+                if kind == "ha":
+                    eid = str(it.get("entity_id") or "").strip().lower()
+                    if not eid:
+                        return "OFF"
+                    st = ha_states.get(eid) if isinstance(ha_states, dict) else None
+                    if not isinstance(st, dict):
+                        return "OFF"
+                    st_state = str(st.get("state") or "")
+                    cmd_match = _invert_cover_command(cmd) if _ha_cover_is_inverted(eid) else cmd
+                    if not _cover_matches(cmd_match, st_state, None):
+                        return "OFF"
+                    continue
+                if kind == "group":
+                    gid = str(it.get("group_id") or "").strip()
+                    if not gid:
+                        return "OFF"
+                    gstate = states.get(f"cover_group:{gid}") or {}
+                    if isinstance(gstate, dict) and gstate.get("state"):
+                        st_state = str(gstate.get("state") or "")
+                        st_pos = gstate.get("position")
+                        if not _cover_matches(cmd, st_state, st_pos):
+                            return "OFF"
+                        continue
+                    agg = _aggregate_cover_group_state(gid)
+                    if not agg:
+                        return "OFF"
+                    st_state, st_pos = agg
+                    if not _cover_matches(cmd, st_state, st_pos):
+                        return "OFF"
+                    continue
+                try:
+                    subnet_id = int(it.get("subnet_id"))
+                    device_id = int(it.get("device_id"))
+                    channel = int(it.get("channel"))
+                except Exception:
+                    continue
+                addr = f"{subnet_id}.{device_id}.{channel}"
+                st = states.get(f"cover:{addr}") or {}
+                if not isinstance(st, dict):
+                    return "OFF"
+                st_state = str(st.get("state") or "")
+                st_pos = st.get("position")
+                if not _cover_matches(cmd, st_state, st_pos):
+                    return "OFF"
+        return "ON"
+
+    async def _publish_light_scenario_state(sc: dict[str, Any]) -> str:
+        sid = str(sc.get("id") or "").strip()
+        if not sid:
+            return "OFF"
+        state = _scenario_switch_state(sc)
+        try:
+            mqtt.publish(_light_scenario_state_topic(sid=sid), state, retain=True)
+        except Exception:
+            pass
+        try:
+            await hub.broadcast("light_scenario_state", {"id": sid, "state": state})
+        except Exception:
+            pass
+        return state
+
+    async def _set_light_scenario_running(sid: str, running: bool) -> None:
+        sid_s = str(sid or "").strip()
+        if not sid_s:
+            return
+        m: dict[str, bool] = getattr(api.state, "scenario_running", {}) or {}
+        prev = bool(m.get(sid_s))
+        now = bool(running)
+        if prev == now:
+            return
+        m[sid_s] = now
+        api.state.scenario_running = m
+        try:
+            await hub.broadcast("light_scenario_running", {"id": sid_s, "running": now})
+        except Exception:
+            pass
+
+    async def _publish_light_scenario_states_for_member(addr: str) -> None:
+        membership = getattr(api.state, "light_scenario_membership", {}) or {}
+        sids = membership.get(str(addr or "").strip()) if isinstance(membership, dict) else None
+        if not sids:
+            return
+        for sid in list(sids):
+            sc = store.find_light_scenario(scenario_id=str(sid))
+            if not sc:
+                continue
+            await _publish_light_scenario_state(sc)
+
+    def _publish_cover_group_state(*, gid: str, state: str, position: int | None) -> None:
+        state_u = str(state or "").upper() or "STOP"
+        pos_i = int(position) if position is not None else None
+        store.set_cover_group_state(group_id=gid, state=state_u, position=pos_i)
+        mqtt.publish(f"{settings.mqtt.base_topic}/state/cover_group_state/{gid}", state_u, retain=True)
+        # Keep group position topic in sync (or clear it) to prevent stale HA values.
+        if pos_i is not None:
+            mqtt.publish(f"{settings.mqtt.base_topic}/state/cover_group_pos/{gid}", str(pos_i), retain=True)
+        else:
+            mqtt.publish(f"{settings.mqtt.base_topic}/state/cover_group_pos/{gid}", "", retain=True)
+
+    def _rebuild_cover_group_index() -> None:
+        groups = store.list_cover_groups()
+        by_gid: dict[str, dict[str, Any]] = {}
+        membership: dict[str, set[str]] = {}
+        for g in groups:
+            name = str(g.get("name") or "").strip()
+            gid = str(g.get("id") or "").strip() or slugify(name)
+            if not name or not gid:
+                continue
+            by_gid[gid] = g
+            for m in (g.get("members") or []):
+                addr = str(m or "").strip()
+                if not addr:
+                    continue
+                membership.setdefault(addr, set()).add(gid)
+        api.state.cover_groups_by_gid = by_gid
+        api.state.cover_group_membership = membership
+
+    def _rebuild_temp_index() -> None:
+        idx: dict[tuple[int, int, int], dict[str, Any]] = {}
+        for dev in store.list_devices():
+            if str(dev.get("type") or "light").strip().lower() != "temp":
+                continue
+            try:
+                key = (int(dev["subnet_id"]), int(dev["device_id"]), int(dev["channel"]))
+            except Exception:
+                continue
+            idx[key] = dev
+        api.state.temp_index = idx
+
+    def _rebuild_humidity_index() -> None:
+        # Map (subnet, device) -> list of humidity devices (channels)
+        idx: dict[tuple[int, int], list[dict[str, Any]]] = {}
+        for dev in store.list_devices():
+            if str(dev.get("type") or "").strip().lower() != "humidity":
+                continue
+            try:
+                key = (int(dev["subnet_id"]), int(dev["device_id"]))
+            except Exception:
+                continue
+            idx.setdefault(key, []).append(dev)
+        api.state.humidity_index = idx
+
+    def _rebuild_illuminance_index() -> None:
+        # Map (subnet, device) -> list of illuminance devices (channels)
+        idx: dict[tuple[int, int], list[dict[str, Any]]] = {}
+        for dev in store.list_devices():
+            if str(dev.get("type") or "").strip().lower() != "illuminance":
+                continue
+            try:
+                key = (int(dev["subnet_id"]), int(dev["device_id"]))
+            except Exception:
+                continue
+            idx.setdefault(key, []).append(dev)
+        api.state.illuminance_index = idx
+
+    def _rebuild_dry_contact_index() -> None:
+        idx: dict[tuple[int, int, int], dict[str, Any]] = {}
+        for dev in store.list_devices():
+            if str(dev.get("type") or "").strip().lower() != "dry_contact":
+                continue
+            try:
+                key = (int(dev["subnet_id"]), int(dev["device_id"]), int(dev["channel"]))
+            except Exception:
+                continue
+            idx[key] = dev
+        api.state.dry_contact_index = idx
+
+    def _rebuild_air_index() -> None:
+        idx: dict[tuple[int, int, int], dict[str, Any]] = {}
+        for dev in store.list_devices():
+            if str(dev.get("type") or "").strip().lower() != "air":
+                continue
+            try:
+                key = (int(dev["subnet_id"]), int(dev["device_id"]), int(dev["channel"]))
+            except Exception:
+                continue
+            idx[key] = dev
+        api.state.air_index = idx
+
+    def _rebuild_pir_index() -> None:
+        idx: dict[tuple[int, int, int], dict[str, Any]] = {}
+        for dev in store.list_devices():
+            if str(dev.get("type") or "").strip().lower() != "pir":
+                continue
+            try:
+                key = (int(dev["subnet_id"]), int(dev["device_id"]), int(dev["channel"]))
+            except Exception:
+                continue
+            idx[key] = dev
+        api.state.pir_index = idx
+
+    def _rebuild_ultrasonic_index() -> None:
+        idx: dict[tuple[int, int, int], dict[str, Any]] = {}
+        for dev in store.list_devices():
+            if str(dev.get("type") or "").strip().lower() != "ultrasonic":
+                continue
+            try:
+                key = (int(dev["subnet_id"]), int(dev["device_id"]), int(dev["channel"]))
+            except Exception:
+                continue
+            idx[key] = dev
+        api.state.ultrasonic_index = idx
+
+    def _aggregate_cover_group_state(gid: str) -> tuple[str, int | None] | None:
+        by_gid: dict[str, dict[str, Any]] = getattr(api.state, "cover_groups_by_gid", {}) or {}
+        group = by_gid.get(gid)
+        if not group:
+            return None
+        members = group.get("members") or []
+        if not isinstance(members, list) or not members:
+            return None
+
+        last: dict[str, tuple[str, int | None]] = getattr(api.state, "_last_cover_state", {}) or {}
+        states: list[str] = []
+        positions: list[int] = []
+        for m in members:
+            addr = str(m or "").strip()
+            if not addr:
+                continue
+            st = last.get(addr)
+            if st is None:
+                continue
+            s, p = st
+            su = str(s or "").upper() or "STOP"
+            states.append(su)
+            if p is not None:
+                positions.append(int(p))
+
+        if not states:
+            return None
+
+        if any(s == "OPENING" for s in states) and not any(s == "CLOSING" for s in states):
+            agg_state = "OPENING"
+        elif any(s == "CLOSING" for s in states) and not any(s == "OPENING" for s in states):
+            agg_state = "CLOSING"
+        else:
+            if positions and all(p == 0 for p in positions):
+                agg_state = "CLOSED"
+            elif positions and all(p == 100 for p in positions):
+                agg_state = "OPEN"
+            else:
+                agg_state = "STOP"
+
+        agg_pos: int | None = None
+        if positions:
+            agg_pos = int(round(sum(positions) / max(1, len(positions))))
+            agg_pos = max(0, min(100, agg_pos))
+        return agg_state, agg_pos
+
+    def _publish_cover_groups_for_member(addr: str) -> None:
+        membership: dict[str, set[str]] = getattr(api.state, "cover_group_membership", {}) or {}
+        gids = membership.get(addr)
+        if not gids:
+            return
+        last_g: dict[str, tuple[str, int | None]] = getattr(api.state, "_last_cover_group_state", {}) or {}
+        for gid in list(gids):
+            agg = _aggregate_cover_group_state(gid)
+            if agg is None:
+                continue
+            state_u, pos_i = agg
+            prev = last_g.get(gid)
+            cur = (state_u, pos_i)
+            if prev == cur:
+                continue
+            last_g[gid] = cur
+            api.state._last_cover_group_state = last_g
+            _publish_cover_group_state(gid=gid, state=state_u, position=pos_i)
+
+    def _publish_all_cover_group_states() -> None:
+        by_gid: dict[str, dict[str, Any]] = getattr(api.state, "cover_groups_by_gid", {}) or {}
+        if not by_gid:
+            return
+        last_g: dict[str, tuple[str, int | None]] = getattr(api.state, "_last_cover_group_state", {}) or {}
+        for gid in list(by_gid.keys()):
+            agg = _aggregate_cover_group_state(gid)
+            if agg is None:
+                continue
+            state_u, pos_i = agg
+            cur = (state_u, pos_i)
+            if last_g.get(gid) == cur:
+                continue
+            last_g[gid] = cur
+            _publish_cover_group_state(gid=gid, state=state_u, position=pos_i)
+        api.state._last_cover_group_state = last_g
+
+    def _parse_cover_member_addr(addr: str) -> tuple[int, int, int] | None:
+        try:
+            a = str(addr or "").strip()
+            s, d, c = a.split(".")
+            return int(s), int(d), int(c)
+        except Exception:
+            return None
+
+    def _cover_addr(subnet_id: int, device_id: int, channel: int) -> str:
+        return f"{int(subnet_id)}.{int(device_id)}.{int(channel)}"
+
+    def _find_cover_device(subnet_id: int, device_id: int, channel: int) -> dict[str, Any] | None:
+        try:
+            return store.find_device(type_="cover", subnet_id=int(subnet_id), device_id=int(device_id), channel=int(channel))
+        except Exception:
+            return None
+
+    def _cover_times(subnet_id: int, device_id: int, channel: int) -> tuple[float, float]:
+        dev = _find_cover_device(subnet_id, device_id, channel) or {}
+        up = float(dev.get("opening_time_up") or dev.get("opening_time") or 20)
+        down = float(dev.get("opening_time_down") or dev.get("opening_time") or 20)
+        if up <= 0:
+            up = 20.0
+        if down <= 0:
+            down = 20.0
+        return up, down
+
+    def _cancel_cover_sim(addr: str) -> None:
+        tasks: dict[str, asyncio.Task] = getattr(api.state, "cover_sim_tasks", {}) or {}
+        t = tasks.pop(addr, None)
+        if t and not t.done():
+            t.cancel()
+        guard: dict[str, float] = getattr(api.state, "cover_raw_guard", {}) or {}
+        if addr in guard:
+            guard.pop(addr, None)
+            api.state.cover_raw_guard = guard
+
+    async def _emit_cover_sim_state(subnet_id: int, device_id: int, channel: int, *, state: str, position: int | None) -> None:
+        dev = _find_cover_device(subnet_id, device_id, channel)
+        if not dev:
+            return
+        if not bool(dev.get("use_position")):
+            position = None
+        st = CoverState(state=str(state).upper(), position=int(position) if position is not None else None)
+        addr = _cover_addr(subnet_id, device_id, channel)
+        api.state._last_cover_state[addr] = (str(st.state).upper(), st.position)
+        _publish_cover_state(dev, st)
+        _publish_cover_groups_for_member(addr)
+        try:
+            await _publish_light_scenario_states_for_member(addr)
+        except Exception:
+            pass
+        await _broadcast_cover_state(dev, st)
+
+    def _start_cover_sim(subnet_id: int, device_id: int, channel: int, cmd: str) -> None:
+        addr = _cover_addr(subnet_id, device_id, channel)
+        _cancel_cover_sim(addr)
+        dev = _find_cover_device(subnet_id, device_id, channel) or {}
+        use_pos = bool(dev.get("use_position"))
+
+        cmd_u = str(cmd or "").upper()
+        if cmd_u == "STOP":
+            if not use_pos:
+                guard: dict[str, float] = getattr(api.state, "cover_raw_guard", {}) or {}
+                guard.pop(addr, None)
+                api.state.cover_raw_guard = guard
+            # Emit STOP at current position
+            pos = None
+            prev = api.state._last_cover_state.get(addr)
+            if prev and prev[1] is not None:
+                pos = int(prev[1])
+            asyncio.create_task(_emit_cover_sim_state(subnet_id, device_id, channel, state="STOP", position=pos))
+            return
+        if cmd_u not in ("OPEN", "CLOSE"):
+            return
+
+        up_s, down_s = _cover_times(subnet_id, device_id, channel)
+        prev = api.state._last_cover_state.get(addr)
+        start_pos: int
+        if prev and prev[1] is not None:
+            start_pos = int(prev[1])
+        else:
+            start_pos = 0 if cmd_u == "OPEN" else 100
+        end_pos = 100 if cmd_u == "OPEN" else 0
+        remaining = abs(end_pos - start_pos)
+        full_time = up_s if cmd_u == "OPEN" else down_s
+        duration = (remaining / 100.0) * float(full_time or 0)
+        if duration <= 0:
+            asyncio.create_task(_emit_cover_sim_state(subnet_id, device_id, channel, state=("OPEN" if cmd_u == "OPEN" else "CLOSED"), position=end_pos))
+            return
+
+        if not use_pos:
+            guard: dict[str, float] = getattr(api.state, "cover_raw_guard", {}) or {}
+            guard[addr] = time.monotonic() + max(2.0, float(full_time or 0))
+            api.state.cover_raw_guard = guard
+
+        # Emit immediate OPENING/CLOSING state so UI updates right away.
+        state_move_now = "OPENING" if cmd_u == "OPEN" else "CLOSING"
+        asyncio.create_task(_emit_cover_sim_state(subnet_id, device_id, channel, state=state_move_now, position=None))
+
+        async def _task() -> None:
+            try:
+                start_t = time.monotonic()
+                state_move = "OPENING" if cmd_u == "OPEN" else "CLOSING"
+                while True:
+                    elapsed = time.monotonic() - start_t
+                    frac = min(1.0, elapsed / duration)
+                    pos_f = start_pos + (end_pos - start_pos) * frac
+                    pos_i = int(round(max(0, min(100, pos_f))))
+                    if frac >= 1.0:
+                        final_state = "OPEN" if cmd_u == "OPEN" else "CLOSED"
+                        await _emit_cover_sim_state(subnet_id, device_id, channel, state=final_state, position=end_pos)
+                        break
+                    await _emit_cover_sim_state(subnet_id, device_id, channel, state=state_move, position=pos_i)
+                    await asyncio.sleep(0.7)
+            except asyncio.CancelledError:
+                return
+
+        tasks = getattr(api.state, "cover_sim_tasks", {}) or {}
+        t = asyncio.create_task(_task())
+        tasks[addr] = t
+        api.state.cover_sim_tasks = tasks
+
+    def _start_cover_sim_custom(subnet_id: int, device_id: int, channel: int, cmd: str, *, duration_s: float) -> None:
+        addr = _cover_addr(subnet_id, device_id, channel)
+        _cancel_cover_sim(addr)
+        dev = _find_cover_device(subnet_id, device_id, channel) or {}
+        use_pos = bool(dev.get("use_position"))
+
+        cmd_u = str(cmd or "").upper()
+        if cmd_u == "STOP":
+            if not use_pos:
+                guard: dict[str, float] = getattr(api.state, "cover_raw_guard", {}) or {}
+                guard.pop(addr, None)
+                api.state.cover_raw_guard = guard
+            pos = None
+            prev = api.state._last_cover_state.get(addr)
+            if prev and prev[1] is not None:
+                pos = int(prev[1])
+            asyncio.create_task(_emit_cover_sim_state(subnet_id, device_id, channel, state="STOP", position=pos))
+            return
+        if cmd_u not in ("OPEN", "CLOSE"):
+            return
+
+        prev = api.state._last_cover_state.get(addr)
+        start_pos: int
+        if prev and prev[1] is not None:
+            start_pos = int(prev[1])
+        else:
+            start_pos = 0 if cmd_u == "OPEN" else 100
+        end_pos = 100 if cmd_u == "OPEN" else 0
+        duration = float(duration_s or 0)
+        if duration <= 0:
+            asyncio.create_task(_emit_cover_sim_state(subnet_id, device_id, channel, state=("OPEN" if cmd_u == "OPEN" else "CLOSED"), position=end_pos))
+            return
+
+        if not use_pos:
+            guard: dict[str, float] = getattr(api.state, "cover_raw_guard", {}) or {}
+            guard[addr] = time.monotonic() + max(2.0, duration)
+            api.state.cover_raw_guard = guard
+
+        state_move_now = "OPENING" if cmd_u == "OPEN" else "CLOSING"
+        asyncio.create_task(_emit_cover_sim_state(subnet_id, device_id, channel, state=state_move_now, position=None))
+
+        async def _task() -> None:
+            try:
+                start_t = time.monotonic()
+                state_move = "OPENING" if cmd_u == "OPEN" else "CLOSING"
+                while True:
+                    elapsed = time.monotonic() - start_t
+                    frac = min(1.0, elapsed / duration)
+                    pos_f = start_pos + (end_pos - start_pos) * frac
+                    pos_i = int(round(max(0, min(100, pos_f))))
+                    if frac >= 1.0:
+                        final_state = "OPEN" if cmd_u == "OPEN" else "CLOSED"
+                        await _emit_cover_sim_state(subnet_id, device_id, channel, state=final_state, position=end_pos)
+                        break
+                    await _emit_cover_sim_state(subnet_id, device_id, channel, state=state_move, position=pos_i)
+                    await asyncio.sleep(0.7)
+            except asyncio.CancelledError:
+                return
+
+        tasks = getattr(api.state, "cover_sim_tasks", {}) or {}
+        t = asyncio.create_task(_task())
+        tasks[addr] = t
+        api.state.cover_sim_tasks = tasks
+
+    async def _run_cover_ramp_buspro(
+        *,
+        gw: BusproGateway,
+        subnet_id: int,
+        device_id: int,
+        channel: int,
+        cmd: str,
+        ramp_minutes: int,
+        step_seconds: int,
+    ) -> None:
+        try:
+            cmd_u = str(cmd or "").upper()
+            if cmd_u == "STOP":
+                try:
+                    await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                except Exception:
+                    return
+                _start_cover_sim(subnet_id, device_id, channel, "STOP")
+                return
+            if cmd_u not in ("OPEN", "CLOSE"):
+                return
+
+            if ramp_minutes <= 0 or step_seconds <= 0:
+                try:
+                    if cmd_u == "OPEN":
+                        await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                        _start_cover_sim(subnet_id, device_id, channel, "OPEN")
+                    else:
+                        await gw.cover_close_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                        _start_cover_sim(subnet_id, device_id, channel, "CLOSE")
+                except Exception:
+                    return
+                return
+
+            desired_total = float(ramp_minutes) * 60.0
+            up_s, down_s = _cover_times(subnet_id, device_id, channel)
+            full_time = up_s if cmd_u == "OPEN" else down_s
+            if desired_total <= max(1.0, float(full_time)):
+                try:
+                    if cmd_u == "OPEN":
+                        await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                        _start_cover_sim(subnet_id, device_id, channel, "OPEN")
+                    else:
+                        await gw.cover_close_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                        _start_cover_sim(subnet_id, device_id, channel, "CLOSE")
+                except Exception:
+                    return
+                return
+
+            step_s = max(0.5, float(step_seconds))
+            duty = min(1.0, max(0.05, float(full_time) / float(desired_total)))
+            on_time = max(0.2, step_s * duty)
+            off_time = max(0.0, step_s - on_time)
+
+            _start_cover_sim_custom(subnet_id, device_id, channel, cmd_u, duration_s=desired_total)
+
+            end_t = time.monotonic() + desired_total
+            while time.monotonic() < end_t:
+                try:
+                    if cmd_u == "OPEN":
+                        await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                    else:
+                        await gw.cover_close_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                except Exception:
+                    break
+                await asyncio.sleep(on_time)
+                try:
+                    await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                except Exception:
+                    break
+                if off_time > 0:
+                    await asyncio.sleep(off_time)
+            try:
+                await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
+            except Exception:
+                pass
+        except asyncio.CancelledError:
+            try:
+                await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
+            except Exception:
+                pass
+            return
+
+    async def _run_cover_two_phase_open_buspro(
+        *,
+        gw: BusproGateway,
+        subnet_id: int,
+        device_id: int,
+        channel: int,
+        phase1_pct: int,
+        phase2_delay_minutes: int,
+    ) -> None:
+        try:
+            try:
+                pct = max(1, min(99, int(phase1_pct or 25)))
+            except Exception:
+                pct = 25
+            try:
+                delay_min = max(0, min(240, int(phase2_delay_minutes or 4)))
+            except Exception:
+                delay_min = 4
+
+            try:
+                await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                _start_cover_sim(subnet_id, device_id, channel, "OPEN")
+            except Exception:
+                return
+
+            up_s, _down_s = _cover_times(subnet_id, device_id, channel)
+            phase1_s = max(0.2, float(up_s or 0.0) * (float(pct) / 100.0))
+            if phase1_s > 0:
+                await asyncio.sleep(phase1_s)
+                try:
+                    await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                    _start_cover_sim(subnet_id, device_id, channel, "STOP")
+                except Exception:
+                    return
+
+            delay_s = float(delay_min) * 60.0
+            if delay_s > 0:
+                await asyncio.sleep(delay_s)
+
+            try:
+                await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                _start_cover_sim(subnet_id, device_id, channel, "OPEN")
+            except Exception:
+                return
+        except asyncio.CancelledError:
+            try:
+                await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
+            except Exception:
+                pass
+            return
+        except Exception:
+            return
+
+    def _find_cover_group_by_gid(gid: str) -> dict[str, Any] | None:
+        gid_s = str(gid or "").strip()
+        if not gid_s:
+            return None
+        by_gid: dict[str, dict[str, Any]] = getattr(api.state, "cover_groups_by_gid", {}) or {}
+        if gid_s in by_gid:
+            return by_gid[gid_s]
+        for g in store.list_cover_groups():
+            name = str(g.get("name") or "").strip()
+            if name and slugify(name) == gid_s:
+                return g
+        return None
+
+    async def _run_cover_group_command(gid: str, cmd: str, pos: int | None = None, *, raw: bool = False) -> None:
+        group = _find_cover_group_by_gid(gid)
+        if not group:
+            return
+        members = group.get("members") or []
+        if not isinstance(members, list) or not members:
+            return
+
+        gw: BusproGateway | None = api.state.gateway
+        if gw is None:
+            return
+
+        # Importante: inviare in modo "pacciato" (stile Control4) per evitare flood UDP quando un gruppo
+        # ha molti membri. BusproGateway ha gia' una coda per cover, ma creare task concorrenti qui
+        # aumenta la probabilita' di race/ordine non deterministico sotto carico.
+        for m in members:
+            parsed = _parse_cover_member_addr(str(m or ""))
+            if not parsed:
+                continue
+            subnet, did, ch = parsed
+            if cmd == "OPEN":
+                if raw:
+                    await gw.cover_open_raw(subnet_id=subnet, device_id=did, channel=ch)
+                else:
+                    await gw.cover_open(subnet_id=subnet, device_id=did, channel=ch)
+                _start_cover_sim(subnet, did, ch, "OPEN")
+            elif cmd == "CLOSE":
+                if raw:
+                    await gw.cover_close_raw(subnet_id=subnet, device_id=did, channel=ch)
+                else:
+                    await gw.cover_close(subnet_id=subnet, device_id=did, channel=ch)
+                _start_cover_sim(subnet, did, ch, "CLOSE")
+            elif cmd == "STOP":
+                await gw.cover_stop(subnet_id=subnet, device_id=did, channel=ch)
+                _start_cover_sim(subnet, did, ch, "STOP")
+            elif cmd == "SET_POSITION":
+                # Cover groups: ignore percentage-based commands (use OPEN/CLOSE/STOP only).
+                continue
+
+    async def _broadcast_light_state(dev: dict[str, Any], st: LightState) -> None:
+        subnet = int(dev["subnet_id"])
+        did = int(dev["device_id"])
+        ch = int(dev["channel"])
+        await hub.broadcast(
+            "light_state",
+            {
+                "subnet_id": subnet,
+                "device_id": did,
+                "channel": ch,
+                "state": "ON" if st.is_on else "OFF",
+                "brightness": int(st.brightness or 0),
+            },
+        )
+
+    async def _broadcast_cover_state(dev: dict[str, Any], st: CoverState) -> None:
+        subnet = int(dev["subnet_id"])
+        did = int(dev["device_id"])
+        ch = int(dev["channel"])
+        use_pos = bool(dev.get("use_position"))
+        await hub.broadcast(
+            "cover_state",
+            {
+                "subnet_id": subnet,
+                "device_id": did,
+                "channel": ch,
+                "state": str(st.state).upper(),
+                "position": int(st.position) if (use_pos and st.position is not None) else None,
+            },
+        )
+
+    async def _broadcast_temp_value(dev: dict[str, Any], value: float, ts: float | None) -> None:
+        subnet = int(dev["subnet_id"])
+        did = int(dev["device_id"])
+        sensor_id = int(dev["channel"])
+        await hub.broadcast(
+            "temp_value",
+            {
+                "subnet_id": subnet,
+                "device_id": did,
+                "channel": sensor_id,
+                "value": float(value),
+                "ts": float(ts) if ts is not None else None,
+            },
+        )
+
+    async def _broadcast_humidity_value(dev: dict[str, Any], value: float, ts: float | None) -> None:
+        subnet = int(dev["subnet_id"])
+        did = int(dev["device_id"])
+        sensor_id = int(dev["channel"])
+        await hub.broadcast(
+            "humidity_value",
+            {
+                "subnet_id": subnet,
+                "device_id": did,
+                "channel": sensor_id,
+                "value": float(value),
+                "ts": float(ts) if ts is not None else None,
+            },
+        )
+
+    async def _broadcast_illuminance_value(dev: dict[str, Any], value: float, ts: float | None) -> None:
+        subnet = int(dev["subnet_id"])
+        did = int(dev["device_id"])
+        sensor_id = int(dev["channel"])
+        await hub.broadcast(
+            "illuminance_value",
+            {
+                "subnet_id": subnet,
+                "device_id": did,
+                "channel": sensor_id,
+                "value": float(value),
+                "ts": float(ts) if ts is not None else None,
+            },
+        )
+
+    async def _broadcast_air_quality(dev: dict[str, Any], state: str, ts: float | None) -> None:
+        subnet = int(dev["subnet_id"])
+        did = int(dev["device_id"])
+        sensor_id = int(dev["channel"])
+        await hub.broadcast(
+            "air_quality",
+            {
+                "subnet_id": subnet,
+                "device_id": did,
+                "channel": sensor_id,
+                "state": str(state),
+                "ts": float(ts) if ts is not None else None,
+            },
+        )
+
+    async def _broadcast_gas_percent(dev: dict[str, Any], value: float, ts: float | None) -> None:
+        subnet = int(dev["subnet_id"])
+        did = int(dev["device_id"])
+        sensor_id = int(dev["channel"])
+        await hub.broadcast(
+            "gas_percent",
+            {
+                "subnet_id": subnet,
+                "device_id": did,
+                "channel": sensor_id,
+                "value": float(value),
+                "ts": float(ts) if ts is not None else None,
+            },
+        )
+
+    async def _broadcast_pir_state(dev: dict[str, Any], state: str, ts: float | None) -> None:
+        subnet = int(dev["subnet_id"])
+        did = int(dev["device_id"])
+        sensor_id = int(dev["channel"])
+        await hub.broadcast(
+            "pir_state",
+            {
+                "subnet_id": subnet,
+                "device_id": did,
+                "channel": sensor_id,
+                "state": str(state).upper(),
+                "ts": float(ts) if ts is not None else None,
+            },
+        )
+
+    async def _broadcast_ultrasonic_state(dev: dict[str, Any], state: str, ts: float | None) -> None:
+        subnet = int(dev["subnet_id"])
+        did = int(dev["device_id"])
+        sensor_id = int(dev["channel"])
+        await hub.broadcast(
+            "ultrasonic_state",
+            {
+                "subnet_id": subnet,
+                "device_id": did,
+                "channel": sensor_id,
+                "state": str(state).upper(),
+                "ts": float(ts) if ts is not None else None,
+            },
+        )
+
+    async def _broadcast_dry_contact_state(dev: dict[str, Any], state: str, ts: float | None, payload_x: int | None) -> None:
+        subnet = int(dev["subnet_id"])
+        did = int(dev["device_id"])
+        input_id = int(dev["channel"])
+        await hub.broadcast(
+            "dry_contact_state",
+            {
+                "subnet_id": subnet,
+                "device_id": did,
+                "channel": input_id,
+                "state": str(state).upper(),
+                "x": int(payload_x) if payload_x is not None else None,
+                "ts": float(ts) if ts is not None else None,
+            },
+        )
+
+
+    async def _broadcast_devices() -> None:
+        await hub.broadcast(
+            "devices",
+            {
+                "devices": _list_user_devices(),
+            },
+        )
+
+    async def _republish_discovery() -> None:
+        devices = store.list_devices()
+        for dev in devices:
+            dtype = str(dev.get("type") or "light").strip().lower()
+            if dtype == "cover":
+                topic, payload = cover_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=settings.gateway.host,
+                    gateway_port=settings.gateway.port,
+                    device=dev,
+                )
+                mqtt.publish(topic, payload, retain=True)
+                topic2, payload2 = cover_no_pct_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=settings.gateway.host,
+                    gateway_port=settings.gateway.port,
+                    device=dev,
+                )
+                mqtt.publish(topic2, payload2, retain=True)
+            elif dtype == "humidity":
+                topic, payload = humidity_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=settings.gateway.host,
+                    gateway_port=settings.gateway.port,
+                    device=dev,
+                )
+                mqtt.publish(topic, payload, retain=True)
+            elif dtype == "illuminance":
+                topic, payload = illuminance_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=settings.gateway.host,
+                    gateway_port=settings.gateway.port,
+                    device=dev,
+                )
+                mqtt.publish(topic, payload, retain=True)
+            elif dtype == "temp":
+                topic, payload = temperature_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=settings.gateway.host,
+                    gateway_port=settings.gateway.port,
+                    device=dev,
+                )
+                mqtt.publish(topic, payload, retain=True)
+            elif dtype == "dry_contact":
+                topic, payload = dry_contact_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=settings.gateway.host,
+                    gateway_port=settings.gateway.port,
+                    device=dev,
+                )
+                mqtt.publish(topic, payload, retain=True)
+            elif dtype == "pir":
+                topic, payload = pir_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=settings.gateway.host,
+                    gateway_port=settings.gateway.port,
+                    device=dev,
+                )
+                mqtt.publish(topic, payload, retain=True)
+            elif dtype == "ultrasonic":
+                topic, payload = ultrasonic_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=settings.gateway.host,
+                    gateway_port=settings.gateway.port,
+                    device=dev,
+                )
+                mqtt.publish(topic, payload, retain=True)
+            elif dtype == "air":
+                topic, payload = air_quality_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=settings.gateway.host,
+                    gateway_port=settings.gateway.port,
+                    device=dev,
+                )
+                mqtt.publish(topic, payload, retain=True)
+                topic2, payload2 = gas_percent_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=settings.gateway.host,
+                    gateway_port=settings.gateway.port,
+                    device=dev,
+                )
+                mqtt.publish(topic2, payload2, retain=True)
+            else:
+                # BusPro outputs can be published as HA switch if category is "Switch"
+                cat = str(dev.get("category") or "").strip().casefold()
+                is_switch = cat == "switch" or cat.startswith("switch ")
+                if is_switch:
+                    topic, payload = switch_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    mqtt.publish(topic, payload, retain=True)
+                    # cleanup previous light entity for the same address
+                    try:
+                        t_old, _ = light_discovery(
+                            discovery_prefix=settings.mqtt.discovery_prefix,
+                            base_topic=settings.mqtt.base_topic,
+                            gateway_host=settings.gateway.host,
+                            gateway_port=settings.gateway.port,
+                            device=dev,
+                        )
+                        mqtt.publish(t_old, "", retain=True)
+                    except Exception:
+                        pass
+                else:
+                    topic, payload = light_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    mqtt.publish(topic, payload, retain=True)
+                    # cleanup previous switch entity for the same address
+                    try:
+                        t_old, _ = switch_discovery(
+                            discovery_prefix=settings.mqtt.discovery_prefix,
+                            base_topic=settings.mqtt.base_topic,
+                            gateway_host=settings.gateway.host,
+                            gateway_port=settings.gateway.port,
+                            device=dev,
+                        )
+                        mqtt.publish(t_old, "", retain=True)
+                    except Exception:
+                        pass
+
+        # RGB masters are additional entities: the individual channel lights remain published.
+        rgb_groups = _rgb_groups()
+        previous_rgb_ids = set(store.get_published_rgb_group_ids())
+        current_rgb_ids = set(rgb_groups)
+        for gid in sorted(previous_rgb_ids - current_rgb_ids):
+            topic, _ = rgb_light_discovery(
+                discovery_prefix=settings.mqtt.discovery_prefix,
+                base_topic=settings.mqtt.base_topic,
+                gateway_host=settings.gateway.host,
+                gateway_port=settings.gateway.port,
+                group_name=gid,
+                group_slug=gid,
+            )
+            mqtt.publish(topic, "", retain=True)
+            mqtt.publish(f"{settings.mqtt.base_topic}/state/rgb/{gid}", "", retain=True)
+        for gid, group in rgb_groups.items():
+            topic, payload = rgb_light_discovery(
+                discovery_prefix=settings.mqtt.discovery_prefix,
+                base_topic=settings.mqtt.base_topic,
+                gateway_host=settings.gateway.host,
+                gateway_port=settings.gateway.port,
+                group_name=str(group.get("name") or gid),
+                group_slug=gid,
+                category=str(group.get("category") or "Luci"),
+                icon=str(group.get("icon") or "mdi:led-strip-variant"),
+            )
+            mqtt.publish(topic, payload, retain=True)
+            _publish_rgb_state(group)
+        store.set_published_rgb_group_ids(sorted(current_rgb_ids))
+
+        # Cover groups (group blinds) as MQTT cover entities + cleanup removed ones
+        groups = store.list_cover_groups()
+        current_gids: list[str] = []
+        for g in groups:
+            name = str(g.get("name") or "").strip()
+            gid = str(g.get("id") or "").strip() or slugify(name)
+            if not name or not gid:
+                continue
+            current_gids.append(gid)
+
+        prev_gids = store.get_published_cover_group_ids()
+        for gid in prev_gids:
+            if gid not in current_gids:
+                mqtt.publish(_cover_group_config_topic(gid=gid), "", retain=True)
+                mqtt.publish(_cover_group_no_pct_config_topic(gid=gid), "", retain=True)
+                mqtt.publish(f"{settings.mqtt.base_topic}/state/cover_group_state/{gid}", "", retain=True)
+                mqtt.publish(f"{settings.mqtt.base_topic}/state/cover_group_pos/{gid}", "", retain=True)
+                store.delete_cover_group_state(group_id=gid)
+
+        for g in groups:
+            try:
+                # Remove percentage-based group entity (if previously published).
+                name = str(g.get("name") or "").strip()
+                gid = str(g.get("id") or "").strip() or slugify(name)
+                if gid:
+                    mqtt.publish(_cover_group_config_topic(gid=gid), "", retain=True)
+                topic2, payload2 = cover_group_no_pct_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=settings.gateway.host,
+                    gateway_port=settings.gateway.port,
+                    group=g,
+                )
+                mqtt.publish(topic2, payload2, retain=True)
+            except Exception:
+                continue
+
+        store.set_published_cover_group_ids(current_gids)
+
+        # Light scenarios as MQTT entities (button + switch) + cleanup removed ones
+        scenarios = store.list_light_scenarios()
+        current_sids: list[str] = []
+        for sc in scenarios:
+            try:
+                sid = str(sc.get("id") or "").strip()
+            except Exception:
+                sid = ""
+            if sid:
+                current_sids.append(sid)
+
+        prev_sids = store.get_published_light_scenario_ids()
+        for sid in prev_sids:
+            if sid not in current_sids:
+                mqtt.publish(_light_scenario_config_topic(sid=sid), "", retain=True)
+                mqtt.publish(_light_scenario_switch_config_topic(sid=sid), "", retain=True)
+                mqtt.publish(_light_scenario_state_topic(sid=sid), "", retain=True)
+
+        for sc in scenarios:
+            try:
+                topic, payload = light_scenario_button_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=settings.gateway.host,
+                    gateway_port=settings.gateway.port,
+                    scenario=sc,
+                )
+                mqtt.publish(topic, payload, retain=True)
+                topic2, payload2 = light_scenario_switch_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=settings.gateway.host,
+                    gateway_port=settings.gateway.port,
+                    scenario=sc,
+                )
+                mqtt.publish(topic2, payload2, retain=True)
+                await _publish_light_scenario_state(sc)
+            except Exception:
+                continue
+
+        store.set_published_light_scenario_ids(current_sids)
+
+        # Scenario HA triggers (buttons for HA automations) + cleanup removed ones
+        ha_triggers = store.list_scenario_ha_triggers()
+        current_tids: list[str] = []
+        for tr in ha_triggers:
+            try:
+                tid = str(tr.get("id") or "").strip()
+            except Exception:
+                tid = ""
+            if tid:
+                current_tids.append(tid)
+
+        prev_tids = store.get_published_scenario_ha_trigger_ids()
+        for tid in prev_tids:
+            if tid not in current_tids:
+                mqtt.publish(_scenario_ha_trigger_config_topic(trigger_id=tid), "", retain=True)
+
+        for tr in ha_triggers:
+            try:
+                topic, payload = scenario_ha_trigger_button_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=settings.gateway.host,
+                    gateway_port=settings.gateway.port,
+                    trigger=tr,
+                )
+                mqtt.publish(topic, payload, retain=True)
+            except Exception:
+                continue
+
+        store.set_published_scenario_ha_trigger_ids(current_tids)
+        _rebuild_light_scenario_index()
+
+    @api.on_event("startup")
+    async def _startup() -> None:
+        with api.state.runtime_lock:
+            api.state.runtime_refcount = int(getattr(api.state, "runtime_refcount", 0) or 0) + 1
+            first_start = not bool(getattr(api.state, "runtime_started", False))
+            if first_start:
+                api.state.runtime_started = True
+        if not first_start:
+            _LOGGER.info("Secondary server startup detected: skipping duplicate runtime init")
+            return
+
+        loop = asyncio.get_running_loop()
+        api.state.loop = loop
+        async def observe_activity():
+            while True:
+                try:
+                    await asyncio.to_thread(activity_feed.observe, _smart_home_payload().get("devices", []))
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    activity_feed.errors += 1
+                await asyncio.sleep(1)
+        api.state.activity_task = asyncio.create_task(observe_activity())
+        api.state.ha_states = {}
+        api.state.ha_caps = {}
+        api.state.mqtt_manager_task = asyncio.create_task(mqtt_manager.run(), name="mqtt-ha-manager")
+        api.state.ha_poll_task = None
+        api.state._last_light_state = {}
+        api.state._last_cover_state = {}
+        api.state._last_cover_group_state = {}
+        api.state._last_temp_value = {}
+        api.state._last_humidity_value = {}
+        api.state._last_illuminance_value = {}
+        api.state._last_dry_contact_state = {}
+        api.state._last_pir_state = {}
+        api.state._last_ultrasonic_state = {}
+        api.state._last_air_quality = {}
+        api.state._last_gas_percent = {}
+        api.state.cover_groups_by_gid = {}
+        api.state.cover_group_membership = {}
+        api.state.temp_index = {}
+        api.state.dry_contact_index = {}
+        api.state.air_index = {}
+        api.state.pir_index = {}
+        api.state.ultrasonic_index = {}
+        if bool(getattr(settings, "memory_log", False)):
+            api.state.memory_debug_task = asyncio.create_task(
+                _memory_debug_loop(api, store, mqtt, hub),
+                name="buspro_memory_debug",
+            )
+        else:
+            api.state.memory_debug_task = None
+
+        # Cleanup: remove SET_POSITION from scenario covers (direct-only).
+        try:
+            res = store.cleanup_light_scenarios_no_pct()
+            if res.get("changed"):
+                _LOGGER.info("Cleaned scenario covers (no %%): updated=%s", res.get("updated"))
+        except Exception:
+            pass
+
+        # Prefill last-known states from persistent store to avoid broadcasting unchanged states.
+        try:
+            raw0 = store.read_raw()
+            states0 = dict(raw0.get("states", {}) or {})
+            for k, v in states0.items():
+                try:
+                    if str(k).startswith("light:"):
+                        addr = str(k).split(":", 1)[1]
+                        st = str((v or {}).get("state") or "").upper() or "?"
+                        br = int((v or {}).get("brightness") or 0)
+                        api.state._last_light_state[addr] = (st, br)
+                    elif str(k).startswith("cover:"):
+                        addr = str(k).split(":", 1)[1]
+                        st = str((v or {}).get("state") or "").upper() or "?"
+                        pos = (v or {}).get("position")
+                        api.state._last_cover_state[addr] = (st, int(pos) if pos is not None else None)
+                    elif str(k).startswith("cover_group:"):
+                        gid = str(k).split(":", 1)[1]
+                        st = str((v or {}).get("state") or "").upper() or "?"
+                        pos = (v or {}).get("position")
+                        api.state._last_cover_group_state[gid] = (st, int(pos) if pos is not None else None)
+                    elif str(k).startswith("temp:"):
+                        addr = str(k).split(":", 1)[1]
+                        try:
+                            api.state._last_temp_value[addr] = float((v or {}).get("value"))
+                        except Exception:
+                            pass
+                    elif str(k).startswith("humidity:"):
+                        addr = str(k).split(":", 1)[1]
+                        try:
+                            api.state._last_humidity_value[addr] = float((v or {}).get("value"))
+                        except Exception:
+                            pass
+                    elif str(k).startswith("illuminance:"):
+                        addr = str(k).split(":", 1)[1]
+                        try:
+                            api.state._last_illuminance_value[addr] = float((v or {}).get("value"))
+                        except Exception:
+                            pass
+                    elif str(k).startswith("dry_contact:"):
+                        addr = str(k).split(":", 1)[1]
+                        st = str((v or {}).get("state") or "").upper() or "?"
+                        api.state._last_dry_contact_state[addr] = st
+                    elif str(k).startswith("pir:"):
+                        addr = str(k).split(":", 1)[1]
+                        st = str((v or {}).get("state") or "").upper() or "?"
+                        api.state._last_pir_state[addr] = st
+                    elif str(k).startswith("ultrasonic:"):
+                        addr = str(k).split(":", 1)[1]
+                        st = str((v or {}).get("state") or "").upper() or "?"
+                        api.state._last_ultrasonic_state[addr] = st
+                    elif str(k).startswith("air_quality:"):
+                        addr = str(k).split(":", 1)[1]
+                        st = str((v or {}).get("state") or "").strip() or "unknown"
+                        api.state._last_air_quality[addr] = st
+                    elif str(k).startswith("gas_percent:"):
+                        addr = str(k).split(":", 1)[1]
+                        try:
+                            api.state._last_gas_percent[addr] = float((v or {}).get("value"))
+                        except Exception:
+                            pass
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        # Ensure telegram source IP override is applied before BusPro starts.
+        try:
+            if str(getattr(settings.gateway, "local_ip", "") or "").strip():
+                os.environ["BUSPRO_LOCAL_IP"] = str(getattr(settings.gateway, "local_ip")).strip()
+        except Exception:
+            pass
+
+        # Start BusPro gateway
+        gateway = BusproGateway(
+            host=settings.gateway.host,
+            port=settings.gateway.port,
+            loop=loop,
+            light_cmd_interval_s=float(getattr(settings, "light_cmd_interval_s", 0.12) or 0.0),
+            udp_send_interval_s=float(getattr(settings, "udp_send_interval_s", 0.0) or 0.0),
+        )
+        api.state.gateway = gateway
+        try:
+            gateway.add_telegram_listener(api.state.sniffer.on_telegram)
+        except Exception:
+            pass
+
+        _rebuild_temp_index()
+        _rebuild_humidity_index()
+        _rebuild_illuminance_index()
+        _rebuild_dry_contact_index()
+        _rebuild_air_index()
+        _rebuild_pir_index()
+        _rebuild_ultrasonic_index()
+
+        def _decode_temp_value(dev: dict[str, Any], payload: list[Any] | tuple[Any, ...]) -> float | None:
+            # Supported formats:
+            # - float32: payload [sensor_id, aux, b0, b1, b2, b3] (LE)
+            # - short:  payload [sensor_id, value] with configurable scale/offset
+            try:
+                fmt = str(dev.get("temp_format") or dev.get("format") or "auto").strip().lower()
+            except Exception:
+                fmt = "auto"
+
+            if isinstance(payload, (list, tuple)) and len(payload) >= 6 and fmt in ("auto", "float32", "float"):
+                raw = bytes(int(x) & 0xFF for x in payload[2:6])
+                return float(struct.unpack("<f", raw)[0])
+
+            if not isinstance(payload, (list, tuple)) or len(payload) != 2:
+                return None
+
+            # Default for "auto" on 2-byte payloads: many HDL sensors encode in 0.5°C steps.
+            scale: float | None = None
+            if fmt in ("short_half", "half", "0.5", "x0.5"):
+                scale = 0.5
+            elif fmt in ("short_tenths", "tenths", "0.1", "x0.1"):
+                scale = 0.1
+            elif fmt in ("short_int", "int", "1", "x1"):
+                scale = 1.0
+            elif fmt in ("auto", "short", "2b", "2byte"):
+                scale = 0.5
+
+            if dev.get("temp_scale") is not None:
+                try:
+                    scale = float(dev.get("temp_scale"))
+                except Exception:
+                    pass
+
+            if scale is None:
+                return None
+
+            offset = 0.0
+            if dev.get("temp_offset") is not None:
+                try:
+                    offset = float(dev.get("temp_offset"))
+                except Exception:
+                    offset = 0.0
+
+            raw_val = int(payload[1]) & 0xFF
+            return float(raw_val) * float(scale) + float(offset)
+
+        def _on_temp_telegram(telegram: Any) -> None:
+            # Manual sensors: process only if configured in temp_index.
+            try:
+                op = getattr(telegram, "operate_code", None)
+                if "BroadcastTemperatureResponse" not in str(op):
+                    return
+
+                src = getattr(telegram, "source_address", None)
+                payload = getattr(telegram, "payload", None)
+                if not isinstance(src, (list, tuple)) or len(src) < 2:
+                    return
+                if not isinstance(payload, (list, tuple)) or len(payload) < 2:
+                    return
+
+                subnet_id = int(src[0])
+                device_id = int(src[1])
+                sensor_id = int(payload[0])
+
+                idx: dict[tuple[int, int, int], dict[str, Any]] = getattr(api.state, "temp_index", {}) or {}
+                dev = idx.get((subnet_id, device_id, sensor_id))
+                if not dev:
+                    return
+
+                value = _decode_temp_value(dev, payload)
+                if value is None:
+                    return
+
+                mn = dev.get("min_value")
+                mx = dev.get("max_value")
+                if mn is not None and value < float(mn):
+                    return
+                if mx is not None and value > float(mx):
+                    return
+
+                ts = time.time()
+                _publish_temp_value(dev, value, ts=ts)
+                asyncio.run_coroutine_threadsafe(_broadcast_temp_value(dev, value, ts), loop)
+            except Exception:
+                return
+
+        try:
+            gateway.add_telegram_listener(_on_temp_telegram)
+        except Exception:
+            pass
+
+        def _on_humidity_telegram(telegram: Any) -> None:
+            # 12-in-1: humidity appears in ReadSensorsInOneStatusResponse payload.
+            try:
+                op = getattr(telegram, "operate_code", None)
+                op_s = str(op or "")
+
+                # Primary: ReadSensorsInOneStatusResponse (0x1605)
+                if "ReadSensorsInOneStatusResponse" not in op_s:
+                    # Fallback: some devices emit a similar payload on raw opcode 0x1630
+                    raw_hex = getattr(telegram, "operate_code_raw_hex", None)
+                    if str(raw_hex or "").lower() != "1630":
+                        return
+
+                src = getattr(telegram, "source_address", None)
+                payload = getattr(telegram, "payload", None)
+                if not isinstance(src, (list, tuple)) or len(src) < 2:
+                    return
+                if not isinstance(payload, (list, tuple)):
+                    return
+
+                subnet_id = int(src[0])
+                device_id = int(src[1])
+
+                idx: dict[tuple[int, int], list[dict[str, Any]]] = getattr(api.state, "humidity_index", {}) or {}
+                devs = idx.get((subnet_id, device_id)) or []
+                if not devs:
+                    return
+
+                humidity: int | None = None
+                if "ReadSensorsInOneStatusResponse" in op_s:
+                    # Observed payload: [248, temp_raw, 0, 0, humidity, lux24?, 0,0,0,0]
+                    if len(payload) >= 5 and int(payload[0]) == 248:
+                        hv = int(payload[4]) & 0xFF
+                        humidity = None if hv == 0xFF else hv
+                else:
+                    # 0x1630: similar but without leading 248
+                    if len(payload) >= 4:
+                        hv = int(payload[3]) & 0xFF
+                        humidity = None if hv == 0xFF else hv
+
+                if humidity is None:
+                    return
+
+                ts = time.time()
+                for dev in devs:
+                    _publish_humidity_value(dev, float(humidity), ts=ts)
+                    asyncio.run_coroutine_threadsafe(_broadcast_humidity_value(dev, float(humidity), ts), loop)
+            except Exception:
+                return
+
+        try:
+            gateway.add_telegram_listener(_on_humidity_telegram)
+        except Exception:
+            pass
+
+        def _on_illuminance_telegram(telegram: Any) -> None:
+            # Illuminance can appear in multiple payload formats depending on device/firmware:
+            # - ReadSensorsInOneStatusResponse (0x1605): 24-bit lux at payload[5:8] (with leading 248).
+            # - Raw opcode 0x1630: similar to 0x1605 but without leading 248.
+            # - ReadSensorStatusResponse (0x1646): 16-bit lux at payload[2:4] (with leading 248).
+            try:
+                op = getattr(telegram, "operate_code", None)
+                op_s = str(op or "")
+
+                raw_hex = str(getattr(telegram, "operate_code_raw_hex", "") or "").lower()
+
+                is_1605 = "ReadSensorsInOneStatusResponse" in op_s
+                is_1646 = ("ReadSensorStatusResponse" in op_s) or (raw_hex == "1646")
+                is_1630 = raw_hex == "1630"
+
+                if not (is_1605 or is_1630 or is_1646):
+                    return
+
+                src = getattr(telegram, "source_address", None)
+                payload = getattr(telegram, "payload", None)
+                if not isinstance(src, (list, tuple)) or len(src) < 2:
+                    return
+                if not isinstance(payload, (list, tuple)):
+                    return
+
+                subnet_id = int(src[0])
+                device_id = int(src[1])
+
+                idx: dict[tuple[int, int], list[dict[str, Any]]] = getattr(api.state, "illuminance_index", {}) or {}
+                devs = idx.get((subnet_id, device_id)) or []
+                if not devs:
+                    return
+
+                lux_raw: int | None = None
+                if is_1605:
+                    if len(payload) >= 4 and int(payload[0]) == 248:
+                        # Common 12-in-1 (MASLA.2C etc.): 16-bit lux at payload[2:4]
+                        b0_16 = int(payload[2]) & 0xFF
+                        b1_16 = int(payload[3]) & 0xFF
+                        lux16 = None if (b0_16 == 0xFF and b1_16 == 0xFF) else ((b0_16 << 8) + b1_16)
+
+                        # Some variants expose 24-bit lux at payload[5:8]
+                        lux24 = None
+                        if len(payload) >= 8:
+                            b0 = int(payload[5]) & 0xFF
+                            b1 = int(payload[6]) & 0xFF
+                            b2 = int(payload[7]) & 0xFF
+                            if not (b0 == 0xFF and b1 == 0xFF and b2 == 0xFF):
+                                lux24 = (b0 << 16) + (b1 << 8) + b2
+
+                        # Heuristic: if payload looks like MASLA (AIR at index 5 is 0..3), prefer lux16.
+                        try:
+                            maybe_air = int(payload[5]) & 0xFF if len(payload) >= 6 else 0xFF
+                        except Exception:
+                            maybe_air = 0xFF
+                        if lux16 is not None and maybe_air in (0, 1, 2, 3):
+                            lux_raw = lux16
+                        else:
+                            lux_raw = lux24 if lux24 is not None else lux16
+                elif is_1630:
+                    # 0x1630: similar but without leading 248
+                    if len(payload) >= 7:
+                        b0 = int(payload[4]) & 0xFF
+                        b1 = int(payload[5]) & 0xFF
+                        b2 = int(payload[6]) & 0xFF
+                        if not (b0 == 0xFF and b1 == 0xFF and b2 == 0xFF):
+                            lux_raw = (b0 << 16) + (b1 << 8) + b2
+                else:
+                    # 0x1646 / ReadSensorStatusResponse: examples observed from logs:
+                    # payload [248, 48, 0, 150, 0, 1, 0, 0, 0, 0] => 150 lux
+                    # payload [248, 48, 3, 33,  0, 1, 0, 0, 0, 0] => 0x0321 = 801 lux
+                    if len(payload) >= 4:
+                        if int(payload[0]) == 248:
+                            b0 = int(payload[2]) & 0xFF
+                            b1 = int(payload[3]) & 0xFF
+                        else:
+                            # Fallback: if header differs, assume first 2 bytes are the value.
+                            b0 = int(payload[0]) & 0xFF
+                            b1 = int(payload[1]) & 0xFF
+
+                        if not (b0 == 0xFF and b1 == 0xFF):
+                            lux_raw = (b0 << 8) + b1
+
+                if lux_raw is None:
+                    return
+
+                ts = time.time()
+                for dev in devs:
+                    _publish_illuminance_value(dev, float(lux_raw), ts=ts)
+                    asyncio.run_coroutine_threadsafe(_broadcast_illuminance_value(dev, float(lux_raw), ts), loop)
+            except Exception:
+                return
+
+        try:
+            gateway.add_telegram_listener(_on_illuminance_telegram)
+        except Exception:
+            pass
+
+        def _on_air_telegram(telegram: Any) -> None:
+            # MASLA.2C / 12-in-1: AIR (0..3) + Gas% appear in ReadSensorsInOneStatusResponse payload.
+            try:
+                op = getattr(telegram, "operate_code", None)
+                op_s = str(op or "")
+                raw_hex = str(getattr(telegram, "operate_code_raw_hex", "") or "").lower()
+
+                is_1605 = "ReadSensorsInOneStatusResponse" in op_s
+                is_1630 = raw_hex == "1630"
+                if not (is_1605 or is_1630):
+                    return
+
+                src = getattr(telegram, "source_address", None)
+                payload = getattr(telegram, "payload", None)
+                if not isinstance(src, (list, tuple)) or len(src) < 2:
+                    return
+                if not isinstance(payload, (list, tuple)):
+                    return
+
+                subnet_id = int(src[0])
+                device_id = int(src[1])
+
+                # Air sensors are indexed by (subnet, device, sensor_id)
+                idx: dict[tuple[int, int, int], dict[str, Any]] = getattr(api.state, "air_index", {}) or {}
+
+                # Extract sensor_id + fields (best-effort for MASLA layouts)
+                sensor_id = None
+                air_level: int | None = None
+                gas_percent: int | None = None
+
+                if is_1605:
+                    if len(payload) >= 7 and int(payload[0]) in (248, 245):
+                        sensor_id = int(payload[0]) & 0xFF
+                        al = int(payload[5]) & 0xFF
+                        gp = int(payload[6]) & 0xFF
+                        air_level = None if al == 0xFF else al
+                        gas_percent = None if gp == 0xFF else gp
+                else:
+                    # 0x1630: similar but without leading sensor_id byte
+                    if len(payload) >= 6:
+                        sensor_id = 248
+                        al = int(payload[4]) & 0xFF
+                        gp = int(payload[5]) & 0xFF
+                        air_level = None if al == 0xFF else al
+                        gas_percent = None if gp == 0xFF else gp
+
+                if sensor_id is None:
+                    return
+
+                dev = idx.get((subnet_id, device_id, int(sensor_id)))
+                if not dev:
+                    return
+
+                ts = time.time()
+                if air_level is not None:
+                    _publish_air_quality(dev, int(air_level), ts=ts)
+                    asyncio.run_coroutine_threadsafe(_broadcast_air_quality(dev, _air_level_to_text(int(air_level)), ts), loop)
+                if gas_percent is not None and 0 <= int(gas_percent) <= 100:
+                    _publish_gas_percent(dev, float(gas_percent), ts=ts)
+                    asyncio.run_coroutine_threadsafe(_broadcast_gas_percent(dev, float(gas_percent), ts), loop)
+            except Exception:
+                return
+
+        try:
+            gateway.add_telegram_listener(_on_air_telegram)
+        except Exception:
+            pass
+
+        def _on_presence_telegram(telegram: Any) -> None:
+            # MS12.2C / 12-in-1: PIR + Ultrasonic presence flags are seen in:
+            # - ReadSensorStatusResponse (0x1646): payload [248, sensor_id, 0, 0, ultrasonic, pir, ...]
+            # - BroadcastSensorStatusAutoResponse (0x1647): payload [sensor_id, 0, 0, 0, ultrasonic, pir, ...]
+            #
+            # Observed mapping from logs:
+            #   pir -> payload[4]
+            #   ultrasonic -> payload[5]
+            try:
+                op = getattr(telegram, "operate_code", None)
+                op_s = str(op or "")
+                raw_hex = str(getattr(telegram, "operate_code_raw_hex", "") or "").lower()
+
+                is_1646 = ("ReadSensorStatusResponse" in op_s) or (raw_hex == "1646")
+                is_1647 = ("BroadcastSensorStatusAutoResponse" in op_s) or (raw_hex == "1647")
+                if not (is_1646 or is_1647):
+                    return
+
+                src = getattr(telegram, "source_address", None)
+                payload = getattr(telegram, "payload", None)
+                if not isinstance(src, (list, tuple)) or len(src) < 2:
+                    return
+                if not isinstance(payload, (list, tuple)):
+                    return
+
+                subnet_id = int(src[0])
+                device_id = int(src[1])
+
+                sensor_id: int | None = None
+                pir_on: bool | None = None
+                ultrasonic_on: bool | None = None
+
+                if is_1646:
+                    if len(payload) >= 6 and int(payload[0]) == 248:
+                        sensor_id = int(payload[1]) & 0xFF
+                        pir_on = bool(int(payload[4]) & 0xFF)
+                        ultrasonic_on = bool(int(payload[5]) & 0xFF)
+                else:
+                    if len(payload) >= 6:
+                        sensor_id = int(payload[0]) & 0xFF
+                        pir_on = bool(int(payload[4]) & 0xFF)
+                        ultrasonic_on = bool(int(payload[5]) & 0xFF)
+
+                if sensor_id is None or pir_on is None or ultrasonic_on is None:
+                    return
+
+                pir_idx: dict[tuple[int, int, int], dict[str, Any]] = getattr(api.state, "pir_index", {}) or {}
+                ultra_idx: dict[tuple[int, int, int], dict[str, Any]] = getattr(api.state, "ultrasonic_index", {}) or {}
+                key = (subnet_id, device_id, int(sensor_id))
+
+                ts = time.time()
+                pir_dev = pir_idx.get(key)
+                if pir_dev:
+                    st = "ON" if pir_on else "OFF"
+                    _publish_pir_state(pir_dev, st, ts=ts)
+                    asyncio.run_coroutine_threadsafe(_broadcast_pir_state(pir_dev, st, ts), loop)
+
+                ultra_dev = ultra_idx.get(key)
+                if ultra_dev:
+                    st = "ON" if ultrasonic_on else "OFF"
+                    _publish_ultrasonic_state(ultra_dev, st, ts=ts)
+                    asyncio.run_coroutine_threadsafe(_broadcast_ultrasonic_state(ultra_dev, st, ts), loop)
+            except Exception:
+                return
+
+        try:
+            gateway.add_telegram_listener(_on_presence_telegram)
+        except Exception:
+            pass
+
+        def _on_dry_contact_telegram(telegram: Any) -> None:
+            try:
+                op = getattr(telegram, "operate_code", None)
+                op_s = str(op or "")
+                raw_hex = str(getattr(telegram, "operate_code_raw_hex", "") or "").lower()
+                if "ControlPanelACResponse" not in op_s and raw_hex != "e3d9":
+                    return
+
+                src = getattr(telegram, "source_address", None)
+                payload = getattr(telegram, "payload", None)
+                if not isinstance(src, (list, tuple)) or len(src) < 2:
+                    return
+                if not isinstance(payload, (list, tuple)) or len(payload) < 3:
+                    return
+
+                subnet_id = int(src[0])
+                device_id = int(src[1])
+                input_id = int(payload[1])
+                v = int(payload[2]) & 0xFF
+                x = int(payload[0]) & 0xFF
+                if v == 1:
+                    state_u = "ON"
+                elif v == 0:
+                    state_u = "OFF"
+                else:
+                    return
+
+                idx: dict[tuple[int, int, int], dict[str, Any]] = getattr(api.state, "dry_contact_index", {}) or {}
+                dev = idx.get((subnet_id, device_id, input_id))
+                if not dev:
+                    return
+
+                if bool(dev.get("invert")):
+                    state_u = "OFF" if state_u == "ON" else "ON"
+
+                addr = f"{subnet_id}.{device_id}.{input_id}"
+                last_dc: dict[str, str] = getattr(api.state, "_last_dry_contact_state", {}) or {}
+                if last_dc.get(addr) == state_u:
+                    return
+                last_dc[addr] = state_u
+                api.state._last_dry_contact_state = last_dc
+
+                ts = time.time()
+                _publish_dry_contact_state(dev, state_u, ts=ts, payload_x=x)
+                asyncio.run_coroutine_threadsafe(_broadcast_dry_contact_state(dev, state_u, ts, x), loop)
+            except Exception:
+                return
+
+        try:
+            gateway.add_telegram_listener(_on_dry_contact_telegram)
+        except Exception:
+            pass
+
+        # Realtime + MQTT on updates
+        def _on_state(key: LightKey, st: LightState) -> None:
+            devices = store.list_devices()
+            for dev in devices:
+                if str(dev.get("type") or "light") != "light":
+                    continue
+                if int(dev["subnet_id"]) == key.subnet_id and int(dev["device_id"]) == key.device_id and int(dev["channel"]) == key.channel:
+                    subnet = int(dev["subnet_id"])
+                    did = int(dev["device_id"])
+                    ch = int(dev["channel"])
+                    addr = f"{subnet}.{did}.{ch}"
+                    state_s = "ON" if st.is_on else "OFF"
+                    br = int(st.brightness or 0)
+                    prev = api.state._last_light_state.get(addr)
+                    cur = (state_s, br)
+                    if prev == cur:
+                        break
+                    api.state._last_light_state[addr] = cur
+                    _publish_light_state(dev, st)
+                    asyncio.run_coroutine_threadsafe(_broadcast_light_state(dev, st), loop)
+                    asyncio.run_coroutine_threadsafe(_publish_light_scenario_states_for_member(addr), loop)
+                    break
+
+        gateway.add_state_listener(_on_state)
+
+        def _on_cover(key: CoverKey, st: CoverState) -> None:
+            devices = store.list_devices()
+            for dev in devices:
+                if str(dev.get("type") or "") != "cover":
+                    continue
+                if int(dev["subnet_id"]) == key.subnet_id and int(dev["device_id"]) == key.device_id and int(dev["channel"]) == key.channel:
+                    subnet = int(dev["subnet_id"])
+                    did = int(dev["device_id"])
+                    ch = int(dev["channel"])
+                    addr = f"{subnet}.{did}.{ch}"
+                    use_pos = bool(dev.get("use_position"))
+                    if not use_pos:
+                        guard: dict[str, float] = getattr(api.state, "cover_raw_guard", {}) or {}
+                        until = float(guard.get(addr) or 0.0)
+                        if until and time.monotonic() < until:
+                            # Ignore bus updates during raw movement window.
+                            _LOGGER.debug("cover_raw_guard ignore bus update %s state=%s pos=%s", addr, st.state, st.position)
+                            break
+                    # Real bus update: stop any simulation for this cover.
+                    _cancel_cover_sim(addr)
+                    state_s = str(st.state).upper()
+                    pos = int(st.position) if st.position is not None else None
+                    _LOGGER.debug("cover bus update %s state=%s pos=%s use_pos=%s", addr, state_s, pos, use_pos)
+                    prev = api.state._last_cover_state.get(addr)
+                    cur = (state_s, pos)
+                    if prev == cur:
+                        break
+                    api.state._last_cover_state[addr] = cur
+                    _publish_cover_state(dev, st)
+                    _publish_cover_groups_for_member(addr)
+                    asyncio.run_coroutine_threadsafe(_publish_light_scenario_states_for_member(addr), loop)
+                    asyncio.run_coroutine_threadsafe(_broadcast_cover_state(dev, st), loop)
+                    break
+
+        gateway.add_cover_listener(_on_cover)
+        await gateway.start()
+
+        _rebuild_cover_group_index()
+        _publish_all_cover_group_states()
+
+        async def _poll_loop() -> None:
+            # Periodic status reads so UI/HA updates even if the bus is quiet.
+            # Pace reads to avoid UDP burst when many devices are configured.
+            poll_interval_s = float(getattr(settings, "poll_interval_s", 180.0) or 0.0)
+            poll_pace_s = float(getattr(settings, "poll_pace_s", 0.15) or 0.0)
+            if poll_interval_s <= 0:
+                return
+            while True:
+                await asyncio.sleep(poll_interval_s)
+                for dev in store.list_devices():
+                    dtype = str(dev.get("type") or "light").strip().lower()
+                    if dtype == "cover":
+                        await gateway.read_cover_status(
+                            subnet_id=int(dev["subnet_id"]),
+                            device_id=int(dev["device_id"]),
+                            channel=int(dev["channel"]),
+                        )
+                    elif dtype in ("temp", "humidity", "illuminance", "dry_contact"):
+                        continue
+                    else:
+                        await gateway.read_light_status(
+                            subnet_id=int(dev["subnet_id"]),
+                            device_id=int(dev["device_id"]),
+                            channel=int(dev["channel"]),
+                        )
+                    if poll_pace_s > 0:
+                        await asyncio.sleep(poll_pace_s)
+
+        api.state.poll_task = asyncio.create_task(_poll_loop())
+        # Ensure devices exist and ask initial status
+        for dev in store.list_devices():
+            dtype = str(dev.get("type") or "light").strip().lower()
+            if dtype == "cover":
+                gateway.ensure_cover(
+                    subnet_id=int(dev["subnet_id"]),
+                    device_id=int(dev["device_id"]),
+                    channel=int(dev["channel"]),
+                    name=str(dev.get("name") or ""),
+                    opening_time_up=int(dev.get("opening_time_up") or dev.get("opening_time") or 20),
+                    opening_time_down=int(dev.get("opening_time_down") or dev.get("opening_time") or 20),
+                    start_delay_s=float(dev.get("start_delay_s") or 0.0),
+                )
+            elif dtype in ("temp", "humidity", "illuminance", "dry_contact"):
+                continue
+            else:
+                gateway.ensure_light(
+                    subnet_id=int(dev["subnet_id"]),
+                    device_id=int(dev["device_id"]),
+                    channel=int(dev["channel"]),
+                    name=str(dev.get("name") or ""),
+                )
+        poll_pace_s0 = float(getattr(settings, "poll_pace_s", 0.15) or 0.0)
+        for dev in store.list_devices():
+            dtype = str(dev.get("type") or "light").strip().lower()
+            if dtype == "cover":
+                await gateway.read_cover_status(
+                    subnet_id=int(dev["subnet_id"]),
+                    device_id=int(dev["device_id"]),
+                    channel=int(dev["channel"]),
+                )
+            elif dtype in ("temp", "humidity", "illuminance", "dry_contact"):
+                continue
+            else:
+                await gateway.read_light_status(
+                    subnet_id=int(dev["subnet_id"]),
+                    device_id=int(dev["device_id"]),
+                    channel=int(dev["channel"]),
+                )
+            if poll_pace_s0 > 0:
+                await asyncio.sleep(poll_pace_s0)
+
+        # MQTT connect and discovery
+        _LOGGER.info("Starting MQTT client %s:%s", settings.mqtt.host, settings.mqtt.port)
+        def _on_mqtt_connect() -> None:
+            # Broker restart can drop retained messages if persistence is off.
+            # Re-publish availability and discovery on every (re)connect.
+            mqtt.publish(f"{settings.mqtt.base_topic}/availability", "online", retain=True)
+            asyncio.run_coroutine_threadsafe(_republish_discovery(), loop)
+
+        mqtt.set_connect_handler(_on_mqtt_connect)
+        mqtt.connect()
+        # Dedicated MQTT identity/connection for the Ksenia Smart Home contract.
+        # It subscribes only to the two contract bootstrap topics, command results,
+        # and the exact availability/state topics declared by the producer catalog.
+        ksenia.start()
+        nuki_manager.start()
+
+        async def _ha_poll_loop() -> None:
+            if not _ha_enabled():
+                return
+            last_label_sync = 0.0
+            while True:
+                try:
+                    if time.monotonic() - last_label_sync >= 30:
+                        last_label_sync = time.monotonic()
+                        try:
+                            await _sync_ha_label_import()
+                        except Exception:
+                            _LOGGER.debug("HA label sync unavailable; active catalog preserved")
+                    interval = float(getattr(settings, "ha_poll_interval_s", 2.0) or 2.0)
+                    interval = max(0.5, min(60.0, interval))
+                    ha_devices = store.list_ha_devices()
+                    eids: list[str] = []
+                    domains: dict[str, str] = {}
+                    pages: dict[str, str] = {}
+                    lock_metric_map: dict[str, dict[str, str]] = {}
+                    metric_eids: set[str] = set()
+                    for it in ha_devices:
+                        eid = str(it.get("entity_id") or "").strip().lower()
+                        if not eid:
+                            continue
+                        dom = str(it.get("domain") or "").strip().lower() or (eid.split(".", 1)[0] if "." in eid else "")
+                        page = str(it.get("page") or "").strip().lower() or ("covers" if dom == "cover" else ("locks" if dom == "lock" else "lights"))
+                        eids.append(eid)
+                        domains[eid] = dom
+                        pages[eid] = page
+                        if page == "locks":
+                            mm: dict[str, str] = {}
+                            b = str(it.get("lock_battery_entity_id") or "").strip().lower()
+                            if b and "." in b:
+                                mm["battery_level"] = b
+                                metric_eids.add(b)
+                            bl = str(it.get("lock_battery_low_entity_id") or "").strip().lower()
+                            if bl and "." in bl:
+                                mm["battery_low"] = bl
+                                metric_eids.add(bl)
+                            r = str(it.get("lock_rssi_entity_id") or "").strip().lower()
+                            if r and "." in r:
+                                mm["rssi"] = r
+                                metric_eids.add(r)
+                            lq = str(it.get("lock_linkquality_entity_id") or "").strip().lower()
+                            if lq and "." in lq:
+                                mm["linkquality"] = lq
+                                metric_eids.add(lq)
+                            t = str(it.get("lock_tamper_entity_id") or "").strip().lower()
+                            if t and "." in t:
+                                mm["tamper"] = t
+                                metric_eids.add(t)
+                            if mm:
+                                lock_metric_map[eid] = mm
+                    if not eids:
+                        await asyncio.sleep(interval)
+                        continue
+                    all_eids = list(dict.fromkeys([*eids, *metric_eids]))
+
+                    raw = await asyncio.to_thread(_ha_request, "GET", "/api/states", payload=None, timeout_s=10)
+                    if not isinstance(raw, list):
+                        await asyncio.sleep(interval)
+                        continue
+                    by_eid: dict[str, dict[str, Any]] = {}
+                    for st in raw:
+                        if not isinstance(st, dict):
+                            continue
+                        eid = str(st.get("entity_id") or "").strip().lower()
+                        if eid in all_eids:
+                            by_eid[eid] = st
+
+                    last: dict[str, Any] = getattr(api.state, "ha_states", {}) or {}
+                    last_caps: dict[str, Any] = getattr(api.state, "ha_caps", {}) or {}
+                    next_states: dict[str, Any] = dict(last)
+                    next_caps: dict[str, Any] = dict(last_caps)
+                    caps_changed = False
+
+                    for eid in eids:
+                        st = by_eid.get(eid)
+                        if not st:
+                            continue
+                        dom = domains.get(eid) or "light"
+
+                        fn = _ha_friendly_name(st)
+                        if fn:
+                            prevn = ""
+                            if isinstance(last_caps.get(eid), dict):
+                                prevn = str((last_caps.get(eid) or {}).get("name") or "")
+                            if prevn != fn:
+                                next_caps[eid] = dict(next_caps.get(eid) or {})
+                                next_caps[eid]["name"] = fn
+                                caps_changed = True
+
+                        attrs = st.get("attributes") or {}
+                        if not isinstance(attrs, dict):
+                            attrs = {}
+                        generic_cap = {
+                            "icon": str(attrs.get("icon") or "").strip(),
+                            "device_class": str(attrs.get("device_class") or "").strip(),
+                            "unit_of_measurement": str(attrs.get("unit_of_measurement") or "").strip(),
+                            "state_class": str(attrs.get("state_class") or "").strip(),
+                            "supported_features": attrs.get("supported_features"),
+                        }
+                        current_cap = dict(next_caps.get(eid) or {})
+                        if any(current_cap.get(k) != v for k, v in generic_cap.items()):
+                            current_cap.update(generic_cap)
+                            next_caps[eid] = current_cap
+                            caps_changed = True
+
+                        if dom == "light":
+                            dim = _ha_light_is_dimmable(st)
+                            prevd = None
+                            if isinstance(last_caps.get(eid), dict):
+                                prevd = (last_caps.get(eid) or {}).get("dimmable")
+                            if prevd is None or bool(prevd) != bool(dim):
+                                next_caps[eid] = dict(next_caps.get(eid) or {})
+                                next_caps[eid]["dimmable"] = bool(dim)
+                                caps_changed = True
+                        if dom == "cover":
+                            use_position = _ha_cover_supports_position(st)
+                            prevp = None
+                            if isinstance(last_caps.get(eid), dict):
+                                prevp = (last_caps.get(eid) or {}).get("use_position")
+                            if prevp is None or bool(prevp) != bool(use_position):
+                                next_caps[eid] = dict(next_caps.get(eid) or {})
+                                next_caps[eid]["use_position"] = bool(use_position)
+                                caps_changed = True
+                        if dom == "lock":
+                            attrs = st.get("attributes") or {}
+                            feat = 0
+                            try:
+                                feat = int(attrs.get("supported_features") or 0)
+                            except Exception:
+                                feat = 0
+                            open_supported = bool(feat & 1)
+                            prevs = None
+                            if isinstance(last_caps.get(eid), dict):
+                                prevs = (last_caps.get(eid) or {}).get("open_supported")
+                            if prevs is None or bool(prevs) != bool(open_supported):
+                                next_caps[eid] = dict(next_caps.get(eid) or {})
+                                next_caps[eid]["open_supported"] = bool(open_supported)
+                                caps_changed = True
+                        page = pages.get(eid) or ""
+                        as_lock = page == "locks"
+                        if dom == "cover":
+                            mapped = _map_ha_state_to_cover(st)
+                            prev = last.get(eid)
+                            if prev != mapped:
+                                next_states[eid] = mapped
+                                await hub.broadcast("ha_cover_state", mapped)
+                        elif as_lock:
+                            mapped = _map_ha_state_to_lock(st)
+                            mm = lock_metric_map.get(eid) or {}
+                            if mm:
+                                mapped["metrics"] = _merge_lock_external_metrics(dict(mapped.get("metrics") or {}), by_eid, mm)
+                            prev = last.get(eid)
+                            if prev != mapped:
+                                next_states[eid] = mapped
+                                await hub.broadcast("ha_lock_state", mapped)
+                        elif dom == "switch":
+                            mapped = _map_ha_state_to_switch(st)
+                            prev = last.get(eid)
+                            if prev != mapped:
+                                next_states[eid] = mapped
+                                await hub.broadcast("ha_switch_state", mapped)
+                                try:
+                                    await _publish_light_scenario_states_for_member(eid)
+                                except Exception:
+                                    pass
+                        elif dom == "light":
+                            mapped = _map_ha_state_to_light(st)
+                            prev = last.get(eid)
+                            if prev != mapped:
+                                next_states[eid] = mapped
+                                await hub.broadcast("ha_light_state", mapped)
+                                try:
+                                    await _publish_light_scenario_states_for_member(eid)
+                                except Exception:
+                                    pass
+                        else:
+                            mapped = _map_ha_state_generic(st)
+                            prev = last.get(eid)
+                            if prev != mapped:
+                                next_states[eid] = mapped
+                                await hub.broadcast("ha_entity_state", mapped)
+
+                    api.state.ha_states = next_states
+                    api.state.ha_caps = next_caps
+                    if caps_changed:
+                        await _broadcast_devices()
+                    await asyncio.sleep(interval)
+                except asyncio.CancelledError:
+                    return
+                except Exception:
+                    continue
+
+        try:
+            api.state.ha_poll_task = asyncio.create_task(_ha_poll_loop())
+        except Exception:
+            api.state.ha_poll_task = None
+
+        async def _knx_sync_loop() -> None:
+            await asyncio.sleep(8)
+            while True:
+                try:
+                    if _ha_enabled():
+                        states = await asyncio.to_thread(_ha_request, "GET", "/api/states", payload=None, timeout_s=15)
+                        if isinstance(states, list):
+                            api.state.knx_states = {
+                                str(item.get("entity_id") or "").strip().lower(): item
+                                for item in states if isinstance(item, dict) and str(item.get("entity_id") or "").strip()
+                            }
+                            try:
+                                await knx_manager.sync(states)
+                            except Exception as exc:
+                                _LOGGER.debug("KNX manager sync unavailable: %s", exc)
+                            for bticino_source in BTICINO_INTEGRATIONS:
+                                try:
+                                    await bticino_manager.sync(bticino_source, states)
+                                except Exception as exc:
+                                    _LOGGER.debug("%s sync unavailable: %s", bticino_source, exc)
+                            try:
+                                await modbus_manager.sync(states)
+                            except Exception as exc:
+                                _LOGGER.debug("Modbus manager sync unavailable: %s", exc)
+                            if esphome_ha_ws is not None:
+                                try:
+                                    registry = await esphome_ha_ws.command("config/entity_registry/list")
+                                    esphome_manager.store.sync(registry if isinstance(registry, list) else [], states)
+                                    esphome_ids = set((esphome_manager.store.load().get("entities") or {}).keys())
+                                    esphome_states = {
+                                        str(item.get("entity_id") or "").strip().lower(): item
+                                        for item in states
+                                        if isinstance(item, dict) and str(item.get("entity_id") or "").strip().lower() in esphome_ids
+                                    }
+                                    api.state.ha_states = {**(getattr(api.state, "ha_states", {}) or {}), **esphome_states}
+                                except Exception as exc:
+                                    _LOGGER.debug("ESPHome catalog sync unavailable: %s", exc)
+                            _sync_organization()
+                    await asyncio.sleep(300)
+                except asyncio.CancelledError:
+                    return
+                except Exception as exc:
+                    _LOGGER.debug("KNX manager sync unavailable: %s", exc)
+                    await asyncio.sleep(60)
+
+        api.state.knx_sync_task = asyncio.create_task(_knx_sync_loop(), name="knx-manager-sync")
+
+        async def _netatmo_direct_sync_loop() -> None:
+            """Keep direct Netatmo state current when it changes outside e-Control."""
+            await asyncio.sleep(10)
+            while True:
+                try:
+                    if bool(netatmo_direct.status().get("connected")):
+                        modules = await asyncio.to_thread(netatmo_direct.discover)
+                        bticino_manager.store.sync_direct_netatmo(modules)
+                        _sync_organization()
+                        await _broadcast_devices()
+                    await asyncio.sleep(30)
+                except asyncio.CancelledError:
+                    return
+                except Exception as exc:
+                    _LOGGER.debug("Netatmo direct state refresh unavailable: %s", exc)
+                    await asyncio.sleep(30)
+
+        api.state.netatmo_sync_task = asyncio.create_task(
+            _netatmo_direct_sync_loop(), name="netatmo-direct-sync"
+        )
+
+        def _parse_dt(val: str | None) -> datetime | None:
+            if not val:
+                return None
+            try:
+                s = str(val).strip().replace("Z", "+00:00")
+                dt = datetime.fromisoformat(s)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=datetime.now().astimezone().tzinfo)
+                return dt.astimezone()
+            except Exception:
+                return None
+
+        async def _get_sun_times() -> dict[str, datetime] | None:
+            if not _ha_enabled():
+                return None
+            cache = getattr(api.state, "sun_cache", {}) or {}
+            now_m = time.monotonic()
+            ts = float(cache.get("ts") or 0.0)
+            if now_m - ts < 300 and cache.get("next_rising") and cache.get("next_setting"):
+                return {"next_rising": cache.get("next_rising"), "next_setting": cache.get("next_setting")}
+            try:
+                raw = await asyncio.to_thread(_ha_request, "GET", "/api/states/sun.sun", payload=None, timeout_s=10)
+            except Exception:
+                return None
+            if not isinstance(raw, dict):
+                return None
+            attrs = raw.get("attributes") or {}
+            nr = _parse_dt(str(attrs.get("next_rising") or ""))
+            ns = _parse_dt(str(attrs.get("next_setting") or ""))
+            if not nr or not ns:
+                return None
+            api.state.sun_cache = {"ts": now_m, "next_rising": nr, "next_setting": ns}
+            return {"next_rising": nr, "next_setting": ns}
+
+        def _get_sveglia_time_hhmm() -> tuple[int, int] | None:
+            for scx in store.list_light_scenarios():
+                if not isinstance(scx, dict):
+                    continue
+                nm = str(scx.get("name") or "").strip().lower()
+                if nm != "sveglia":
+                    continue
+                trigx = scx.get("trigger") or {}
+                if not isinstance(trigx, dict):
+                    continue
+                t = str(trigx.get("time") or "").strip()
+                if ":" not in t:
+                    continue
+                try:
+                    hh_s, mm_s = t.split(":", 1)
+                    hh = max(0, min(23, int(hh_s)))
+                    mm = max(0, min(59, int(mm_s)))
+                except Exception:
+                    continue
+                return (hh, mm)
+            return None
+
+        async def _scenario_trigger_loop() -> None:
+            while True:
+                try:
+                    await asyncio.sleep(20)
+                    now = datetime.now().astimezone()
+                    last_map: dict[str, str] = getattr(api.state, "scenario_trigger_last", {}) or {}
+                    for sc in store.list_light_scenarios():
+                        if not isinstance(sc, dict):
+                            continue
+                        sid = str(sc.get("id") or "").strip()
+                        if not sid:
+                            continue
+                        trig = sc.get("trigger") or {}
+                        if not isinstance(trig, dict):
+                            continue
+                        if not bool(trig.get("enabled")):
+                            continue
+                        t_type = str(trig.get("type") or "none").strip().lower()
+                        if t_type not in ("time", "sunrise", "sunset", "sveglia"):
+                            continue
+                        target: datetime | None = None
+                        offset = 0
+                        try:
+                            offset = int(trig.get("offset_min") or 0)
+                        except Exception:
+                            offset = 0
+                        if t_type == "time":
+                            t = str(trig.get("time") or "").strip()
+                            if not t or ":" not in t:
+                                continue
+                            try:
+                                hh_s, mm_s = t.split(":", 1)
+                                hh = max(0, min(23, int(hh_s)))
+                                mm = max(0, min(59, int(mm_s)))
+                            except Exception:
+                                continue
+                            target = datetime.combine(now.date(), dt_time(hh, mm), tzinfo=now.tzinfo) + timedelta(minutes=offset)
+                        elif t_type == "sveglia":
+                            hhmm = _get_sveglia_time_hhmm()
+                            if not hhmm:
+                                continue
+                            hh, mm = hhmm
+                            target = datetime.combine(now.date(), dt_time(hh, mm), tzinfo=now.tzinfo) + timedelta(minutes=offset)
+                        else:
+                            sun = await _get_sun_times()
+                            if not sun:
+                                continue
+                            base = sun.get("next_rising") if t_type == "sunrise" else sun.get("next_setting")
+                            if not base:
+                                continue
+                            target = base + timedelta(minutes=offset)
+                        if not target:
+                            continue
+                        last_key = last_map.get(sid)
+                        tkey = target.isoformat()
+                        if last_key == tkey:
+                            continue
+                        diff_s = (now - target).total_seconds()
+                        if diff_s >= 0 and diff_s <= 60:
+                            last_map[sid] = tkey
+                            api.state.scenario_trigger_last = last_map
+                            await run_light_scenario(sid, {"command": "RUN"})
+                except asyncio.CancelledError:
+                    return
+                except Exception:
+                    continue
+
+        try:
+            api.state.scenario_trigger_task = asyncio.create_task(_scenario_trigger_loop())
+        except Exception:
+            api.state.scenario_trigger_task = None
+
+        # Best-effort icon sync on boot (non-blocking)
+        asyncio.create_task(_sync_icons_for_devices(store.list_devices()))
+        asyncio.create_task(_sync_icons_for_cover_groups(store.list_cover_groups()))
+        asyncio.create_task(_sync_icons_for_hub_links(store.list_hub_links()))
+        asyncio.create_task(_sync_icons_for_home_actions(store.list_home_actions()))
+        asyncio.create_task(_sync_icons_for_hub_config({"hub_icons": store.get_hub_icons()}))
+        asyncio.create_task(_sync_icons_for_ha_devices(store.list_ha_devices()))
+
+        # publish stored retained states (so HA/UI have last-known values after reboot)
+        for k, v in store.get_states().items():
+            try:
+                if isinstance(k, str) and k.startswith("light:"):
+                    addr = k.split(":", 1)[1]
+                    subnet_s, dev_s, ch_s = addr.split(".")
+                    topic = f"{settings.mqtt.base_topic}/state/light/{int(subnet_s)}/{int(dev_s)}/{int(ch_s)}"
+                    mqtt.publish(topic, v, retain=True)
+                if isinstance(k, str) and k.startswith("cover:"):
+                    addr = k.split(":", 1)[1]
+                    subnet_s, dev_s, ch_s = addr.split(".")
+                    st = v or {}
+                    if isinstance(st, dict):
+                        if "state" in st:
+                            mqtt.publish(f"{settings.mqtt.base_topic}/state/cover_state/{int(subnet_s)}/{int(dev_s)}/{int(ch_s)}", str(st.get("state") or ""), retain=True)
+                        if st.get("position") is not None:
+                            mqtt.publish(f"{settings.mqtt.base_topic}/state/cover_pos/{int(subnet_s)}/{int(dev_s)}/{int(ch_s)}", str(int(st.get("position"))), retain=True)
+                        else:
+                            mqtt.publish(f"{settings.mqtt.base_topic}/state/cover_pos/{int(subnet_s)}/{int(dev_s)}/{int(ch_s)}", "", retain=True)
+                if isinstance(k, str) and k.startswith("cover_group:"):
+                    gid = k.split(":", 1)[1]
+                    st = v or {}
+                    if isinstance(st, dict):
+                        if "state" in st:
+                            mqtt.publish(f"{settings.mqtt.base_topic}/state/cover_group_state/{gid}", str(st.get("state") or ""), retain=True)
+                        if st.get("position") is not None:
+                            mqtt.publish(f"{settings.mqtt.base_topic}/state/cover_group_pos/{gid}", str(int(st.get("position"))), retain=True)
+                        else:
+                            mqtt.publish(f"{settings.mqtt.base_topic}/state/cover_group_pos/{gid}", "", retain=True)
+                if isinstance(k, str) and k.startswith("temp:"):
+                    addr = k.split(":", 1)[1]
+                    subnet_s, dev_s, ch_s = addr.split(".")
+                    st = v or {}
+                    if isinstance(st, dict) and st.get("value") is not None:
+                        mqtt.publish(
+                            f"{settings.mqtt.base_topic}/state/temp/{int(subnet_s)}/{int(dev_s)}/{int(ch_s)}",
+                            str(float(st.get("value"))),
+                            retain=True,
+                        )
+                if isinstance(k, str) and k.startswith("humidity:"):
+                    addr = k.split(":", 1)[1]
+                    subnet_s, dev_s, ch_s = addr.split(".")
+                    st = v or {}
+                    if isinstance(st, dict) and st.get("value") is not None:
+                        mqtt.publish(
+                            f"{settings.mqtt.base_topic}/state/humidity/{int(subnet_s)}/{int(dev_s)}/{int(ch_s)}",
+                            str(float(st.get("value"))),
+                            retain=True,
+                        )
+                if isinstance(k, str) and k.startswith("illuminance:"):
+                    addr = k.split(":", 1)[1]
+                    subnet_s, dev_s, ch_s = addr.split(".")
+                    st = v or {}
+                    if isinstance(st, dict) and st.get("value") is not None:
+                        mqtt.publish(
+                            f"{settings.mqtt.base_topic}/state/illuminance/{int(subnet_s)}/{int(dev_s)}/{int(ch_s)}",
+                            str(float(st.get("value"))),
+                            retain=True,
+                        )
+                if isinstance(k, str) and k.startswith("dry_contact:"):
+                    addr = k.split(":", 1)[1]
+                    subnet_s, dev_s, ch_s = addr.split(".")
+                    st = v or {}
+                    if isinstance(st, dict) and st.get("state") is not None:
+                        mqtt.publish(
+                            f"{settings.mqtt.base_topic}/state/dry_contact/{int(subnet_s)}/{int(dev_s)}/{int(ch_s)}",
+                            str(st.get("state") or ""),
+                            retain=True,
+                        )
+            except Exception:
+                pass
+
+        # (re)publish discovery
+        await _republish_discovery()
+        # Subscribe to light command topics
+        mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/light/+/+/+")
+        mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/rgb/+")
+        mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/light_scenario/+")
+        mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/light_scenario_switch/+")
+        mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/scenario_ha_trigger/+")
+        mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/cover/+/+/+")
+        mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/cover_raw/+/+/+")
+        mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/cover_pos/+/+/+")
+        mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/cover_group/+")
+        mqtt.subscribe(f"{settings.mqtt.base_topic}/cmd/cover_group_raw/+")
+        # cover_group_pos disabled: groups use OPEN/CLOSE/STOP only
+
+        # Build scenario membership index for state updates on light changes
+        try:
+            _rebuild_light_scenario_index()
+        except Exception:
+            pass
+
+        def _on_mqtt_message(topic: str, payload: str, retained: bool = False) -> None:
+            try:
+                if retained:
+                    _LOGGER.warning("Ignoring retained MQTT command on %s", topic)
+                    return
+                parts = topic.split("/")
+                if len(parts) < 4:
+                    return
+
+                kind2 = parts[-2]
+                if kind2 == "light_scenario":
+                    sid = parts[-1]
+                    asyncio.run_coroutine_threadsafe(run_light_scenario(scenario_id=sid), loop)
+                    return
+                if kind2 == "rgb":
+                    gid = parts[-1]
+                    asyncio.run_coroutine_threadsafe(_run_rgb_command(gid, payload), loop)
+                    return
+                if kind2 == "light_scenario_switch":
+                    sid = parts[-1]
+                    cmd = payload.strip().upper()
+                    if cmd in ("ON", "OFF"):
+                        asyncio.run_coroutine_threadsafe(run_light_scenario(scenario_id=sid, payload={"state": cmd}), loop)
+                    return
+                if kind2 == "scenario_ha_trigger":
+                    tid = parts[-1]
+                    asyncio.run_coroutine_threadsafe(run_scenarios_by_ha_trigger(trigger_id=tid), loop)
+                    return
+                if kind2 == "cover_group":
+                    gid = parts[-1]
+                    cmd = payload.strip().upper()
+                    if cmd in ("OPEN", "CLOSE", "STOP"):
+                        # Always use raw commands for groups (direct UP/DOWN/STOP).
+                        asyncio.run_coroutine_threadsafe(_run_cover_group_command(gid, cmd, raw=True), loop)
+                    return
+                if kind2 == "cover_group_raw":
+                    gid = parts[-1]
+                    cmd = payload.strip().upper()
+                    if cmd in ("OPEN", "CLOSE", "STOP"):
+                        asyncio.run_coroutine_threadsafe(_run_cover_group_command(gid, cmd, raw=True), loop)
+                    return
+                # cover_group_pos disabled: ignore percentage commands for groups
+
+                # topic: base/cmd/light/subnet/device/channel
+                if len(parts) < 6:
+                    return
+                kind = parts[-4]
+                subnet = int(parts[-3])
+                did = int(parts[-2])
+                ch = int(parts[-1])
+                if kind == "light":
+                    on, br = _parse_light_cmd(payload)
+                    asyncio.run_coroutine_threadsafe(
+                        gateway.set_light(subnet_id=subnet, device_id=did, channel=ch, on=on, brightness255=br),
+                        loop,
+                    )
+                elif kind == "cover":
+                    cmd = payload.strip().upper()
+                    dev = _find_cover_device(subnet, did, ch) or {}
+                    use_pos = bool(dev.get("use_position"))
+                    if cmd == "OPEN":
+                        if not use_pos:
+                            loop.call_soon_threadsafe(_start_cover_sim, subnet, did, ch, "OPEN")
+                        if use_pos:
+                            asyncio.run_coroutine_threadsafe(gateway.cover_open(subnet_id=subnet, device_id=did, channel=ch), loop)
+                        else:
+                            asyncio.run_coroutine_threadsafe(gateway.cover_open_raw(subnet_id=subnet, device_id=did, channel=ch), loop)
+                    elif cmd == "CLOSE":
+                        if not use_pos:
+                            loop.call_soon_threadsafe(_start_cover_sim, subnet, did, ch, "CLOSE")
+                        if use_pos:
+                            asyncio.run_coroutine_threadsafe(gateway.cover_close(subnet_id=subnet, device_id=did, channel=ch), loop)
+                        else:
+                            asyncio.run_coroutine_threadsafe(gateway.cover_close_raw(subnet_id=subnet, device_id=did, channel=ch), loop)
+                    elif cmd == "STOP":
+                        if not use_pos:
+                            loop.call_soon_threadsafe(_start_cover_sim, subnet, did, ch, "STOP")
+                        asyncio.run_coroutine_threadsafe(gateway.cover_stop(subnet_id=subnet, device_id=did, channel=ch), loop)
+                elif kind == "cover_raw":
+                    cmd = payload.strip().upper()
+                    if cmd == "OPEN":
+                        loop.call_soon_threadsafe(_start_cover_sim, subnet, did, ch, "OPEN")
+                        asyncio.run_coroutine_threadsafe(gateway.cover_open_raw(subnet_id=subnet, device_id=did, channel=ch), loop)
+                    elif cmd == "CLOSE":
+                        loop.call_soon_threadsafe(_start_cover_sim, subnet, did, ch, "CLOSE")
+                        asyncio.run_coroutine_threadsafe(gateway.cover_close_raw(subnet_id=subnet, device_id=did, channel=ch), loop)
+                    elif cmd == "STOP":
+                        loop.call_soon_threadsafe(_start_cover_sim, subnet, did, ch, "STOP")
+                        asyncio.run_coroutine_threadsafe(gateway.cover_stop(subnet_id=subnet, device_id=did, channel=ch), loop)
+                elif kind == "cover_pos":
+                    dev = _find_cover_device(subnet, did, ch) or {}
+                    if not bool(dev.get("use_position")):
+                        return
+                    s = payload.strip()
+                    if s and s[0] == "{":
+                        obj = json.loads(s)
+                        pos = int(obj.get("position"))
+                    else:
+                        pos = int(float(s))
+                    asyncio.run_coroutine_threadsafe(gateway.cover_set_position(subnet_id=subnet, device_id=did, channel=ch, position=pos), loop)
+            except Exception:
+                return
+
+        mqtt.set_message_handler(_on_mqtt_message)
+
+    @api.on_event("shutdown")
+    async def _shutdown() -> None:
+        with api.state.runtime_lock:
+            refs = int(getattr(api.state, "runtime_refcount", 0) or 0)
+            refs = max(0, refs - 1)
+            api.state.runtime_refcount = refs
+            do_shutdown = bool(getattr(api.state, "runtime_started", False)) and refs == 0
+            if do_shutdown:
+                api.state.runtime_started = False
+        if not do_shutdown:
+            _LOGGER.info("Secondary server shutdown detected: skipping duplicate runtime shutdown")
+            return
+
+        mem_task = getattr(api.state, "memory_debug_task", None)
+        mqtt_task = getattr(api.state, "mqtt_manager_task", None)
+        if mqtt_task is not None:
+            mqtt_task.cancel()
+            await asyncio.gather(mqtt_task, return_exceptions=True)
+        await mqtt_manager.close()
+        activity_task = getattr(api.state, "activity_task", None)
+        if activity_task is not None:
+            activity_task.cancel()
+        if mem_task is not None:
+            mem_task.cancel()
+            try:
+                await mem_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                pass
+            api.state.memory_debug_task = None
+
+        try:
+            mqtt.publish(f"{settings.mqtt.base_topic}/availability", "offline", retain=True)
+        finally:
+            mqtt.disconnect()
+            ksenia.stop()
+            nuki_manager.stop()
+
+        poll = getattr(api.state, "poll_task", None)
+        if poll is not None:
+            poll.cancel()
+        ha_poll = getattr(api.state, "ha_poll_task", None)
+        if ha_poll is not None:
+            ha_poll.cancel()
+        knx_sync = getattr(api.state, "knx_sync_task", None)
+        if knx_sync is not None:
+            knx_sync.cancel()
+        netatmo_sync = getattr(api.state, "netatmo_sync_task", None)
+        if netatmo_sync is not None:
+            netatmo_sync.cancel()
+
+        gw: BusproGateway | None = api.state.gateway
+        if gw is not None:
+            await gw.stop()
+
+        try:
+            api.state.sniffer.stop()
+        except Exception:
+            pass
+
+        await hub.close_all()
+
+    @api.get("/health")
+    async def health():
+        return {"status": "ok"}
+
+    def _server_port(scope: dict[str, Any]) -> int | None:
+        try:
+            return int((scope.get("server") or ("", 0))[1])
+        except Exception:
+            return None
+
+    @api.get("/", response_class=HTMLResponse)
+    async def index(request: Request):
+        # Home Assistant "Open Web UI" via Ingress should show Admin UI.
+        try:
+            headers = {k.lower(): v for k, v in request.headers.items()}
+            if _is_ingress_headers(headers):
+                index_path = os.path.join(static_dir, "index.html")
+                with open(index_path, "r", encoding="utf-8") as f:
+                    html = f.read()
+                resp = HTMLResponse(content=html)
+                try:
+                    resp.set_cookie("buspro_ingress", "1", path="/", samesite="lax")
+                except Exception:
+                    pass
+                return resp
+        except Exception:
+            pass
+        port = _server_port(request.scope)
+        if port == USER_PORT:
+            # default user landing
+            return await user_home()
+        index_path = os.path.join(static_dir, "index.html")
+        with open(index_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    @api.get("/index.html", response_class=HTMLResponse)
+    async def index_html(request: Request):
+        # Used by Ingress entry to avoid double-slash URLs (…/hassio_ingress/<token>//).
+        index_path = os.path.join(static_dir, "index.html")
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        resp = HTMLResponse(content=html)
+        try:
+            headers = {k.lower(): v for k, v in request.headers.items()}
+            if _is_ingress_headers(headers):
+                resp.set_cookie("buspro_ingress", "1", path="/", samesite="lax")
+        except Exception:
+            pass
+        return resp
+
+    @api.get("/admin-guide", response_class=HTMLResponse)
+    async def admin_guide():
+        p = os.path.join(static_dir, "admin_guide.html")
+        with open(p, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def _user_html(page: str, path_override: str | None = None, page_name_override: str | None = None) -> HTMLResponse:
+        p = path_override or os.path.join(static_dir, "user", page)
+        page_name = page_name_override or os.path.splitext(os.path.basename(page))[0]
+        with open(p, "r", encoding="utf-8") as f:
+            html = f.read()
+        diag = f"""
+<script>
+(function() {{
+  var page = {json.dumps(page_name)};
+  function log(phase, detail) {{
+    try {{
+      var u = new URL('api/ui_log', window.location.href);
+      u.searchParams.set('page', page);
+      u.searchParams.set('phase', String(phase || ''));
+      u.searchParams.set('detail', String(detail || '').slice(0, 220));
+      var img = new Image();
+      img.src = u.toString();
+    }} catch (e) {{}}
+  }}
+  window.busproUiLog = log;
+  window.busproPollMode = false;
+  try {{
+    window.busproPollMode = new URL(window.location.href).searchParams.get('poll') === '1';
+    if (window.busproPollMode) log('poll_mode', 'enabled');
+  }} catch (e) {{}}
+  window.busproFetchWithTimeout = function(url, opts, timeoutMs) {{
+    var ms = Math.max(1000, Number(timeoutMs || 12000));
+    var init = Object.assign({{}}, opts || {{}});
+    var timer = null;
+    try {{
+      if (typeof AbortController !== 'undefined') {{
+        var controller = new AbortController();
+        init.signal = controller.signal;
+        timer = setTimeout(function() {{ try {{ controller.abort(); }} catch (e) {{}} }}, ms);
+        return fetch(url, init).then(function(resp) {{
+          try {{ clearTimeout(timer); }} catch (e) {{}}
+          return resp;
+        }}, function(err) {{
+          try {{ clearTimeout(timer); }} catch (e) {{}}
+          throw err;
+        }});
+      }}
+      return Promise.race([
+        fetch(url, init),
+        new Promise(function(_, reject) {{ setTimeout(function() {{ reject(new Error('timeout')); }}, ms); }})
+      ]);
+    }} catch (e) {{
+      var msg = (e && e.name === 'AbortError') ? 'timeout' : ((e && e.message) ? e.message : String(e));
+      try {{ log('fetch_error', new URL(url, window.location.href).pathname + ' ' + msg); }} catch (_) {{ log('fetch_error', msg); }}
+      return Promise.reject(e);
+    }}
+  }};
+  (function smartLocalRemoteRedirect() {{
+    var cacheKey = 'buspro.smart_redirect.v1';
+    function cleanUrl(v) {{
+      return String(v || '').trim().replace(/[/]+$/, '');
+    }}
+    function hostOf(v) {{
+      try {{
+        var u = new URL(String(v || ''), window.location.href);
+        return {{
+          host: String(u.host || '').toLowerCase(),
+          hostname: String(u.hostname || '').toLowerCase(),
+          origin: String(u.origin || '').replace(/[/]+$/, '')
+        }};
+      }} catch (e) {{
+        var s = String(v || '').trim().replace(/^https?:[/][/]/i, '').replace(/[/].*$/, '').toLowerCase();
+        return {{host: s, hostname: s.split(':')[0] || s, origin: ''}};
+      }}
+    }}
+    function currentPath() {{
+      return String(window.location.pathname || '/') + String(window.location.search || '') + String(window.location.hash || '');
+    }}
+    function pageTarget(origin) {{
+      var base = cleanUrl(origin);
+      if (!base) return '';
+      return base + currentPath();
+    }}
+    function writeCache(mode) {{
+      try {{
+        localStorage.setItem(cacheKey, JSON.stringify({{mode: mode, ts: Date.now(), page: page}}));
+      }} catch (e) {{}}
+    }}
+    function readCache() {{
+      try {{
+        return JSON.parse(localStorage.getItem(cacheKey) || 'null') || null;
+      }} catch (e) {{
+        return null;
+      }}
+    }}
+    function logRedirect(cfg, mode, target, reason, extra) {{
+      if (!cfg || !cfg.debug) return;
+      try {{
+        var body = JSON.stringify({{
+          target: 'page_redirect:' + page,
+          host: String(window.location.host || window.location.hostname || ''),
+          mode: String(mode || ''),
+          selected: String(target || ''),
+          reason: String(reason || '') + (extra ? (' ' + String(extra).slice(0, 120)) : '')
+        }});
+        var url = new URL('api/smart_link_log', window.location.href).toString();
+        if (navigator.sendBeacon) {{
+          navigator.sendBeacon(url, new Blob([body], {{type: 'application/json'}}));
+        }} else {{
+          fetch(url, {{method: 'POST', headers: {{'Content-Type': 'application/json'}}, body: body, keepalive: true}}).catch(function() {{}});
+        }}
+      }} catch (e) {{}}
+    }}
+    function fetchWithTimeoutNoCors(url, timeoutMs) {{
+      var ms = Math.max(100, Math.min(5000, Number(timeoutMs || 500)));
+      var init = {{method: 'GET', mode: 'no-cors', cache: 'no-store'}};
+      if (typeof AbortController !== 'undefined') {{
+        var controller = new AbortController();
+        init.signal = controller.signal;
+        var timer = setTimeout(function() {{ try {{ controller.abort(); }} catch (e) {{}} }}, ms);
+        return fetch(url, init).then(function(resp) {{
+          try {{ clearTimeout(timer); }} catch (e) {{}}
+          return resp;
+        }}, function(err) {{
+          try {{ clearTimeout(timer); }} catch (e) {{}}
+          throw err;
+        }});
+      }}
+      return Promise.race([
+        fetch(url, init),
+        new Promise(function(_, reject) {{ setTimeout(function() {{ reject(new Error('timeout')); }}, ms); }})
+      ]);
+    }}
+    function imageProbe(url, timeoutMs) {{
+      var ms = Math.max(100, Math.min(5000, Number(timeoutMs || 500)));
+      return new Promise(function(resolve, reject) {{
+        var done = false;
+        var img = new Image();
+        var timer = setTimeout(function() {{
+          if (done) return;
+          done = true;
+          try {{ img.onload = null; img.onerror = null; img.src = ''; }} catch (e) {{}}
+          reject(new Error('image_timeout'));
+        }}, ms);
+        img.onload = function() {{
+          if (done) return;
+          done = true;
+          try {{ clearTimeout(timer); }} catch (e) {{}}
+          resolve(true);
+        }};
+        img.onerror = function() {{
+          if (done) return;
+          done = true;
+          try {{ clearTimeout(timer); }} catch (e) {{}}
+          reject(new Error('image_error'));
+        }};
+        img.src = url;
+      }});
+    }}
+    function localReachable(localBase, timeoutMs) {{
+      var t = Date.now();
+      var health = localBase + '/health?smart_redirect=1&t=' + t;
+      var img = localBase + '/static/e-face-nobg.png?smart_redirect=1&t=' + t;
+      return fetchWithTimeoutNoCors(health, timeoutMs).catch(function(fetchErr) {{
+        return imageProbe(img, timeoutMs).catch(function(imgErr) {{
+          var msg = ((fetchErr && (fetchErr.name || fetchErr.message)) || 'fetch_error') + '+' + ((imgErr && imgErr.message) || 'image_error');
+          throw new Error(msg);
+        }});
+      }});
+    }}
+    function run(cfg) {{
+      if (!cfg || !cfg.redirect_enabled) return;
+      try {{
+        if (new URL(window.location.href).searchParams.get('noredirect') === '1') return;
+      }} catch (e) {{}}
+      var localBase = cleanUrl(cfg.local_base_url || 'http://192.168.3.24:8124');
+      var remoteBase = cleanUrl(cfg.remote_base_url || window.location.origin);
+      var localInfo = hostOf(localBase || cfg.local_host);
+      var remoteInfo = hostOf(remoteBase || cfg.remote_host);
+      var here = hostOf(window.location.href);
+      if (localInfo.host && (here.host === localInfo.host || here.hostname === localInfo.hostname)) {{
+        writeCache('local');
+        logRedirect(cfg, 'local', window.location.href, 'already_local', '');
+        return;
+      }}
+      var cache = cfg.redirect_cache !== false ? readCache() : null;
+      var timeoutMs = Math.max(100, Math.min(5000, Number(cfg.redirect_timeout_ms || 500)));
+      if (cache && cache.mode) logRedirect(cfg, String(cache.mode), '', 'cache_seen', 'age_ms=' + Math.max(0, Date.now() - Number(cache.ts || 0)));
+      var target = pageTarget(localBase);
+      if (!target) return;
+      var lastCheck = 0;
+      var checking = false;
+      var retryTimer = null;
+      function scheduleRetry() {{
+        if (retryTimer) return;
+        retryTimer = setTimeout(function() {{
+          retryTimer = null;
+          check('retry');
+        }}, 10000);
+      }}
+      function check(reason) {{
+        var now = Date.now();
+        if (checking || (now - lastCheck) < 1200) return;
+        checking = true;
+        lastCheck = now;
+        var okReason = reason === 'initial' ? 'probe_ok' : (reason || 'probe_ok');
+        var failReason = reason === 'initial' ? 'probe_failed' : (reason || 'probe_failed');
+        localReachable(localBase, timeoutMs).then(function() {{
+          checking = false;
+          writeCache('local');
+          logRedirect(cfg, 'local', target, okReason, 'timeout_ms=' + timeoutMs);
+          if (window.location.href !== target) window.location.replace(target);
+        }}, function(err) {{
+          checking = false;
+          writeCache('remote');
+          var remoteTarget = pageTarget(remoteBase);
+          logRedirect(cfg, 'remote', remoteTarget || window.location.href, failReason, (err && (err.message || err.name)) || '');
+          scheduleRetry();
+        }});
+      }}
+      try {{
+        window.addEventListener('online', function() {{ check('online'); }});
+        window.addEventListener('focus', function() {{ check('focus'); }});
+        document.addEventListener('visibilitychange', function() {{ if (!document.hidden) check('visible'); }});
+      }} catch (e) {{}}
+      check('initial');
+    }}
+    fetch(new URL('api/meta', window.location.href).toString(), {{cache: 'no-store'}})
+      .then(function(resp) {{ return resp && resp.ok ? resp.json() : null; }})
+      .then(function(meta) {{
+        var cfg = meta && meta.smart_links && typeof meta.smart_links === 'object' ? meta.smart_links : null;
+        run(cfg);
+      }})
+      .catch(function(err) {{ log('smart_redirect_meta_error', (err && err.message) ? err.message : String(err || 'error')); }});
+  }})();
+  // Do not capture global script parse errors here: embedded WebViews can emit
+  // non-actionable SyntaxError events for document-level scripts and flood logs.
+  window.addEventListener('unhandledrejection', function(evt) {{
+    var r = evt && evt.reason;
+    log('js_rejection', (r && r.message) ? r.message : String(r || 'rejection'));
+  }});
+  log('page_boot', 'loaded');
+}})();
+</script>
+""".strip()
+        if "</head>" in html:
+            html = html.replace("</head>", diag + "\n</head>", 1)
+        else:
+            html = diag + "\n" + html
+        return HTMLResponse(
+            content=html,
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
+
+    @api.get("/home", response_class=HTMLResponse)
+    async def user_home():
+        return _user_html("home.html")
+
+    @api.get("/home2", response_class=HTMLResponse)
+    async def user_home2():
+        return _user_html("home2.html")
+
+    @api.get("/home_plus", response_class=HTMLResponse)
+    async def user_home_plus():
+        return _user_html("home_plus.html")
+
+    @api.get("/e-face", response_class=HTMLResponse)
+    async def user_e_face():
+        path = os.path.join(os.path.dirname(__file__), "static", "eface", "index.html")
+        if not os.path.exists(path):
+            raise HTTPException(status_code=404, detail="e-Face frontend not built")
+        return _user_html("index.html", path_override=path, page_name_override="e-face")
+
+    @api.get("/lights", response_class=HTMLResponse)
+    async def user_lights():
+        return _user_html("lights.html")
+
+    @api.get("/scenarios", response_class=HTMLResponse)
+    async def user_scenarios():
+        return _user_html("scenarios.html")
+
+    @api.get("/covers", response_class=HTMLResponse) 
+    async def user_covers(): 
+        return _user_html("covers.html")
+
+    @api.get("/locks", response_class=HTMLResponse)
+    async def user_locks():
+        return _user_html("locks.html")
+
+    @api.get("/extra", response_class=HTMLResponse)
+    async def user_extra():
+        return _user_html("extra.html")
+
+    @api.get("/ksenia", response_class=HTMLResponse)
+    async def user_ksenia():
+        return _user_html("ksenia.html")
+
+    @api.get("/e-guard", response_class=HTMLResponse)
+    async def user_guard():
+        if not guard_enabled:
+            raise HTTPException(status_code=404, detail="Not Found")
+        return _user_html("e_guard.html")
+
+    @api.get("/api/options")
+    async def api_options():
+        return read_options()
+
+    @api.put("/api/options/back_gesture")
+    async def api_options_back_gesture(payload: dict[str, Any]):
+        enabled = bool(payload.get("enabled", True))
+        path = os.environ.get("BUSPRO_OPTIONS", "/data/options.json")
+        opts = read_options()
+        if not isinstance(opts, dict):
+            opts = {}
+        opts["back_gesture_enabled"] = bool(enabled)
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(opts, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"options write failed: {e}")
+        return {"ok": True, "back_gesture_enabled": bool(enabled)}
+
+    @api.get("/api/system/resources")
+    async def system_resources():
+        result = await asyncio.to_thread(resource_monitor.snapshot)
+        if result["cpu"]["host_percent"] is None:
+            await asyncio.sleep(.25)
+            result = await asyncio.to_thread(resource_monitor.snapshot)
+        result["version"] = ADDON_VERSION
+        result["activity_buffer"] = await asyncio.to_thread(api.state.activity_feed.stats)
+        return result
+
+    @api.get("/api/meta")
+    async def api_meta(): 
+        back_gesture_enabled = bool(getattr(settings, "back_gesture_enabled", True))
+        hub_icons = store.get_hub_icons()
+        hub_show = store.get_hub_show()
+        hub_order = store.get_hub_order()
+        home2_order = store.get_home2_order()
+        if not guard_enabled:
+            try:
+                hub_show = dict(hub_show or {})
+                hub_show["guard"] = False
+            except Exception:
+                pass
+            try:
+                hub_order = [x for x in (hub_order or []) if str(x) != "guard"]
+            except Exception:
+                pass
+            try:
+                home2_order = [x for x in (home2_order or []) if str(x) != "guard"]
+            except Exception:
+                pass
+        return {
+            "version": ADDON_VERSION,
+            "group_order": store.get_group_order(),
+            "hub_links": store.list_visible_hub_links(),
+            "home_actions": store.list_visible_home_actions(),
+            "home2_order": home2_order,
+            "smart_links": store.get_smart_links_config(),
+            "hub_icons": hub_icons,
+            "hub_show": hub_show,
+            "hub_order": hub_order,
+            "guard_enabled": guard_enabled,
+            "back_gesture_enabled": back_gesture_enabled,
+        } 
+
+    @api.get("/api/ui_log")
+    async def api_ui_log(request: Request):
+        params = request.query_params
+        page = str(params.get("page") or "").strip()[:40]
+        phase = str(params.get("phase") or "").strip()[:80]
+        detail = str(params.get("detail") or "").strip()[:240]
+        if phase == "js_error" and "Unexpected end of input" in detail:
+            return {"ok": True, "logged": False, "filtered": True}
+        real_ip, proxy_ip, ua = _request_client_info(request)
+        log_fn = _LOGGER.warning if phase in {
+            "js_error",
+            "js_rejection",
+            "fetch_error",
+            "load_error",
+        } else _LOGGER.debug
+        log_fn(
+            "ui_log page=%s phase=%s detail=%s real_ip=%s proxy_ip=%s ua=%s",
+            page or "-",
+            phase or "-",
+            detail or "-",
+            real_ip,
+            proxy_ip,
+            ua[:220],
+        )
+        return {"ok": True}
+
+    @api.post("/api/smart_link_log")
+    async def api_smart_link_log(payload: dict[str, Any], request: Request):
+        cfg = store.get_smart_links_config()
+        if not bool(cfg.get("debug")):
+            return {"ok": True, "logged": False}
+        target = str(payload.get("target") or "").strip()[:80]
+        host = str(payload.get("host") or "").strip()[:120]
+        mode = str(payload.get("mode") or "").strip()[:40]
+        selected = str(payload.get("selected") or "").strip()[:300]
+        reason = str(payload.get("reason") or "").strip()[:120]
+        real_ip, proxy_ip, ua = _request_client_info(request)
+        _LOGGER.info(
+            "smart_link target=%s host=%s mode=%s selected=%s reason=%s real_ip=%s proxy_ip=%s ua=%s",
+            target or "-",
+            host or "-",
+            mode or "-",
+            selected or "-",
+            reason or "-",
+            real_ip,
+            proxy_ip,
+            ua[:220],
+        )
+        return {"ok": True, "logged": True}
+
+    @api.get("/api/diag/net")
+    async def api_diag_net():
+        def _tcp_check(host: str, port: int, timeout_s: float = 2.5) -> dict[str, Any]:
+            t0 = time.time()
+            try:
+                with socket.create_connection((host, int(port)), timeout=timeout_s):
+                    ms = int((time.time() - t0) * 1000)
+                    return {"ok": True, "latency_ms": ms}
+            except Exception as e:
+                ms = int((time.time() - t0) * 1000)
+                return {"ok": False, "latency_ms": ms, "error": str(e)}
+
+        def _http_check(url: str, timeout_s: float = 4.0) -> dict[str, Any]:
+            t0 = time.time()
+            try:
+                req = urllib.request.Request(url=url, method="GET")
+                with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+                    ms = int((time.time() - t0) * 1000)
+                    return {"ok": True, "status": int(getattr(resp, "status", 200)), "latency_ms": ms}
+            except urllib.error.HTTPError as e:
+                ms = int((time.time() - t0) * 1000)
+                return {"ok": True, "status": int(getattr(e, "code", 0) or 0), "latency_ms": ms, "http_error": True}
+            except Exception as e:
+                ms = int((time.time() - t0) * 1000)
+                return {"ok": False, "latency_ms": ms, "error": str(e)}
+
+        out: dict[str, Any] = {"now": datetime.now().isoformat(), "addon_version": ADDON_VERSION, "targets": []}
+        for t in store.list_proxy_targets():
+            try:
+                name = str(t.get("name") or "").strip()
+                base_url = str(t.get("base_url") or "").strip()
+                if not name or not base_url:
+                    continue
+                parsed = urllib.parse.urlparse(base_url)
+                host = str(parsed.hostname or "").strip()
+                port = int(parsed.port or (443 if parsed.scheme == "https" else 80))
+                item: dict[str, Any] = {
+                    "name": name,
+                    "base_url": base_url,
+                    "host": host,
+                    "port": port,
+                    "tcp": _tcp_check(host, port) if host else {"ok": False, "error": "invalid host"},
+                    "http": _http_check(base_url),
+                }
+                out["targets"].append(item)
+            except Exception as e:
+                out["targets"].append({"name": str(t.get("name") or ""), "error": str(e)})
+        return out
+
+    @api.get("/api/user/devices")
+    async def api_user_devices():
+        return _list_user_devices()
+
+    def _user_snapshot_payload() -> dict[str, Any]:
+        return {
+            "devices": _list_user_devices(),
+            "cover_groups": store.list_cover_groups(),
+            "states": {
+                k.split(":", 1)[1]: v
+                for k, v in store.get_states().items()
+                if isinstance(k, str) and k.startswith("light:")
+            },
+            "cover_states": {
+                k.split(":", 1)[1]: v
+                for k, v in store.get_states().items()
+                if isinstance(k, str) and k.startswith("cover:")
+            },
+            "temp_states": {
+                k.split(":", 1)[1]: v
+                for k, v in store.get_states().items()
+                if isinstance(k, str) and k.startswith("temp:")
+            },
+            "humidity_states": {
+                k.split(":", 1)[1]: v
+                for k, v in store.get_states().items()
+                if isinstance(k, str) and k.startswith("humidity:")
+            },
+            "illuminance_states": {
+                k.split(":", 1)[1]: v
+                for k, v in store.get_states().items()
+                if isinstance(k, str) and k.startswith("illuminance:")
+            },
+            "air_quality_states": {
+                k.split(":", 1)[1]: v
+                for k, v in store.get_states().items()
+                if isinstance(k, str) and k.startswith("air_quality:")
+            },
+            "gas_percent_states": {
+                k.split(":", 1)[1]: v
+                for k, v in store.get_states().items()
+                if isinstance(k, str) and k.startswith("gas_percent:")
+            },
+            "dry_contact_states": {
+                k.split(":", 1)[1]: v
+                for k, v in store.get_states().items()
+                if isinstance(k, str) and k.startswith("dry_contact:")
+            },
+            "pir_states": {
+                k.split(":", 1)[1]: v
+                for k, v in store.get_states().items()
+                if isinstance(k, str) and k.startswith("pir:")
+            },
+            "ultrasonic_states": {
+                k.split(":", 1)[1]: v
+                for k, v in store.get_states().items()
+                if isinstance(k, str) and k.startswith("ultrasonic:")
+            },
+            "ha_states": getattr(api.state, "ha_states", {}) or {},
+            "mqtt": api.state.mqtt.status().__dict__,
+        }
+
+    def _smart_home_payload(legacy: dict[str, Any] | None = None) -> dict[str, Any]:
+        legacy = legacy or _user_snapshot_payload()
+        organized = _active_organization(_sync_organization())
+        gw: BusproGateway | None = api.state.gateway
+        hdl_available = bool(gw is not None and gw.started and gw.transport_ready())
+        additional_sources: dict[str, list[dict[str, Any]]] = {}
+        additional_events: dict[str, list[dict[str, Any]]] = {}
+        for source, provider in api.state.smart_home_sources.items():
+            try:
+                additional_sources[source] = provider() or []
+            except Exception:
+                logger.exception("Smart Home catalog provider failed: %s", source)
+                additional_sources[source] = []
+        for source, provider in api.state.smart_home_event_sources.items():
+            try:
+                additional_events[source] = provider() or []
+            except Exception:
+                logger.exception("Smart Home routine event provider failed: %s", source)
+                additional_events[source] = []
+        return build_smart_home(
+            hdl_devices=store.list_devices(),
+            ksenia_snapshot=ksenia.snapshot(),
+            organization=organized,
+            states=legacy,
+            hdl_available=hdl_available,
+            additional_sources=additional_sources,
+            additional_events=additional_events,
+        )
+
+    @api.get("/api/user/routine-access-events")
+    async def api_user_routine_access_events():
+        return {"schema_version": "1.0", "items": nuki_manager.store.routine_access_events(limit=50)}
+
+    @api.get("/api/user/activity-feed")
+    async def api_user_activity_feed(after: int = 0):
+        catalog = _smart_home_payload().get("devices", [])
+        return await asyncio.to_thread(activity_feed.read, after, 200, [item["id"] for item in catalog])
+
+    @api.get("/api/user/snapshot")
+    async def api_user_snapshot():
+        payload = _user_snapshot_payload()
+        payload["access_events"] = {"schema_version": "1.0", "items": nuki_manager.store.access_events()}
+        ksenia_snapshot = ksenia.snapshot()
+        payload["ksenia"] = ksenia_snapshot
+        payload["smart_home"] = _smart_home_payload(payload)
+        smart_devices = payload["smart_home"].get("devices") or []
+        smart_counts: dict[str, int] = {}
+        smart_visible: dict[str, int] = {}
+        for item in smart_devices:
+            if not isinstance(item, dict):
+                continue
+            source = str(item.get("source") or "").strip().lower()
+            if not source:
+                continue
+            smart_counts[source] = smart_counts.get(source, 0) + 1
+            if item.get("visible", True):
+                smart_visible[source] = smart_visible.get(source, 0) + 1
+        hdl_detected = len(store.list_devices())
+        ha_configured = store.list_ha_devices()
+        ha_security = sum(1 for item in ha_configured if str(item.get("page") or "").strip().lower() == "locks")
+        ha_exported = smart_counts.get("ha", 0)
+        knx_catalog = knx_manager.store.catalog(getattr(api.state, "knx_states", {}) or {})
+        bticino_data = bticino_manager.store.load().get("integrations") or {}
+        myhome_detected = len((bticino_data.get("myhome_scs") or {}).get("devices") or {})
+        home_plus_detected = len((bticino_data.get("home_plus_control") or {}).get("devices") or {})
+        esphome_detected = len(esphome_manager.store.load().get("entities") or {})
+        payload["devices_by_bus"] = {
+            "hdl_buspro": hdl_detected,
+            "ksenia": len(ksenia_snapshot.get("devices") or []),
+            "home_assistant": len(ha_configured),
+            "knx": len(knx_catalog),
+            "bticino": myhome_detected + home_plus_detected,
+            "myhome_scs": myhome_detected,
+            "home_plus_control": home_plus_detected,
+            "esphome": esphome_detected,
+            "tuya": 0, "modbus": len(modbus_manager.store.load().get("catalog") or {}), "dali": 0,
+        }
+        payload["integration_metrics"] = {
+            "hdl_buspro": {
+                "detected": hdl_detected,
+                "exported": smart_counts.get("hdl", 0),
+                "visible": smart_visible.get("hdl", 0),
+                "excluded": max(0, hdl_detected - smart_counts.get("hdl", 0)),
+            },
+            "ksenia": {
+                "detected": len(ksenia_snapshot.get("devices") or []),
+                "exported": smart_counts.get("ksenia", 0),
+                "visible": smart_visible.get("ksenia", 0),
+                "excluded": max(0, len(ksenia_snapshot.get("devices") or []) - smart_counts.get("ksenia", 0)),
+                "security_policy": "Funzioni di sicurezza escluse dal catalogo Smart Home",
+            },
+            "home_assistant": {
+                "configured": len(ha_configured),
+                "exported": ha_exported,
+                "visible": smart_visible.get("ha", 0),
+                "security_legacy": ha_security,
+                "excluded": max(0, len(ha_configured) - ha_exported - ha_security),
+            },
+            "knx": {
+                "detected": len(knx_catalog),
+                "exported": smart_counts.get("knx", 0),
+                "visible": smart_visible.get("knx", 0),
+                "excluded": max(0, len(knx_catalog) - smart_counts.get("knx", 0)),
+            },
+            "myhome_scs": {
+                "detected": myhome_detected,
+                "exported": smart_counts.get("myhome_scs", 0),
+                "visible": smart_visible.get("myhome_scs", 0),
+                "excluded": max(0, myhome_detected - smart_counts.get("myhome_scs", 0)),
+            },
+            "home_plus_control": {
+                "detected": home_plus_detected,
+                "exported": smart_counts.get("home_plus_control", 0),
+                "visible": smart_visible.get("home_plus_control", 0),
+                "excluded": max(0, home_plus_detected - smart_counts.get("home_plus_control", 0)),
+            },
+            "modbus": {
+                "detected": len(modbus_manager.store.load().get("catalog") or {}),
+                "exported": smart_counts.get("modbus", 0),
+                "visible": smart_visible.get("modbus", 0),
+                "excluded": max(0, len(modbus_manager.store.load().get("catalog") or {}) - smart_counts.get("modbus", 0)),
+            },
+            "esphome": {
+                "detected": esphome_detected,
+                "exported": smart_counts.get("esphome", 0),
+                "visible": smart_visible.get("esphome", 0),
+                "excluded": max(0, esphome_detected - smart_counts.get("esphome", 0)),
+            },
+        }
+        return payload
+
+    @api.get("/api/system/integrations")
+    async def api_system_integrations():
+        snapshot = await api_user_snapshot()
+        aliases = {"hdl_buspro": "hdl", "home_assistant": "ha"}
+        detected = {aliases.get(key, key): item.get("detected", item.get("configured"))
+                    for key, item in snapshot.get("integration_metrics", {}).items()}
+        providers = dict(api.state.smart_home_sources)
+        providers.update(api.state.organization_sources)
+        for source, provider in providers.items():
+            if source not in detected:
+                try:
+                    detected[source] = len(provider() or [])
+                except Exception:
+                    detected[source] = None
+        return integration_overview({"hdl", "ksenia", *api.state.smart_home_sources},
+                                    snapshot["smart_home"]["devices"], detected)
+
+    @api.get("/api/integrations/ksenia")
+    async def api_ksenia_snapshot():
+        snapshot = ksenia.snapshot()
+        organized = _sync_organization()
+        floors = {x["id"]: x["name"] for x in organized.get("floors") or []}
+        rooms = {x["id"]: x["name"] for x in organized.get("rooms") or []}
+        groups = {x["id"]: x["name"] for x in organized.get("groups") or []}
+        for device in snapshot.get("devices") or []:
+            record = (organized.get("devices") or {}).get(f"ksenia:{device.get('device_id')}") or {}
+            device["organization"] = {
+                "floor_id": record.get("floor_id") or "",
+                "floor_name": floors.get(record.get("floor_id"), ""),
+                "room_id": record.get("room_id") or "",
+                "room_name": rooms.get(record.get("room_id"), ""),
+                "group_ids": record.get("group_ids") or [],
+                "group_names": [groups[x] for x in record.get("group_ids") or [] if x in groups],
+                "categories": record.get("categories") or [],
+                "orders": record.get("orders") or {},
+                "visible": bool(record.get("visible", True)),
+                "favorite": bool(record.get("favorite", False)),
+                "shortcut": bool(record.get("shortcut", False)),
+                "icon": record.get("icon_override") or record.get("icon_auto") or "mdi:devices",
+            }
+        return snapshot
+
+    @api.get("/api/integrations/knx")
+    async def api_knx_snapshot():
+        if knx_manager.ws is not None and not knx_manager.base_data and not knx_manager.last_error:
+            try:
+                entries = await knx_manager.ws.command("config_entries/get", domain="knx")
+                if not isinstance(entries, list) or not entries:
+                    knx_manager.last_error = "KNX integration is not configured"
+            except Exception as exc:
+                knx_manager.last_error = str(exc)
+        data = knx_manager.store.load()
+        return {
+            "status": knx_manager.status(),
+            "devices": list((data.get("devices") or {}).values()),
+        }
+
+    @api.post("/api/integrations/knx/sync")
+    async def api_knx_sync():
+        if not _ha_enabled():
+            raise HTTPException(status_code=503, detail="Servizi di integrazione not available")
+        states = await asyncio.to_thread(_ha_request, "GET", "/api/states", payload=None, timeout_s=15)
+        if not isinstance(states, list):
+            raise HTTPException(status_code=502, detail="Risposta stati del motore di integrazione non valida")
+        try:
+            result = await knx_manager.sync(states)
+        except KnxNotConfigured as exc:
+            raise HTTPException(status_code=409, detail={"code": "setup_required", "message": str(exc)})
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc))
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+        api.state.knx_states = {
+            str(item.get("entity_id") or "").strip().lower(): item
+            for item in states if isinstance(item, dict) and str(item.get("entity_id") or "").strip()
+        }
+        _sync_organization()
+        await _broadcast_devices()
+        return {"ok": True, "result": result, "status": knx_manager.status()}
+
+    @api.post("/api/integrations/knx/provision/start")
+    async def api_knx_provision_start():
+        if not _ha_enabled():
+            raise HTTPException(status_code=503, detail="Servizi di integrazione not available")
+        try:
+            result = await asyncio.to_thread(
+                _ha_request,
+                "POST",
+                "/api/config/config_entries/flow",
+                payload={"handler": "knx"},
+                timeout_s=20,
+            )
+        except HTTPException:
+            raise
+        if not isinstance(result, dict):
+            raise HTTPException(status_code=502, detail="Invalid KNX provisioning response")
+        return {"ok": True, "flow": result}
+
+    @api.post("/api/integrations/knx/provision/{flow_id}")
+    async def api_knx_provision_step(flow_id: str, payload: dict[str, Any]):
+        clean_id = str(flow_id or "").strip()
+        if not clean_id or len(clean_id) > 128:
+            raise HTTPException(status_code=400, detail="invalid flow id")
+        result = await asyncio.to_thread(
+            _ha_request,
+            "POST",
+            f"/api/config/config_entries/flow/{urllib.parse.quote(clean_id, safe='')}",
+            payload=payload,
+            timeout_s=30,
+        )
+        return {"ok": True, "flow": result}
+
+    @api.post("/api/integrations/knx/project")
+    async def api_knx_project_upload(request: Request):
+        raw_name = urllib.parse.unquote(str(request.headers.get("x-knx-filename") or "").strip())
+        filename = os.path.basename(raw_name)
+        if not filename or filename != raw_name or not filename.lower().endswith(".knxproj"):
+            raise HTTPException(status_code=400, detail="Select a valid .knxproj file")
+        length = int(request.headers.get("content-length") or 0)
+        if length <= 0 or length > 100 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="KNX project must be between 1 byte and 100 MB")
+        content = await request.body()
+        if not content or len(content) > 100 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="KNX project must be between 1 byte and 100 MB")
+        password = str(request.headers.get("x-knx-password") or "")
+        file_id = await asyncio.to_thread(_ha_upload_file, filename, content)
+        try:
+            await knx_manager.ws.command("knx/project_file_process", file_id=file_id, password=password)
+            states = await asyncio.to_thread(_ha_request, "GET", "/api/states", payload=None, timeout_s=15)
+            result = await knx_manager.sync(states if isinstance(states, list) else [])
+        except Exception as exc:
+            knx_manager.last_error = str(exc)
+            raise HTTPException(status_code=502, detail=str(exc))
+        return {"ok": True, "result": result, "status": knx_manager.status()}
+
+    @api.get("/api/integrations/knx/monitor")
+    async def api_knx_monitor():
+        if knx_manager.ws is None:
+            raise HTTPException(status_code=503, detail="Servizi di integrazione not available")
+        try:
+            result = await knx_manager.ws.command("knx/group_monitor_info")
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+        if not isinstance(result, dict):
+            raise HTTPException(status_code=502, detail="Invalid KNX monitor response")
+        telegrams = result.get("recent_telegrams") if isinstance(result.get("recent_telegrams"), list) else []
+        return {"project_loaded": bool(result.get("project_loaded")), "telegrams": telegrams[:500]}
+
+    @api.put("/api/integrations/knx/devices/{device_id}")
+    async def api_knx_device_update(device_id: str, payload: dict[str, Any]):
+        try:
+            row = knx_manager.store.update(
+                str(device_id or "").strip(),
+                enabled=payload.get("enabled") if "enabled" in payload else None,
+                read_only=payload.get("read_only") if "read_only" in payload else None,
+            )
+        except KeyError:
+            raise HTTPException(status_code=404, detail="KNX device not found")
+        _sync_organization()
+        await _broadcast_devices()
+        return {"ok": True, "device": row}
+
+    def _bticino_source(source: str) -> str:
+        clean = str(source or "").strip().lower()
+        if clean not in BTICINO_INTEGRATIONS:
+            raise HTTPException(status_code=404, detail="BTicino integration not found")
+        return clean
+
+    @api.get("/api/integrations/bticino/{source}")
+    async def api_bticino_snapshot(source: str):
+        clean = _bticino_source(source)
+        spec = BTICINO_INTEGRATIONS[clean]
+        if clean == "home_plus_control":
+            data = bticino_manager.store.load()["integrations"][clean]
+            direct = netatmo_direct.status()
+            devices = data.get("devices") or {}
+            return {
+                "source": clean,
+                "status": {
+                    **spec, "available": True, "configured": direct["credentials_configured"],
+                    "connected": direct["connected"], "config_entries": 1 if direct["connected"] else 0,
+                    "devices": len(devices), "enabled": sum(bool(x.get("enabled")) for x in devices.values()),
+                    "orphaned": sum(bool(x.get("orphaned")) for x in devices.values()),
+                    "last_sync": data.get("last_sync"), "error": direct.get("error") or "",
+                    "setup_required": not direct["connected"],
+                },
+                "devices": list(devices.values()),
+                "component": {"installed": True, "managed_version": "e-Control Direct", "official": True},
+            }
+        if bticino_manager.ws is not None and not bticino_manager.entries.get(clean):
+            try:
+                entries = await bticino_manager.ws.command("config_entries/get", domain=spec["domain"])
+                bticino_manager.entries[clean] = entries if isinstance(entries, list) else []
+                if not bticino_manager.entries[clean]:
+                    bticino_manager.errors[clean] = f"{spec['name']} is not configured"
+            except Exception as exc:
+                bticino_manager.errors[clean] = str(exc)
+        data = bticino_manager.store.load()["integrations"][clean]
+        return {
+            "source": clean,
+            "status": bticino_manager.status(clean),
+            "devices": list((data.get("devices") or {}).values()),
+            "component": myhome_installer.status() if clean == "myhome_scs" else {
+                "installed": True, "managed_version": "Motore di integrazione", "official": True,
+            },
+        }
+
+    @api.post("/api/integrations/bticino/myhome_scs/component/install")
+    async def api_myhome_component_install():
+        try:
+            result = await asyncio.to_thread(myhome_installer.install)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+        return {"ok": True, "component": result, "message": "Componente installato; riavvia Motore di integrazione per caricarlo"}
+
+    @api.post("/api/integrations/bticino/myhome_scs/component/restart")
+    async def api_myhome_component_restart():
+        result = await asyncio.to_thread(_supervisor_request, "POST", "/core/restart", timeout_s=30)
+        return {"ok": True, "result": result}
+
+    @api.post("/api/integrations/bticino/{source}/sync")
+    async def api_bticino_sync(source: str):
+        clean = _bticino_source(source)
+        if clean == "home_plus_control":
+            if not netatmo_direct.status()["connected"]:
+                raise HTTPException(status_code=409, detail="Account Netatmo non collegato a e-Control")
+            try:
+                modules = await asyncio.to_thread(netatmo_direct.discover)
+                result = bticino_manager.store.sync_direct_netatmo(modules)
+            except Exception as exc:
+                _LOGGER.warning("netatmo_direct_sync_failed", exc_info=True)
+                raise HTTPException(status_code=502, detail="Sincronizzazione Netatmo non riuscita: " + str(exc))
+            _sync_organization()
+            await _broadcast_devices()
+            return {"ok": True, "result": result, "status": (await api_bticino_snapshot(clean))["status"]}
+        if not _ha_enabled():
+            raise HTTPException(status_code=503, detail="Servizi di integrazione not available")
+        states = await asyncio.to_thread(_ha_request, "GET", "/api/states", payload=None, timeout_s=15)
+        if not isinstance(states, list):
+            raise HTTPException(status_code=502, detail="Risposta stati del motore di integrazione non valida")
+        try:
+            result = await bticino_manager.sync(clean, states)
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc))
+        except RuntimeError as exc:
+            status = 409 if "not configured" in str(exc).lower() else 502
+            raise HTTPException(status_code=status, detail=str(exc))
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+        api.state.ha_states = {
+            str(item.get("entity_id") or "").strip().lower(): item
+            for item in states if isinstance(item, dict) and str(item.get("entity_id") or "").strip()
+        }
+        _sync_organization()
+        await _broadcast_devices()
+        return {"ok": True, "result": result, "status": bticino_manager.status(clean)}
+
+    @api.post("/api/integrations/bticino/{source}/provision/start")
+    async def api_bticino_provision_start(source: str):
+        clean = _bticino_source(source)
+        if clean == "home_plus_control":
+            local_ip = str(getattr(settings.gateway, "local_ip", "") or "").strip()
+            if not local_ip:
+                raise HTTPException(status_code=409, detail="Configura l'indirizzo locale e-Control prima del collegamento Netatmo")
+            redirect_uri = f"http://{local_ip}:{ADMIN_PORT}/api/integrations/netatmo/oauth/callback"
+            try:
+                url = netatmo_direct.begin(redirect_uri)
+            except ValueError as exc:
+                raise HTTPException(status_code=409, detail=str(exc))
+            return {
+                "ok": True, "source": clean,
+                "flow": {"type": "external", "step_id": "auth", "url": url},
+                "redirect_uri": redirect_uri,
+            }
+        if not _ha_enabled():
+            raise HTTPException(status_code=503, detail="Servizi di integrazione not available")
+        domain = BTICINO_INTEGRATIONS[clean]["domain"]
+        try:
+            result = await asyncio.to_thread(
+                _ha_request,
+                "POST",
+                "/api/config/config_entries/flow",
+                payload={"handler": domain},
+                timeout_s=20,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+        if not isinstance(result, dict):
+            raise HTTPException(status_code=502, detail="Invalid integration provisioning response")
+        # HA keeps abandoned OAuth flows in memory. Recover from e-Control,
+        # without asking the installer to open Home Assistant.
+        if result.get("type") == "abort" and result.get("reason") == "already_in_progress":
+            stale_flow_id = str(result.get("flow_id") or "").strip()
+            try:
+                if bticino_manager.ws is not None:
+                    progress = await bticino_manager.ws.command("config_entries/flow/progress")
+                    _LOGGER.warning(
+                        "netatmo_flow_recovery progress=%s",
+                        [
+                            {"flow_id": row.get("flow_id"), "handler": row.get("handler")}
+                            for row in progress if isinstance(row, dict)
+                        ] if isinstance(progress, list) else type(progress).__name__,
+                    )
+                    if isinstance(progress, list):
+                        def _flow_matches(row: dict[str, Any]) -> bool:
+                            handler = row.get("handler")
+                            if isinstance(handler, (list, tuple)):
+                                return domain in {str(part or "") for part in handler}
+                            return str(handler or "") == domain
+
+                        active = next(
+                            (
+                                row for row in progress
+                                if isinstance(row, dict)
+                                and _flow_matches(row)
+                                and str(row.get("flow_id") or "").strip()
+                            ),
+                            None,
+                        )
+                        if active:
+                            stale_flow_id = str(active["flow_id"]).strip()
+                if stale_flow_id:
+                    try:
+                        await asyncio.to_thread(
+                            _ha_request,
+                            "DELETE",
+                            f"/api/config/config_entries/flow/{urllib.parse.quote(stale_flow_id, safe='')}",
+                            payload=None,
+                            timeout_s=15,
+                        )
+                    except HTTPException as exc:
+                        if exc.status_code != 404:
+                            raise
+                result = await asyncio.to_thread(
+                    _ha_request,
+                    "POST",
+                    "/api/config/config_entries/flow",
+                    payload={"handler": domain},
+                    timeout_s=20,
+                )
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=502,
+                    detail="Impossibile riavviare il configuratore Netatmo rimasto in sospeso: " + str(exc),
+                )
+            if not isinstance(result, dict):
+                raise HTTPException(status_code=502, detail="Invalid integration provisioning response")
+            if result.get("type") == "abort" and result.get("reason") == "already_in_progress":
+                raise HTTPException(
+                    status_code=409,
+                    detail="Il flusso Netatmo è ancora occupato e non può essere recuperato automaticamente.",
+                )
+        # Keep Home Assistant as an implementation detail. When HA asks which
+        # OAuth implementation to use, prefer the credential named e-Control Hub
+        # and continue the flow without exposing engine choices to the installer.
+        if clean == "home_plus_control" and result.get("step_id") == "pick_implementation":
+            schema = result.get("data_schema") if isinstance(result.get("data_schema"), list) else []
+            implementation_value = ""
+            for field in schema:
+                if not isinstance(field, dict) or str(field.get("name") or "") != "implementation":
+                    continue
+                options = (field.get("selector") or {}).get("select", {}).get("options") or field.get("options") or []
+                for option in options:
+                    value = option.get("value") if isinstance(option, dict) else (option[0] if isinstance(option, list) else option)
+                    label = option.get("label") if isinstance(option, dict) else (option[1] if isinstance(option, list) and len(option) > 1 else option)
+                    if str(label or "").strip().lower() == "e-control hub":
+                        implementation_value = str(value or "")
+                        break
+            flow_id = str(result.get("flow_id") or "").strip()
+            if implementation_value and flow_id:
+                result = await asyncio.to_thread(
+                    _ha_request,
+                    "POST",
+                    f"/api/config/config_entries/flow/{urllib.parse.quote(flow_id, safe='')}",
+                    payload={"implementation": implementation_value},
+                    timeout_s=30,
+                )
+        return {"ok": True, "source": clean, "flow": result}
+
+    @api.post("/api/integrations/bticino/{source}/provision/reset")
+    async def api_bticino_provision_reset(source: str):
+        clean = _bticino_source(source)
+        domain = BTICINO_INTEGRATIONS[clean]["domain"]
+        removed = 0
+        try:
+            if bticino_manager.ws is not None:
+                progress = await bticino_manager.ws.command("config_entries/flow/progress")
+                for row in progress if isinstance(progress, list) else []:
+                    if not isinstance(row, dict):
+                        continue
+                    handler = row.get("handler")
+                    handlers = {str(part or "") for part in handler} if isinstance(handler, (list, tuple)) else {str(handler or "")}
+                    flow_id = str(row.get("flow_id") or "").strip()
+                    if domain not in handlers or not flow_id:
+                        continue
+                    try:
+                        await asyncio.to_thread(
+                            _ha_request,
+                            "DELETE",
+                            f"/api/config/config_entries/flow/{urllib.parse.quote(flow_id, safe='')}",
+                            payload=None,
+                            timeout_s=15,
+                        )
+                        removed += 1
+                    except Exception:
+                        _LOGGER.warning("Unable to remove stale %s flow %s", domain, flow_id, exc_info=True)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail="Impossibile azzerare il tentativo di collegamento: " + str(exc))
+
+        return {
+            "ok": True,
+            "source": clean,
+            "removed_flows": removed,
+            "message": "Tentativi precedenti recuperabili eliminati. Puoi riprovare il collegamento.",
+        }
+
+    @api.get("/api/integrations/bticino/home_plus_control/credentials")
+    async def api_homeplus_credentials_status():
+        status = netatmo_direct.status()
+        local_ip = str(getattr(settings.gateway, "local_ip", "") or "").strip()
+        return {
+            "configured": status["credentials_configured"],
+            "connected": status["connected"],
+            "names": ["e-Control Hub"] if status["credentials_configured"] else [],
+            "redirect_uri": f"http://{local_ip}:{ADMIN_PORT}/api/integrations/netatmo/oauth/callback" if local_ip else "",
+        }
+
+    @api.post("/api/integrations/bticino/home_plus_control/credentials")
+    async def api_homeplus_credentials_save(payload: dict[str, Any]):
+        client_id = str(payload.get("client_id") or "").strip()
+        client_secret = str(payload.get("client_secret") or "").strip()
+        if not 8 <= len(client_id) <= 256 or not 8 <= len(client_secret) <= 512:
+            raise HTTPException(status_code=400, detail="Client ID o Client Secret Netatmo non validi")
+        netatmo_direct.save_credentials(client_id, client_secret)
+        return {"ok": True, "configured": True}
+
+    @api.get("/api/integrations/netatmo/oauth/callback", response_class=HTMLResponse)
+    async def api_netatmo_oauth_callback(code: str = "", state: str = "", error: str = ""):
+        if error:
+            return HTMLResponse("<h1>Collegamento annullato</h1><p>Puoi chiudere questa pagina e tornare in e-Control.</p>", status_code=400)
+        try:
+            await asyncio.to_thread(netatmo_direct.complete, code=code, state=state)
+        except Exception as exc:
+            _LOGGER.warning("netatmo_direct_callback_failed", exc_info=True)
+            return HTMLResponse(f"<h1>Collegamento non completato</h1><p>{html.escape(str(exc))}</p>", status_code=400)
+        return HTMLResponse("<h1>Account collegato a e-Control</h1><p>Puoi chiudere questa pagina e tornare in e-Control.</p>")
+
+    @api.post("/api/integrations/bticino/{source}/provision/{flow_id}")
+    async def api_bticino_provision_step(source: str, flow_id: str, payload: dict[str, Any]):
+        clean = _bticino_source(source)
+        clean_id = str(flow_id or "").strip()
+        if not clean_id or len(clean_id) > 128:
+            raise HTTPException(status_code=400, detail="invalid flow id")
+        try:
+            result = await asyncio.to_thread(
+                _ha_request,
+                "POST",
+                f"/api/config/config_entries/flow/{urllib.parse.quote(clean_id, safe='')}",
+                payload=payload,
+                timeout_s=30,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+        return {"ok": True, "source": clean, "flow": result}
+
+    @api.put("/api/integrations/bticino/{source}/devices/{device_id}")
+    async def api_bticino_device_update(source: str, device_id: str, payload: dict[str, Any]):
+        clean = _bticino_source(source)
+        try:
+            row = bticino_manager.store.update(
+                clean,
+                str(device_id or "").strip(),
+                enabled=payload.get("enabled") if "enabled" in payload else None,
+                read_only=payload.get("read_only") if "read_only" in payload else None,
+            )
+        except KeyError:
+            raise HTTPException(status_code=404, detail="BTicino device not found")
+        _sync_organization()
+        await _broadcast_devices()
+        return {"ok": True, "device": row}
+
+    @api.get("/api/integrations/modbus")
+    async def api_modbus_snapshot():
+        return modbus_manager.snapshot()
+
+    @api.put("/api/integrations/modbus/connections")
+    async def api_modbus_connection(payload: dict[str, Any]):
+        try: row = modbus_manager.store.put_connection(payload)
+        except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc))
+        return {"ok": True, "connection": row}
+
+    @api.put("/api/integrations/modbus/profiles")
+    async def api_modbus_profile(payload: dict[str, Any]):
+        try: row = modbus_manager.store.put_profile(payload)
+        except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc))
+        return {"ok": True, "profile": row}
+
+    @api.put("/api/integrations/modbus/devices")
+    async def api_modbus_device(payload: dict[str, Any]):
+        try: row = modbus_manager.store.put_device(payload)
+        except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc))
+        return {"ok": True, "device": row}
+
+    @api.post("/api/integrations/modbus/ferroli-omnia/setup")
+    async def api_modbus_ferroli_omnia_setup(payload: dict[str, Any]):
+        try:
+            result = modbus_manager.store.provision_ferroli_omnia(payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        return {"ok": True, "result": result, "apply_required": True}
+
+    @api.post("/api/integrations/modbus/apply")
+    async def api_modbus_apply():
+        try:
+            result = await asyncio.to_thread(modbus_manager.apply)
+            result["validation"] = await asyncio.to_thread(_supervisor_request, "POST", "/core/check", timeout_s=60)
+        except Exception as exc: raise HTTPException(status_code=502, detail=str(exc))
+        return {"ok": True, "result": result}
+
+    @api.post("/api/integrations/modbus/sync")
+    async def api_modbus_sync():
+        states = await asyncio.to_thread(_ha_request, "GET", "/api/states", payload=None, timeout_s=15)
+        try: result = await modbus_manager.sync(states if isinstance(states, list) else [])
+        except Exception as exc: raise HTTPException(status_code=502, detail=str(exc))
+        api.state.ha_states = {str(x.get("entity_id") or "").lower(): x for x in states if isinstance(x, dict)}
+        _sync_organization(); await _broadcast_devices()
+        return {"ok": True, "result": result}
+
+    @api.put("/api/integrations/modbus/catalog/{device_id}")
+    async def api_modbus_catalog_update(device_id: str, payload: dict[str, Any]):
+        try: row = modbus_manager.store.update_catalog(device_id, payload)
+        except KeyError: raise HTTPException(status_code=404, detail="Modbus entity not found")
+        _sync_organization(); await _broadcast_devices()
+        return {"ok": True, "device": row}
+
+    @api.post("/api/integrations/modbus/restart")
+    async def api_modbus_restart():
+        result = await asyncio.to_thread(_supervisor_request, "POST", "/core/restart", timeout_s=30)
+        return {"ok": True, "result": result}
+
+    def _save_mqtt_policies(changes):
+        _sync_organization()
+        with organization._lock:
+            document = organization.load()
+            for key, policy in changes.items():
+                record = document.get("devices", {}).get("mqtt:" + key)
+                if record is not None:
+                    record.update(eface=policy["enabled"], commands=bool(policy["enabled"] and policy["commands"]))
+            organization.save(document)
+
+    async def _mqtt_admin_command(key, payload):
+        row = next((row for row in mqtt_manager.store.rows(mqtt_manager.states) if row['device_id'] == key), None)
+        if not row:
+            raise ValueError('Entità MQTT non trovata')
+        async def execute(item, action, value):
+            return await mqtt_manager.command_entity(key, {'action': action, 'value': value}, administrative=True)
+        return await _audited_bus_command(execute, row, str(payload.get('action') or ''), payload.get('value'))
+
+    install_mqtt_routes(api, mqtt_manager, _sync_organization, lambda: _smart_home_payload().get("devices", []), _save_mqtt_policies, _mqtt_admin_command)
+
+    async def _mqtt_entity_state(row, state):
+        await hub.broadcast("mqtt_entity_state", {"entity_id": "mqtt:" + row["device_id"],
+                            "state": state.get("state", "unavailable")})
+
+    mqtt_manager.on_state = _mqtt_entity_state
+
+    @api.get("/api/integrations/esphome")
+    async def api_esphome():
+        try:
+            if esphome_ha_ws is not None:
+                try:
+                    states, registry = await asyncio.gather(
+                        asyncio.to_thread(_ha_request, "GET", "/api/states", payload=None, timeout_s=15),
+                        esphome_ha_ws.command("config/entity_registry/list"),
+                    )
+                    if isinstance(states, list) and isinstance(registry, list):
+                        esphome_manager.store.sync(registry, states)
+                        ids = set((esphome_manager.store.load().get("entities") or {}).keys())
+                        api.state.ha_states = {
+                            **(getattr(api.state, "ha_states", {}) or {}),
+                            **{str(row.get("entity_id") or "").lower(): row for row in states if isinstance(row, dict) and str(row.get("entity_id") or "").lower() in ids},
+                        }
+                        _sync_organization()
+                except Exception as exc:
+                    _LOGGER.debug("ESPHome entity refresh unavailable: %s", exc)
+            status, device_data = await asyncio.gather(esphome_manager.status(), esphome_manager.devices())
+            return {
+                "status": status,
+                "devices": device_data.get("configured") or [],
+                "importable": device_data.get("importable") or [],
+                "entities": esphome_manager.store.rows(getattr(api.state, "ha_states", {}) or {}),
+                "last_sync": esphome_manager.store.load().get("last_sync"),
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
+
+    @api.post("/api/integrations/esphome/builder/update")
+    async def api_esphome_builder_update():
+        try:
+            result = await esphome_manager.update_builder()
+            return {"ok": True, "accepted": True, "result": result}
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+
+    @api.get("/api/integrations/esphome/devices/{configuration}/config")
+    async def api_esphome_get_config(configuration: str):
+        try:
+            content = await esphome_manager.command("devices/get_config", {"configuration": configuration})
+            return {"configuration": configuration, "content": str(content or "")}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.put("/api/integrations/esphome/devices/{configuration}/config")
+    async def api_esphome_update_config(configuration: str, payload: dict[str, Any]):
+        content = payload.get("content")
+        expected = payload.get("expected")
+        if not isinstance(content, str) or not isinstance(expected, str):
+            raise HTTPException(status_code=400, detail="Contenuto o versione iniziale non validi")
+        try:
+            await esphome_manager.command("devices/update_config", {"configuration": configuration, "content": content, "expected": expected})
+            return {"ok": True, "configuration": configuration}
+        except Exception as exc:
+            raise HTTPException(status_code=409 if "changed" in str(exc).lower() else 400, detail=str(exc))
+
+    @api.post("/api/integrations/esphome/devices/{configuration}/validate")
+    async def api_esphome_validate(configuration: str):
+        try:
+            result = await esphome_manager.command("devices/validate", {"configuration": configuration}, timeout=180, stream=True)
+            return {"ok": True, **result}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.post("/api/integrations/esphome/devices/{configuration}/compile")
+    async def api_esphome_compile(configuration: str):
+        try:
+            return {"ok": True, "job": await esphome_manager.command("firmware/compile", {"configuration": configuration})}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.post("/api/integrations/esphome/devices/{configuration}/install")
+    async def api_esphome_install(configuration: str):
+        try:
+            return {"ok": True, "job": await esphome_manager.command("firmware/install", {"configuration": configuration, "port": "OTA"})}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.get("/api/integrations/esphome/jobs")
+    async def api_esphome_jobs(configuration: str = ""):
+        try:
+            args = {"configuration": configuration} if configuration else {}
+            return {"items": await esphome_manager.command("firmware/get_jobs", args)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.get("/api/integrations/esphome/jobs/{job_id}")
+    async def api_esphome_job(job_id: str):
+        try:
+            return await esphome_manager.command("firmware/get_job", {"job_id": job_id})
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+
+    @api.get("/api/integrations/esphome/devices/{configuration}/logs")
+    async def api_esphome_logs(configuration: str, seconds: int = 12):
+        seconds = max(3, min(30, int(seconds)))
+        try:
+            result = await esphome_manager.command("devices/logs", {"configuration": configuration, "port": "OTA", "no_states": False}, timeout=seconds, stream=True)
+            return {"ok": True, **result}
+        except asyncio.TimeoutError:
+            return {"ok": True, "events": [], "message": "Sessione log terminata"}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.get("/api/organization")
+    async def api_organization():
+        try:
+            return _active_organization(_sync_organization())
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.put("/api/organization/structure")
+    async def api_organization_structure(payload: dict[str, Any]):
+        try:
+            result = _active_organization(organization.replace_structure(payload))
+            await hub.broadcast("organization", result)
+            return result
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.put("/api/organization/device")
+    async def api_organization_device(payload: dict[str, Any]):
+        try:
+            result = organization.assign(payload)
+            await hub.broadcast("organization", {"device": result})
+            return result
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.put("/api/integrations/{source}/devices/{device_id}/configuration")
+    async def api_bus_device_configuration(source: str, device_id: str, payload: dict[str, Any]):
+        allowed = {"hdl", "ksenia", "ha", "knx", "myhome_scs", "home_plus_control", "modbus", "esphome", "nuki", "mqtt"}
+        if source not in allowed:
+            raise HTTPException(status_code=404, detail="Bus non supportato")
+        clean = {"source": source, "device_id": device_id}
+        for field in ("name_override", "device_class_override", "dimmable_override", "rgb_group", "rgb_channel", "icon_override"):
+            if field in payload:
+                clean[field] = payload[field]
+        try:
+            result = organization.assign(clean)
+            await hub.broadcast("organization", {"device": result})
+            await _broadcast_devices()
+            return {"ok": True, "device": result}
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    def _device_policies() -> dict[str, dict[str, bool]]:
+        policies: dict[str, dict[str, bool]] = {}
+        organization_devices = (organization.load().get("devices") or {})
+        for key, row in organization_devices.items():
+            if str(row.get("source") or "").lower() in {"hdl", "ksenia"}:
+                policies[key] = {"eface": bool(row.get("eface", True)), "commands": bool(row.get("commands", True))}
+        for device_id, row in (knx_manager.store.load().get("devices") or {}).items():
+            policies[f"knx:{device_id}"] = {"eface": bool(row.get("enabled")), "commands": not bool(row.get("read_only", True))}
+        for source in ("myhome_scs", "home_plus_control"):
+            rows = (((bticino_manager.store.load().get("integrations") or {}).get(source) or {}).get("devices") or {})
+            for device_id, row in rows.items():
+                policies[f"{source}:{device_id}"] = {"eface": bool(row.get("enabled")), "commands": not bool(row.get("read_only", True))}
+        for device_id, row in (modbus_manager.store.load().get("catalog") or {}).items():
+            policies[f"modbus:{device_id}"] = {"eface": bool(row.get("enabled")), "commands": not bool(row.get("read_only", True))}
+        for device_id, row in (esphome_manager.store.load().get("entities") or {}).items():
+            policies[f"esphome:{device_id}"] = {"eface": bool(row.get("enabled")), "commands": not bool(row.get("read_only", True))}
+        for device_id, row in (mqtt_manager.store.load().get("devices") or {}).items():
+            policies[f"mqtt:{device_id}"] = {"eface": bool(row.get("enabled")), "commands": not bool(row.get("read_only", True))}
+        for device_id, row in (nuki_manager.store.load().get("devices") or {}).items():
+            policies[f"nuki:{device_id}"] = {"eface": bool(row.get("enabled")), "commands": not bool(row.get("read_only", True))}
+        ha_capabilities = {
+            str(row.get("device_id") or ""): bool(row.get("capabilities"))
+            for row in build_ha_catalog(
+                store.list_ha_devices(),
+                getattr(api.state, "ha_states", {}) or {},
+                getattr(api.state, "ha_caps", {}) or {},
+                include_disabled=True,
+            )
+        }
+        for row in store.list_ha_devices():
+            device_id = str(row.get("entity_id") or "").strip().lower()
+            if device_id:
+                policies[f"ha:{device_id}"] = {
+                    "eface": bool(row.get("enabled", True)),
+                    "commands": ha_capabilities.get(device_id, False) and not bool(row.get("read_only", False)),
+                }
+        for key, row in organization_devices.items():
+            policies.setdefault(key, {"eface": bool(row.get("eface", True)), "commands": bool(row.get("commands", True))})
+        return policies
+
+    @api.get("/api/integrations/device-policies")
+    async def api_device_policies():
+        return {"items": _device_policies()}
+
+    @api.put("/api/integrations/{source}/devices/{device_id}/policy")
+    async def api_device_policy(source: str, device_id: str, payload: dict[str, Any]):
+        source = str(source or "").strip().lower()
+        enabled = bool(payload.get("eface")) if "eface" in payload else None
+        read_only = not bool(payload.get("commands")) if "commands" in payload else None
+        try:
+            if source == "knx":
+                row = knx_manager.store.update(device_id, enabled=enabled, read_only=read_only)
+            elif source in {"myhome_scs", "home_plus_control"}:
+                row = bticino_manager.store.update(source, device_id, enabled=enabled, read_only=read_only)
+            elif source == "modbus":
+                update = {}
+                if enabled is not None:
+                    update["enabled"] = enabled
+                if read_only is not None:
+                    update["read_only"] = read_only
+                row = modbus_manager.store.update_catalog(device_id, update)
+            elif source == "esphome":
+                row = esphome_manager.store.update(device_id, enabled=enabled, read_only=read_only)
+            elif source == "mqtt":
+                row = mqtt_manager.store.update(device_id, enabled=enabled, read_only=read_only)
+                _sync_organization()
+            elif source == "nuki":
+                update = {}
+                if enabled is not None:
+                    update["enabled"] = enabled
+                if read_only is not None:
+                    update["read_only"] = read_only
+                row = nuki_manager.store.update_device(device_id, update)
+            elif source == "ha":
+                row = store.update_ha_device_policy(device_id, enabled=enabled, read_only=read_only)
+            elif source in {"hdl", "ksenia"}:
+                update = {"source": source, "device_id": device_id}
+                if enabled is not None:
+                    update["eface"] = enabled
+                if read_only is not None:
+                    update["commands"] = not read_only
+                row = organization.assign(update)
+            else:
+                update = {"source": source, "device_id": device_id}
+                if enabled is not None:
+                    update["eface"] = enabled
+                if read_only is not None:
+                    update["commands"] = not read_only
+                row = organization.assign(update)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Dispositivo non trovato")
+        if source not in {"hdl", "ksenia"}:
+            update = {"source": source, "device_id": device_id}
+            if enabled is not None:
+                update["eface"] = enabled
+            if read_only is not None:
+                update["commands"] = not read_only
+            try:
+                organization.assign(update)
+            except ValueError:
+                pass
+        _sync_organization()
+        await _broadcast_devices()
+        return {"ok": True, "device": row, "policy": _device_policies().get(f"{source}:{device_id}")}
+
+    @api.post("/api/integrations/ksenia/command/{device_id}")
+    async def api_ksenia_command(device_id: str, payload: dict[str, Any]):
+        try:
+            return await asyncio.to_thread(
+                ksenia.execute,
+                device_id,
+                str(payload.get("action") or ""),
+                payload.get("value"),
+                timeout_s=payload.get("timeout_s"),
+            )
+        except ContractError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.get("/api/integrations/nuki")
+    async def api_nuki_snapshot():
+        return nuki_manager.snapshot()
+
+    @api.put("/api/integrations/nuki/config")
+    async def api_nuki_config(payload: dict[str, Any]):
+        try:
+            result = nuki_manager.configure(payload)
+            await hub.broadcast("nuki", result)
+            return result
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.post("/api/integrations/nuki/reset")
+    async def api_nuki_reset():
+        result = nuki_manager.reset()
+        _sync_organization()
+        await _broadcast_devices()
+        await hub.broadcast("nuki", result)
+        return {"ok": True, **result}
+
+    @api.post("/api/integrations/nuki/sync")
+    async def api_nuki_sync():
+        try:
+            result = await asyncio.to_thread(nuki_manager.sync_cloud)
+            _sync_organization()
+            await _broadcast_devices()
+            await hub.broadcast("nuki", nuki_manager.snapshot())
+            return {"ok": True, **result}
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.get("/api/integrations/nuki/bridges")
+    async def api_nuki_bridges():
+        try:
+            return {"items": await asyncio.to_thread(nuki_manager.discover_bridges)}
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.post("/api/integrations/nuki/bridge/pair")
+    async def api_nuki_bridge_pair(payload: dict[str, Any]):
+        host = str(payload.get("host") or "").strip()
+        if not host:
+            raise HTTPException(status_code=400, detail="Indirizzo del Nuki Bridge obbligatorio")
+        try:
+            result = await asyncio.to_thread(nuki_manager.pair_bridge, host, int(payload.get("port") or 8080))
+            _sync_organization(); await _broadcast_devices(); await hub.broadcast("nuki", nuki_manager.snapshot())
+            return {"ok": True, **result}
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.post("/api/integrations/nuki/bridge/sync")
+    async def api_nuki_bridge_sync():
+        try:
+            result = await asyncio.to_thread(nuki_manager.sync_bridge)
+            _sync_organization(); await _broadcast_devices(); await hub.broadcast("nuki", nuki_manager.snapshot())
+            return {"ok": True, **result}
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.get("/api/integrations/nuki/events")
+    async def api_nuki_events():
+        snapshot = nuki_manager.snapshot()
+        return {"items": snapshot.get("events") or []}
+
+    @api.get("/api/eface/snapshot")
+    async def api_eface_snapshot():
+        payload = _user_snapshot_payload()
+        payload["devices"] = _list_eface_devices()
+        payload["access_events"] = {"schema_version": "1.0", "items": nuki_manager.store.access_events()}
+        payload["smart_home"] = _smart_home_payload(payload)
+        return payload
+
+    @api.get("/api/ui") 
+    async def api_ui(): 
+        return {"group_order": store.get_group_order()} 
+
+    @api.put("/api/ui") 
+    async def api_ui_update(payload: dict[str, Any]): 
+        raw = payload.get("group_order")
+        order: list[str] = []
+        if isinstance(raw, str):
+            order = [s for s in raw.splitlines()]
+        elif isinstance(raw, list):
+            order = [str(x) for x in raw]
+        else:
+            raise HTTPException(status_code=400, detail="group_order must be list or string")
+
+        cleaned = store.set_group_order(order)
+        await hub.broadcast("ui", {"group_order": cleaned})
+        return {"group_order": cleaned}
+
+    @api.post("/api/ui/groups/rename")
+    async def api_ui_group_rename(payload: dict[str, Any]):
+        old_name = str(payload.get("old_name") or payload.get("old") or "").strip()
+        new_name = str(payload.get("new_name") or payload.get("new") or "").strip()
+        if old_name.startswith("#"):
+            old_name = old_name[1:].strip()
+        if new_name.startswith("#"):
+            new_name = new_name[1:].strip()
+        if not old_name or not new_name:
+            raise HTTPException(status_code=400, detail="old_name and new_name are required")
+        if old_name.casefold() == new_name.casefold():
+            return {"changed": False, "old_name": old_name, "new_name": new_name, "devices": 0, "ha_devices": 0, "group_order": 0, "group_order_value": store.get_group_order()}
+        try:
+            res = store.rename_group(old_name=old_name, new_name=new_name)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        await _broadcast_devices()
+        await hub.broadcast("ui", {"group_order": store.get_group_order()})
+        return {"changed": True, **res}
+
+    @api.get("/api/hub_links")
+    async def api_hub_links_list():
+        return {"links": store.list_hub_links()}
+
+    @api.get("/api/home_actions")
+    async def api_home_actions_list():
+        # Admin-only via port gate
+        return {"items": store.list_home_actions()}
+
+    @api.get("/api/home2_order")
+    async def api_home2_order_get():
+        # Admin-only via port gate
+        return {"order": store.get_home2_order()}
+
+    @api.get("/api/proxy_targets")
+    async def api_proxy_targets_list():
+        # Admin-only via port gate
+        return {"targets": store.list_proxy_targets()}
+
+    @api.get("/api/pwa_config")
+    async def api_pwa_config_get():
+        # Admin-only via port gate (useful to edit title/icon/theme)
+        return store.get_pwa_config()
+
+    @api.put("/api/pwa_config")
+    async def api_pwa_config_set(payload: dict[str, Any]):
+        # Admin-only via port gate
+        try:
+            cfg = store.set_pwa_config(payload)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        await hub.broadcast("pwa_config", {"pwa": cfg})
+        return cfg
+
+    @api.post("/api/proxy_targets")
+    async def api_proxy_targets_upsert(payload: dict[str, Any]):
+        # Admin-only via port gate
+        try:
+            item = store.upsert_proxy_target(payload)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        await hub.broadcast("proxy_targets", {"targets": store.list_proxy_targets()})
+        return item
+
+    @api.delete("/api/proxy_targets/{name}")
+    async def api_proxy_targets_delete(name: str):
+        # Admin-only via port gate
+        removed = store.delete_proxy_target(name=name)
+        if not removed:
+            raise HTTPException(status_code=404, detail="Not Found")
+        await hub.broadcast("proxy_targets", {"targets": store.list_proxy_targets()})
+        return {"ok": True}
+
+    @api.get("/api/hub_config")
+    async def api_hub_config_get():
+        return {
+            "hub_icons": store.get_hub_icons(),
+            "hub_show": store.get_hub_show(),
+            "hub_order": store.get_hub_order(),
+            "guard_enabled": guard_enabled,
+            "smart_links": store.get_smart_links_config(),
+        }
+
+    @api.put("/api/hub_config")
+    async def api_hub_config_set(payload: dict[str, Any]):
+        icons = payload.get("hub_icons", {})
+        if not isinstance(icons, dict):
+            raise HTTPException(status_code=400, detail="hub_icons must be an object")
+        cleaned = store.set_hub_icons(icons)
+        show = payload.get("hub_show", {})
+        if not isinstance(show, dict):
+            raise HTTPException(status_code=400, detail="hub_show must be an object")
+        cleaned_show = store.set_hub_show(show)
+        order_raw = payload.get("hub_order", None)
+        if order_raw is None:
+            cleaned_order = store.get_hub_order()
+        elif not isinstance(order_raw, list):
+            raise HTTPException(status_code=400, detail="hub_order must be a list")
+        else:
+            cleaned_order = store.set_hub_order(order_raw)
+        smart_raw = payload.get("smart_links", None)
+        if smart_raw is None:
+            smart_links = store.get_smart_links_config()
+        elif not isinstance(smart_raw, dict):
+            raise HTTPException(status_code=400, detail="smart_links must be an object")
+        else:
+            try:
+                smart_links = store.set_smart_links_config(smart_raw)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+        asyncio.create_task(_sync_icons_for_hub_config({"hub_icons": cleaned}))
+        await hub.broadcast("hub_config", {"hub_icons": cleaned, "hub_show": cleaned_show, "hub_order": cleaned_order, "smart_links": smart_links})
+        return {"hub_icons": cleaned, "hub_show": cleaned_show, "hub_order": cleaned_order, "smart_links": smart_links}
+
+    def _active_organization(document: dict[str, Any]) -> dict[str, Any]:
+        # Keep preferences on disk for a future re-import, not as ghost UI rows.
+        hidden = {"ha:" + entity_id for entity_id in store.archived_ha_label_entities()}
+        return {**document, "devices": {key: row for key, row in document.get("devices", {}).items() if key not in hidden}}
+
+    ha_label_sync_lock = asyncio.Lock()
+
+    async def _sync_ha_label_import() -> dict[str, Any]:
+        async with ha_label_sync_lock:
+            return await _sync_ha_label_import_locked()
+
+    async def _sync_ha_label_import_locked() -> dict[str, Any]:
+        cfg = store.get_ha_label_import()
+        if not cfg["enabled"]:
+            return {"enabled": False, "label": cfg["label"], "found": 0, "added": 0, "updated": 0}
+        if esphome_ha_ws is None:
+            raise RuntimeError("Connessione Home Assistant non disponibile")
+        labels, entities, devices, states = await asyncio.gather(
+            esphome_ha_ws.command("config/label_registry/list"),
+            esphome_ha_ws.command("config/entity_registry/list"),
+            esphome_ha_ws.command("config/device_registry/list"),
+            asyncio.to_thread(_ha_request, "GET", "/api/states", payload=None, timeout_s=15),
+        )
+        # Never turn a malformed/failed registry read into an empty selection.
+        if not all(isinstance(rows, list) and all(isinstance(row, dict) for row in rows)
+                   for rows in (labels, entities, devices, states)):
+            raise RuntimeError("Registri Home Assistant incompleti: catalogo conservato")
+        for rows, key in ((labels, "label_id"), (entities, "entity_id"), (devices, "id"), (states, "entity_id")):
+            if any(not isinstance(row.get(key), str) or not row[key].strip() for row in rows):
+                raise RuntimeError("Registri Home Assistant incompleti: catalogo conservato")
+        found = discover_labeled_entities(
+            label_name=cfg["label"],
+            labels=labels if isinstance(labels, list) else [],
+            entities=entities if isinstance(entities, list) else [],
+            devices=devices if isinstance(devices, list) else [],
+            states=states if isinstance(states, list) else [],
+        )
+        result = store.sync_ha_labeled_devices(found, label=cfg["label"])
+        if result["added"] or result["removed"] or result["restored"]:
+            _sync_organization()
+            await _broadcast_devices()
+        return {"enabled": True, "label": cfg["label"], **result}
+
+    @api.get("/api/ha_devices")
+    async def api_ha_devices_list():
+        # Admin-only via port gate
+        try:
+            sync = await _sync_ha_label_import()
+        except Exception as exc:
+            _LOGGER.debug("HASSIO label sync unavailable: %s", exc)
+            sync = {**store.get_ha_label_import(), "error": str(exc)}
+        return {"items": store.list_ha_devices(), "label_import": sync}
+
+    @api.put("/api/ha_devices/label-import/config")
+    async def api_ha_label_import_config(payload: dict[str, Any]):
+        try:
+            cfg = store.set_ha_label_import(payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        return {"ok": True, **cfg}
+
+    @api.post("/api/ha_devices/label-import/sync")
+    async def api_ha_label_import_sync():
+        try:
+            result = await _sync_ha_label_import()
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+        _sync_organization()
+        await _broadcast_devices()
+        return {"ok": True, **result, "items": store.list_ha_devices()}
+
+    @api.post("/api/ha_devices")
+    async def api_ha_devices_add(payload: dict[str, Any]):
+        # Admin-only via port gate
+        try:
+            item = store.add_ha_device(payload)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        asyncio.create_task(_sync_icons_for_ha_devices(store.list_ha_devices()))
+        await _broadcast_devices()
+        return item
+
+    @api.put("/api/ha_devices/{device_id}")
+    async def api_ha_devices_update(device_id: str, payload: dict[str, Any]):
+        # Admin-only via port gate
+        try:
+            item = store.update_ha_device(device_id=device_id, payload=payload)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        if item is None:
+            raise HTTPException(status_code=404, detail="Not Found")
+        asyncio.create_task(_sync_icons_for_ha_devices(store.list_ha_devices()))
+        await _broadcast_devices()
+        return item
+
+    @api.delete("/api/ha_devices/{device_id}")
+    async def api_ha_devices_delete(device_id: str):
+        # Admin-only via port gate
+        ok = store.delete_ha_device(device_id=device_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Not Found")
+        asyncio.create_task(_sync_icons_for_ha_devices(store.list_ha_devices()))
+        await _broadcast_devices()
+        return {"ok": True}
+
+    @api.get("/api/guard_cameras")
+    async def api_guard_cameras_list():
+        if not guard_enabled:
+            raise HTTPException(status_code=404, detail="Not Found")
+        # Admin-only via port gate
+        return {"items": store.list_guard_cameras()}
+
+    @api.post("/api/guard_cameras")
+    async def api_guard_cameras_add(payload: dict[str, Any]):
+        if not guard_enabled:
+            raise HTTPException(status_code=404, detail="Not Found")
+        # Admin-only via port gate
+        try:
+            item = store.add_guard_camera(payload)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        await hub.broadcast("guard_cameras", {"items": store.list_guard_cameras()})
+        return item
+
+    @api.put("/api/guard_cameras/{camera_id}")
+    async def api_guard_cameras_update(camera_id: str, payload: dict[str, Any]):
+        if not guard_enabled:
+            raise HTTPException(status_code=404, detail="Not Found")
+        # Admin-only via port gate
+        try:
+            item = store.update_guard_camera(camera_id=camera_id, payload=payload)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        if not item:
+            raise HTTPException(status_code=404, detail="Not Found")
+        await hub.broadcast("guard_cameras", {"items": store.list_guard_cameras()})
+        return item
+
+    @api.delete("/api/guard_cameras/{camera_id}")
+    async def api_guard_cameras_delete(camera_id: str):
+        if not guard_enabled:
+            raise HTTPException(status_code=404, detail="Not Found")
+        # Admin-only via port gate
+        ok = store.delete_guard_camera(camera_id=camera_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Not Found")
+        await hub.broadcast("guard_cameras", {"items": store.list_guard_cameras()})
+        return {"ok": True}
+
+    @api.get("/api/e_guard/snapshot")
+    async def api_guard_snapshot(entity_id: str, t: str | None = None):
+        if not guard_enabled:
+            raise HTTPException(status_code=404, detail="Not Found")
+        if not _ha_enabled():
+            raise HTTPException(status_code=503, detail="Motore di integrazione non disponibile")
+        eid = str(entity_id or "").strip().lower()
+        try:
+            try:
+                cam = store.find_guard_camera_by_entity(eid)
+            except Exception:
+                cam = None
+            if isinstance(cam, dict) and str(cam.get("source") or "").strip().lower() == "dahua":
+                try:
+                    mode = str(cam.get("dahua_mode") or "nvr").strip().lower()
+                    channel = int(cam.get("dahua_channel") or 1)
+                    if mode == "camera":
+                        channel = 1
+                    raw, ctype = _dahua_snapshot_fetch(
+                        host=str(cam.get("dahua_host") or "").strip(),
+                        user=str(cam.get("dahua_user") or "").strip(),
+                        password=str(cam.get("dahua_pass") or "").strip(),
+                        channel=channel,
+                        url_override=str(cam.get("dahua_url") or "").strip() or None,
+                        timeout_s=10,
+                    )
+                    return Response(content=raw, media_type=ctype or "image/jpeg")
+                except HTTPException as e:
+                    _LOGGER.warning("e_guard dahua snapshot failed for %s: %s", eid, e.detail)
+            if not eid.startswith("camera."):
+                raise HTTPException(status_code=400, detail="entity_id must be camera.*")
+
+            eid_enc = urllib.parse.quote(eid, safe="")
+            q = f"&time={urllib.parse.quote(str(t or ''), safe='')}" if t else ""
+            # Fast path: serve cached snapshot if available, and refresh in background.
+            slug = (slugify(eid) or "camera").replace("-", "_")
+            cache_path = f"/config/www/e_guard_{slug}.jpg"
+            try:
+                if os.path.isfile(cache_path):
+                    with open(cache_path, "rb") as f:
+                        raw_cached = f.read()
+                    if raw_cached:
+                        # Kick off background refresh (throttled per camera).
+                        now = time.time()
+                        if not hasattr(api.state, "e_guard_snap"):
+                            api.state.e_guard_snap = {"inflight": set(), "last": {}}
+                        snap = api.state.e_guard_snap
+                        inflight = snap.get("inflight") or set()
+                        last = snap.get("last") or {}
+                        snap["inflight"] = inflight
+                        snap["last"] = last
+                        last_ts = float(last.get(eid) or 0.0)
+                        if eid not in inflight and (now - last_ts) >= 1.5:
+                            inflight.add(eid)
+                            last[eid] = now
+
+                            async def _bg():
+                                try:
+                                    await asyncio.to_thread(_ha_snapshot_trigger, eid, timeout_s=12)
+                                except Exception:
+                                    pass
+                                finally:
+                                    try:
+                                        inflight.discard(eid)
+                                    except Exception:
+                                        pass
+
+                            asyncio.create_task(_bg())
+                        return Response(content=raw_cached, media_type="image/jpeg")
+            except Exception:
+                pass
+
+            # If no cache, run snapshot service and return it.
+            try:
+                raw, ctype = _ha_snapshot_via_service(eid, timeout_s=12)
+                if not (ctype or "").lower().startswith("image/"):
+                    _LOGGER.warning("e_guard snapshot non-image for %s: %s", eid, ctype)
+                return Response(content=raw, media_type=ctype)
+            except HTTPException as e:
+                _LOGGER.warning("e_guard snapshot service failed for %s: %s", eid, e.detail)
+
+            # Prefer entity_picture/access_token if HA returns them for the camera,
+            # but fall back across multiple candidate paths before using snapshot service.
+            paths: list[str] = []
+            try:
+                st = _ha_request("GET", f"/api/states/{eid_enc}", timeout_s=10)
+                attrs = st.get("attributes") if isinstance(st, dict) else {}
+                if isinstance(attrs, dict):
+                    pic = str(attrs.get("entity_picture") or "").strip()
+                    if pic:
+                        pic_path = pic if pic.startswith("/") else "/" + pic.lstrip("/")
+                        paths.append(pic_path)
+                        if "/api/camera_proxy_stream/" in pic_path:
+                            paths.append(pic_path.replace("/api/camera_proxy_stream/", "/api/camera_proxy/"))
+                    tok = str(attrs.get("access_token") or "").strip()
+                    if tok:
+                        paths.append(f"/api/camera_proxy/{eid_enc}?token={urllib.parse.quote(tok, safe='')}")
+            except Exception:
+                pass
+            # Always include auth-based proxy endpoints as fallbacks (token can be stale).
+            paths.append(f"/api/camera_proxy/{eid_enc}")
+            paths.append(f"/api/camera_proxy_stream/{eid_enc}")
+
+            last_err: HTTPException | None = None
+            tried: set[str] = set()
+            for p in paths:
+                path = p if p.startswith("/") else "/" + p.lstrip("/")
+                if "?" in path:
+                    path = f"{path}{q}" if q else path
+                else:
+                    path = f"{path}?{q.lstrip('&')}" if q else path
+                if path in tried:
+                    continue
+                tried.add(path)
+                try:
+                    use_auth = "token=" not in path
+                    raw, ctype = _ha_fetch(path, timeout_s=12, use_auth=use_auth)
+                    if not (ctype or "").lower().startswith("image/"):
+                        _LOGGER.warning("e_guard snapshot non-image for %s: %s", eid, ctype)
+                    return Response(content=raw, media_type=ctype)
+                except HTTPException as e:
+                    last_err = e
+                    _LOGGER.warning("e_guard snapshot primary failed for %s via %s: %s", eid, path, e.detail)
+
+            if last_err is not None:
+                raise last_err
+            raise HTTPException(status_code=502, detail="snapshot fetch failed")
+        except HTTPException as e:
+            _LOGGER.warning("e_guard snapshot HTTP %s for %s: %s", e.status_code, eid, e.detail)
+            raise
+        except Exception as e:
+            _LOGGER.exception("e_guard snapshot failed for %s: %s", eid, e)
+            raise HTTPException(status_code=502, detail="snapshot fetch failed")
+
+    @api.get("/api/e_guard/diag")
+    async def api_guard_diag(entity_id: str):
+        if not guard_enabled:
+            raise HTTPException(status_code=404, detail="Not Found")
+        if not _ha_enabled():
+            raise HTTPException(status_code=503, detail="Motore di integrazione non disponibile")
+        eid = str(entity_id or "").strip().lower()
+        if not eid.startswith("camera."):
+            raise HTTPException(status_code=400, detail="entity_id must be camera.*")
+        diag: dict[str, Any] = {
+            "entity_id": eid,
+            "ha_enabled": _ha_enabled(),
+            "base_url": _ha_base_url(),
+            "state": None,
+            "snapshot": None,
+            "snapshot_service": None,
+            "snapshot_url": None,
+        }
+        try:
+            st = _ha_request("GET", f"/api/states/{urllib.parse.quote(eid, safe='')}", timeout_s=10)
+            diag["state"] = st
+        except HTTPException as e:
+            diag["state"] = {"error": True, "status": e.status_code, "detail": e.detail}
+        try:
+            pic_path = ""
+            if isinstance(diag["state"], dict):
+                attrs = diag["state"].get("attributes") or {}
+                if isinstance(attrs, dict):
+                    pic = str(attrs.get("entity_picture") or "").strip()
+                    if pic.startswith("/"):
+                        pic_path = pic
+                    elif pic:
+                        pic_path = "/" + pic.lstrip("/")
+                    if not pic_path:
+                        tok = str(attrs.get("access_token") or "").strip()
+                        if tok:
+                            pic_path = f"/api/camera_proxy/{urllib.parse.quote(eid, safe='')}?token={urllib.parse.quote(tok, safe='')}"
+            if not pic_path:
+                pic_path = f"/api/camera_proxy/{urllib.parse.quote(eid, safe='')}"
+
+            diag["snapshot_url"] = pic_path
+            use_auth = "token=" not in pic_path
+            raw, ctype = _ha_fetch(pic_path, timeout_s=10, use_auth=use_auth)
+            diag["snapshot"] = {"ok": True, "content_type": ctype, "bytes": len(raw)}
+        except HTTPException as e:
+            diag["snapshot"] = {"error": True, "status": e.status_code, "detail": e.detail}
+        try:
+            raw, ctype = _ha_snapshot_via_service(eid, timeout_s=10)
+            diag["snapshot_service"] = {"ok": True, "content_type": ctype, "bytes": len(raw)}
+        except HTTPException as e:
+            diag["snapshot_service"] = {"error": True, "status": e.status_code, "detail": e.detail}
+        return diag
+
+    @api.post("/api/hub_links")
+    async def api_hub_links_upsert(payload: dict[str, Any]):
+        try:
+            item = store.upsert_hub_link(payload)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        asyncio.create_task(_sync_icons_for_hub_links(store.list_hub_links()))
+        await hub.broadcast("hub_links", {"links": store.list_hub_links()})
+        await _republish_discovery()
+        return item
+
+    @api.post("/api/home_actions")
+    async def api_home_actions_upsert(payload: dict[str, Any]):
+        # Admin-only via port gate
+        try:
+            item = store.upsert_home_action(payload)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        asyncio.create_task(_sync_icons_for_home_actions(store.list_home_actions()))
+        await hub.broadcast("home_actions", {"items": store.list_home_actions()})
+        return item
+
+    @api.put("/api/hub_links")
+    async def api_hub_links_replace(payload: dict[str, Any]):
+        links = payload.get("links", [])
+        if not isinstance(links, list):
+            raise HTTPException(status_code=400, detail="links must be a list")
+        cleaned = store.set_hub_links(links)
+        asyncio.create_task(_sync_icons_for_hub_links(cleaned))
+        await hub.broadcast("hub_links", {"links": cleaned})
+        await _republish_discovery()
+        return {"links": cleaned}
+
+    @api.put("/api/home_actions")
+    async def api_home_actions_replace(payload: dict[str, Any]):
+        # Admin-only via port gate
+        actions = payload.get("actions", [])
+        if not isinstance(actions, list):
+            raise HTTPException(status_code=400, detail="actions must be a list")
+        cleaned = store.set_home_actions(actions)
+        asyncio.create_task(_sync_icons_for_home_actions(cleaned))
+        await hub.broadcast("home_actions", {"items": cleaned})
+        return {"items": cleaned}
+
+    @api.put("/api/home2_order")
+    async def api_home2_order_set(payload: dict[str, Any]):
+        # Admin-only via port gate
+        order = payload.get("order", [])
+        if not isinstance(order, list):
+            raise HTTPException(status_code=400, detail="order must be a list")
+        cleaned = store.set_home2_order(order)
+        await hub.broadcast("home2_order", {"order": cleaned})
+        return {"order": cleaned}
+
+    @api.delete("/api/hub_links/{link_id}")
+    async def api_hub_links_delete(link_id: str):
+        removed = store.delete_hub_link(link_id=link_id)
+        if not removed:
+            raise HTTPException(status_code=404, detail="Not Found")
+        asyncio.create_task(_sync_icons_for_hub_links(store.list_hub_links()))
+        await hub.broadcast("hub_links", {"links": store.list_hub_links()})
+        await _republish_discovery()
+        return {"ok": True}
+
+    @api.delete("/api/home_actions/{action_id}")
+    async def api_home_actions_delete(action_id: str):
+        # Admin-only via port gate
+        removed = store.delete_home_action(action_id=action_id)
+        if not removed:
+            raise HTTPException(status_code=404, detail="Not Found")
+        asyncio.create_task(_sync_icons_for_home_actions(store.list_home_actions()))
+        await hub.broadcast("home_actions", {"items": store.list_home_actions()})
+        return {"ok": True}
+
+    @api.post("/api/devices/dedupe")
+    async def api_devices_dedupe():
+        # Admin-only via port gate
+        res = store.dedupe_devices()
+        devices = store.list_devices()
+        _rebuild_temp_index()
+        _rebuild_humidity_index()
+        _rebuild_illuminance_index()
+        _rebuild_dry_contact_index()
+        _rebuild_air_index()
+        _rebuild_pir_index()
+        _rebuild_ultrasonic_index()
+        asyncio.create_task(_sync_icons_for_devices(devices))
+        await _republish_discovery()
+        await _broadcast_devices()
+        return res
+
+    def _mdi_names_from_devices(devices: list[dict[str, Any]]) -> list[str]:
+        names: list[str] = []
+        for d in devices:
+            mdi = parse_mdi_icon(str(d.get("icon") or ""))
+            if mdi:
+                names.append(mdi)
+        return names
+
+    def _mdi_names_from_cover_groups(groups: list[dict[str, Any]]) -> list[str]:
+        names: list[str] = []
+        for g in groups:
+            mdi = parse_mdi_icon(str(g.get("icon") or ""))
+            if mdi:
+                names.append(mdi)
+        return names
+
+    def _mdi_names_from_hub_links(links: list[dict[str, Any]]) -> list[str]:
+        names: list[str] = []
+        for it in links:
+            mdi = parse_mdi_icon(str(it.get("icon") or ""))
+            if mdi:
+                names.append(mdi)
+        return names
+
+    def _mdi_names_from_home_actions(items: list[dict[str, Any]]) -> list[str]:
+        names: list[str] = []
+        for it in items or []:
+            mdi = parse_mdi_icon(str(it.get("icon") or ""))
+            if mdi:
+                names.append(mdi)
+        return names
+
+    def _mdi_names_from_hub_config(cfg: dict[str, Any]) -> list[str]:
+        names: list[str] = []
+        if not isinstance(cfg, dict):
+            return names
+        icons = cfg.get("hub_icons") if "hub_icons" in cfg else cfg
+        if not isinstance(icons, dict):
+            return names
+        for k in ("lights", "scenarios", "covers", "extra", "guard"):
+            mdi = parse_mdi_icon(str(icons.get(k) or ""))
+            if mdi:
+                names.append(mdi)
+        return names
+
+    def _mdi_names_from_ha_devices(items: list[dict[str, Any]]) -> list[str]:
+        names: list[str] = []
+        for it in items or []:
+            mdi = parse_mdi_icon(str(it.get("icon") or ""))
+            if mdi:
+                names.append(mdi)
+        return names
+
+    async def _sync_icons_for_devices(devices: list[dict[str, Any]]) -> None:
+        names = _mdi_names_from_devices(devices)
+        if not names:
+            return
+        lock: asyncio.Lock = api.state.icon_lock
+        icons_dir: str = api.state.icons_dir
+        async with lock:
+            try:
+                await asyncio.to_thread(ensure_mdi_icons, icons_dir, names)
+            except Exception:
+                return
+
+    async def _sync_icons_for_cover_groups(groups: list[dict[str, Any]]) -> None:
+        names = _mdi_names_from_cover_groups(groups)
+        if not names:
+            return
+        lock: asyncio.Lock = api.state.icon_lock
+        icons_dir: str = api.state.icons_dir
+        async with lock:
+            try:
+                await asyncio.to_thread(ensure_mdi_icons, icons_dir, names)
+            except Exception:
+                return
+
+    async def _sync_icons_for_hub_links(links: list[dict[str, Any]]) -> None:
+        names = _mdi_names_from_hub_links(links)
+        if not names:
+            return
+        lock: asyncio.Lock = api.state.icon_lock
+        icons_dir: str = api.state.icons_dir
+        async with lock:
+            try:
+                await asyncio.to_thread(ensure_mdi_icons, icons_dir, names)
+            except Exception:
+                return
+
+    async def _sync_icons_for_home_actions(items: list[dict[str, Any]]) -> None:
+        names = _mdi_names_from_home_actions(items)
+        if not names:
+            return
+        lock: asyncio.Lock = api.state.icon_lock
+        icons_dir: str = api.state.icons_dir
+        async with lock:
+            try:
+                await asyncio.to_thread(ensure_mdi_icons, icons_dir, names)
+            except Exception:
+                return
+
+    async def _sync_icons_for_hub_config(cfg: dict[str, Any]) -> None:
+        names = _mdi_names_from_hub_config(cfg)
+        if not names:
+            return
+        lock: asyncio.Lock = api.state.icon_lock
+        icons_dir: str = api.state.icons_dir
+        async with lock:
+            try:
+                await asyncio.to_thread(ensure_mdi_icons, icons_dir, names)
+            except Exception:
+                return
+
+    async def _sync_icons_for_ha_devices(items: list[dict[str, Any]]) -> None:
+        names = _mdi_names_from_ha_devices(items)
+        if not names:
+            return
+        lock: asyncio.Lock = api.state.icon_lock
+        icons_dir: str = api.state.icons_dir
+        async with lock:
+            try:
+                await asyncio.to_thread(ensure_mdi_icons, icons_dir, names)
+            except Exception:
+                return
+
+    def _export_ui_icons_payload() -> dict[str, Any]:
+        icons = store.get_hub_icons()
+        links = store.list_hub_links()
+        actions = store.list_home_actions()
+        names = (
+            _mdi_names_from_hub_config({"hub_icons": icons})
+            + _mdi_names_from_hub_links(links)
+            + _mdi_names_from_home_actions(actions)
+        )
+        # build mapping
+        link_map = {str(it.get("id") or "").strip(): str(it.get("icon") or "").strip() for it in links if isinstance(it, dict)}
+        action_map = {str(it.get("id") or "").strip(): str(it.get("icon") or "").strip() for it in actions if isinstance(it, dict)}
+        return {
+            "hub_icons": icons,
+            "hub_links": link_map,
+            "home_actions": action_map,
+            "mdi_names": sorted({n for n in names if n}),
+        }
+
+    def _write_ui_icons_export(dst_dir: str, payload: dict[str, Any]) -> dict[str, Any]:
+        os.makedirs(os.path.join(dst_dir, "mdi"), exist_ok=True)
+        names = list(payload.get("mdi_names") or [])
+        res = ensure_mdi_icons(dst_dir, names)
+        out = dict(payload)
+        out.update(
+            {
+                "export_dir": dst_dir,
+                "export_url": "/static/ui-icons",
+                "downloaded": res.downloaded,
+                "failed": res.failed,
+                "missing": res.missing,
+            }
+        )
+        try:
+            with open(os.path.join(dst_dir, "icons.json"), "w", encoding="utf-8") as f:
+                json.dump(out, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+        return out
+
+    @api.get("/api/icons/mdi/{name}.svg") 
+    async def mdi_icon(name: str): 
+        # Always return something (placeholder if missing/offline)
+        try:
+            safe = parse_mdi_icon(f"mdi:{name}") or ""
+            if safe:
+                icons_dir: str = api.state.icons_dir
+                path = os.path.join(icons_dir, "mdi", f"{safe}.svg")
+                if os.path.exists(path):
+                    with open(path, "rb") as f:
+                        return Response(content=f.read(), media_type="image/svg+xml")
+                # Fallback to bundled icons (works offline for a small set)
+                bundled = os.path.join(static_dir, "mdi", f"{safe}.svg")
+                if os.path.exists(bundled):
+                    with open(bundled, "rb") as f:
+                        return Response(content=f.read(), media_type="image/svg+xml")
+        except Exception:
+            pass
+        return Response(content=placeholder_svg(), media_type="image/svg+xml") 
+
+    @api.get("/api/icons/used")
+    async def used_icons():
+        # Admin-only via port gate
+        icons: set[str] = set()
+        for d in store.list_devices():
+            v = str(d.get("icon") or "").strip()
+            mdi = parse_mdi_icon(v)
+            if mdi:
+                icons.add(f"mdi:{mdi}")
+        for g in store.list_cover_groups():
+            v = str(g.get("icon") or "").strip()
+            mdi = parse_mdi_icon(v)
+            if mdi:
+                icons.add(f"mdi:{mdi}")
+        for it in store.list_hub_links():
+            v = str(it.get("icon") or "").strip()
+            mdi = parse_mdi_icon(v)
+            if mdi:
+                icons.add(f"mdi:{mdi}")
+        for v in store.get_hub_icons().values():
+            mdi = parse_mdi_icon(str(v or ""))
+            if mdi:
+                icons.add(f"mdi:{mdi}")
+        for it in store.list_ha_devices():
+            mdi = parse_mdi_icon(str(it.get("icon") or ""))
+            if mdi:
+                icons.add(f"mdi:{mdi}")
+        for it in store.list_home_actions():
+            mdi = parse_mdi_icon(str(it.get("icon") or ""))
+            if mdi:
+                icons.add(f"mdi:{mdi}")
+        return {"icons": sorted(icons)}
+
+    @api.get("/api/backup")
+    async def api_backup():
+        # Admin-only via port gate
+        state = json.loads(store.export_backup_text())
+        state["_econtrol_organization"] = organization.snapshot()
+        state["_econtrol_knx"] = knx_manager.store.load()
+        state["_econtrol_bticino"] = bticino_manager.store.load()
+        state["_econtrol_modbus"] = modbus_manager.store.load()
+        state["_econtrol_esphome"] = esphome_manager.store.load()
+        state["_econtrol_mqtt"] = mqtt_manager.store.load()
+        state["_econtrol_nuki"] = nuki_manager.store.load()
+        return {"text": json.dumps(state, ensure_ascii=False, indent=2)}
+
+    @api.get("/api/backup/file")
+    async def api_backup_file():
+        # Admin-only via port gate
+        state = json.loads(store.export_backup_text())
+        state["_econtrol_organization"] = organization.snapshot()
+        state["_econtrol_knx"] = knx_manager.store.load()
+        state["_econtrol_bticino"] = bticino_manager.store.load()
+        state["_econtrol_modbus"] = modbus_manager.store.load()
+        state["_econtrol_esphome"] = esphome_manager.store.load()
+        state["_econtrol_mqtt"] = mqtt_manager.store.load()
+        state["_econtrol_nuki"] = nuki_manager.store.load()
+        content = json.dumps(state, ensure_ascii=False, indent=2)
+        ts = time.strftime("%Y%m%d-%H%M%S")
+        headers = {"Content-Disposition": f'attachment; filename="buspro_backup_{ts}.json"'}
+        return Response(content=content, media_type="text/plain; charset=utf-8", headers=headers)
+
+    @api.get("/api/sniffer/status")
+    async def api_sniffer_status():
+        return api.state.sniffer.status()
+
+    @api.post("/api/sniffer/start")
+    async def api_sniffer_start(payload: dict[str, Any]):
+        # Admin-only via port gate
+        ops_raw = payload.get("op_contains")
+        if isinstance(ops_raw, str):
+            ops = [s.strip() for s in ops_raw.split(",") if s.strip()]
+        elif isinstance(ops_raw, list):
+            ops = [str(s).strip() for s in ops_raw if str(s).strip()]
+        else:
+            ops = []
+
+        src = payload.get("src")
+        dst = payload.get("dst")
+        include_raw = bool(payload.get("include_raw", False))
+        write_file = bool(payload.get("write_file", True))
+        filename = payload.get("filename")
+        clear = bool(payload.get("clear", False))
+
+        api.state.sniffer.start(
+            op_contains=ops or None,
+            src=src if isinstance(src, list) else None,
+            dst=dst if isinstance(dst, list) else None,
+            include_raw=include_raw,
+            write_file=write_file,
+            filename=str(filename).strip() if filename is not None else None,
+            clear=clear,
+        )
+        return api.state.sniffer.status()
+
+    @api.post("/api/sniffer/stop")
+    async def api_sniffer_stop():
+        api.state.sniffer.stop()
+        return api.state.sniffer.status()
+
+    @api.post("/api/sniffer/clear")
+    async def api_sniffer_clear():
+        api.state.sniffer.clear()
+        return api.state.sniffer.status()
+
+    @api.get("/api/sniffer/file")
+    async def api_sniffer_file():
+        st = api.state.sniffer.status()
+        path = st.get("file_path")
+        if isinstance(path, str) and path and os.path.exists(path):
+            headers = {"Content-Disposition": f'attachment; filename="{os.path.basename(path)}"'}
+            return FileResponse(path, media_type="application/x-ndjson; charset=utf-8", headers=headers)
+        content = api.state.sniffer.dump_jsonl()
+        ts = time.strftime("%Y%m%d-%H%M%S")
+        headers = {"Content-Disposition": f'attachment; filename="buspro_sniffer_buffer_{ts}.jsonl"'}
+        return Response(content=content, media_type="application/x-ndjson; charset=utf-8", headers=headers)
+
+    @api.get("/api/sniffer/recent")
+    async def api_sniffer_recent(limit: int = 50):
+        try:
+            return {"items": api.state.sniffer.recent(limit=limit), "status": api.state.sniffer.status()}
+        except Exception:
+            return {"items": [], "status": api.state.sniffer.status()}
+
+    @api.post("/api/restore")
+    async def api_restore(payload: dict[str, Any]):
+        # Admin-only via port gate
+        text = payload.get("text")
+        data = payload.get("data")
+        backup_path = store.backup_current()
+        try:
+            if isinstance(text, str) and text.strip():
+                cleaned = _clean_backup_text(text)
+                if not cleaned:
+                    raise HTTPException(status_code=400, detail="Empty backup text")
+                state = json.loads(cleaned)
+            elif isinstance(data, dict):
+                state = data
+            else:
+                raise HTTPException(status_code=400, detail="Provide 'text' or 'data'")
+            organization_state = state.pop("_econtrol_organization", None)
+            knx_state = state.pop("_econtrol_knx", None)
+            bticino_state = state.pop("_econtrol_bticino", None)
+            modbus_state = state.pop("_econtrol_modbus", None)
+            esphome_state = state.pop("_econtrol_esphome", None)
+            mqtt_state = state.pop("_econtrol_mqtt", None)
+            nuki_state = state.pop("_econtrol_nuki", None)
+            if organization_state is not None:
+                organization_state = organization.validate_backup(organization_state)
+            if knx_state is not None and (not isinstance(knx_state, dict) or knx_state.get("schema_version") != 1):
+                raise ValueError("invalid KNX manager backup")
+            if bticino_state is not None and (not isinstance(bticino_state, dict) or bticino_state.get("schema_version") != 1):
+                raise ValueError("invalid BTicino manager backup")
+            if modbus_state is not None and (not isinstance(modbus_state, dict) or modbus_state.get("schema_version") != 1):
+                raise ValueError("invalid Modbus manager backup")
+            if esphome_state is not None and (not isinstance(esphome_state, dict) or esphome_state.get("schema_version") != 1):
+                raise ValueError("invalid ESPHome manager backup")
+            if nuki_state is not None and (not isinstance(nuki_state, dict) or nuki_state.get("schema_version") != 1):
+                raise ValueError("invalid Nuki manager backup")
+            if mqtt_state is not None and (not isinstance(mqtt_state, dict) or mqtt_state.get("schema_version") != 1 or not isinstance(mqtt_state.get("devices"), dict)):
+                raise ValueError("invalid MQTT manager backup")
+            store.import_backup(state)
+            if mqtt_state is not None:
+                mqtt_manager.store.save(mqtt_state)
+            if organization_state is not None:
+                organization.save(organization_state)
+            if knx_state is not None:
+                knx_manager.store.save(knx_state)
+            if bticino_state is not None:
+                bticino_manager.store.save(bticino_state)
+            if modbus_state is not None:
+                modbus_manager.store.save(modbus_state)
+            if esphome_state is not None:
+                esphome_manager.store.save(esphome_state)
+            if nuki_state is not None:
+                nuki_manager.store.save(nuki_state)
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        devices = store.list_devices()
+        _rebuild_temp_index()
+        _rebuild_humidity_index()
+        _rebuild_illuminance_index()
+        _rebuild_dry_contact_index()
+        _rebuild_air_index()
+        _rebuild_pir_index()
+        _rebuild_ultrasonic_index()
+        asyncio.create_task(_sync_icons_for_devices(devices))
+        asyncio.create_task(_sync_icons_for_cover_groups(store.list_cover_groups()))
+        await _republish_discovery()
+        await _broadcast_devices()
+        await hub.broadcast("ui", {"group_order": store.get_group_order()})
+        await hub.broadcast("organization", organization.snapshot())
+        return {"ok": True, "backup_path": backup_path}
+
+    @api.get("/api/cover_groups")
+    async def api_cover_groups():
+        return {"groups": store.list_cover_groups()}
+
+    @api.post("/api/cover_groups")
+    async def api_cover_groups_upsert(payload: dict[str, Any]):
+        gid_in = payload.get("id")
+        name = str(payload.get("name") or "").strip()
+        members = payload.get("members") or []
+        icon = payload.get("icon")
+        if not name:
+            raise HTTPException(status_code=400, detail="Missing: name")
+        if not isinstance(members, list):
+            raise HTTPException(status_code=400, detail="members must be a list")
+        members_s = [str(m or "").strip() for m in members if str(m or "").strip()]
+        g = store.upsert_cover_group(
+            group_id=str(gid_in).strip() if gid_in is not None else None,
+            name=name,
+            members=members_s,
+            icon=str(icon).strip() if icon is not None else None,
+        )
+        _rebuild_cover_group_index()
+        _publish_all_cover_group_states()
+        asyncio.create_task(_sync_icons_for_cover_groups([g]))
+        await _republish_discovery()
+        await hub.broadcast("cover_groups", {"groups": store.list_cover_groups()})
+        return g
+
+    @api.delete("/api/cover_groups/{name}")
+    async def api_cover_groups_delete(name: str):
+        nm = str(name or "").strip()
+        if not nm:
+            raise HTTPException(status_code=400, detail="name required")
+
+        # Accept both id and name in path
+        existing = store.get_cover_group(nm)
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Group not found")
+
+        gid = str(existing.get("id") or "").strip() or slugify(str(existing.get("name") or ""))
+        nm = str(existing.get("name") or nm).strip()
+
+        ok = store.delete_cover_group(gid)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Group not found")
+
+        # Clear retained discovery/state
+        mqtt.publish(_cover_group_config_topic(gid=gid), "", retain=True)
+        mqtt.publish(f"{settings.mqtt.base_topic}/state/cover_group_state/{gid}", "", retain=True)
+        mqtt.publish(f"{settings.mqtt.base_topic}/state/cover_group_pos/{gid}", "", retain=True)
+        store.delete_cover_group_state(group_id=gid)
+
+        _rebuild_cover_group_index()
+        _publish_all_cover_group_states()
+        await _republish_discovery()
+        await hub.broadcast("cover_groups", {"groups": store.list_cover_groups()})
+        return {"ok": True}
+
+    @api.post("/api/control/cover_group/{gid}")
+    async def api_control_cover_group(gid: str, payload: dict[str, Any]):
+        cmd = str(payload.get("command") or payload.get("cmd") or "").strip().upper()
+        if cmd not in ("OPEN", "CLOSE", "STOP"):
+            raise HTTPException(status_code=400, detail="command must be OPEN/CLOSE/STOP")
+        pos: int | None = None
+
+        gw: BusproGateway | None = api.state.gateway
+        if gw is None:
+            raise HTTPException(status_code=503, detail="gateway not ready")
+
+        t0 = time.time()
+        await _run_cover_group_command(str(gid or "").strip(), cmd, pos=pos, raw=True)
+        _LOGGER.debug("cover_group control gid=%s cmd=%s took=%.3fs", gid, cmd, time.time() - t0)
+        return {"ok": True}
+
+    @api.post("/api/icons/sync")
+    async def sync_icons():
+        # Admin-only via port gate; safe to call multiple times.
+        devices = store.list_devices()
+        names = _mdi_names_from_devices(devices) + _mdi_names_from_cover_groups(store.list_cover_groups())
+        lock: asyncio.Lock = api.state.icon_lock
+        icons_dir: str = api.state.icons_dir
+        async with lock:
+            res = await asyncio.to_thread(ensure_mdi_icons, icons_dir, names)
+        return {
+            "requested": res.requested,
+            "downloaded": res.downloaded,
+            "failed": res.failed,
+            "missing": res.missing,
+        }
+
+    @api.post("/api/icons/export_ui")
+    async def export_ui_icons():
+        payload = _export_ui_icons_payload()
+        out_main = {}
+        try:
+            out_main = _write_ui_icons_export(api.state.ui_icons_dir, payload)
+        except Exception:
+            out_main = {"error": "export_failed"}
+
+        # Optional export to /share for easy access on host
+        out_share = None
+        try:
+            if os.path.isdir("/share"):
+                share_dir = os.path.join("/share", "ui_icons")
+                out_share = _write_ui_icons_export(share_dir, payload)
+        except Exception:
+            out_share = {"error": "share_export_failed"}
+
+        return {"main": out_main, "share": out_share}
+
+    @api.get("/api/devices")
+    async def list_devices():
+        return store.list_devices()
+
+    @api.post("/api/devices") 
+    async def add_device(payload: dict[str, Any]): 
+        required = ("name", "subnet_id", "device_id", "channel", "dimmable")
+        missing = [k for k in required if k not in payload]
+        if missing:
+            raise HTTPException(status_code=400, detail=f"Missing: {', '.join(missing)}")
+
+        subnet_id = int(payload["subnet_id"])
+        device_id = int(payload["device_id"])
+        channel = int(payload["channel"])
+        if store.find_device(type_="light", subnet_id=subnet_id, device_id=device_id, channel=channel) is not None:
+            raise HTTPException(status_code=409, detail="Device already exists with same address")
+
+        device = { 
+            "name": str(payload["name"]), 
+            "subnet_id": subnet_id, 
+            "device_id": device_id, 
+            "channel": channel, 
+            "dimmable": bool(payload["dimmable"]), 
+            "type": "light", 
+        } 
+        icon = payload.get("icon")
+        if icon:
+            device["icon"] = str(icon)
+        category = payload.get("category") 
+        if category: 
+            device["category"] = str(category) 
+        group = payload.get("group")
+        if group is not None:
+            g = str(group).strip()
+            if g.startswith("#"):
+                g = g[1:].strip()
+            if g:
+                device["group"] = g
+        rgb_group = str(payload.get("rgb_group") or "").strip()
+        rgb_channel = str(payload.get("rgb_channel") or "").strip().lower()
+        if rgb_group and rgb_channel in ("red", "green", "blue"):
+            device["rgb_group"] = rgb_group
+            device["rgb_channel"] = rgb_channel
+        store.add_device(device) 
+        asyncio.create_task(_sync_icons_for_devices([device])) 
+
+        gw: BusproGateway | None = api.state.gateway
+        if gw is not None:
+            gw.ensure_light(
+                subnet_id=device["subnet_id"],
+                device_id=device["device_id"],
+                channel=device["channel"],
+                name=device["name"],
+            )
+            await gw.read_light_status(
+                subnet_id=device["subnet_id"],
+                device_id=device["device_id"],
+                channel=device["channel"],
+            )
+
+        await _republish_discovery()
+        await _broadcast_devices()
+        return device
+
+    @api.post("/api/devices/cover") 
+    async def add_cover(payload: dict[str, Any]): 
+        required = ("name", "subnet_id", "device_id", "channel")
+        missing = [k for k in required if k not in payload]
+        if missing:
+            raise HTTPException(status_code=400, detail=f"Missing: {', '.join(missing)}")
+
+        subnet_id = int(payload["subnet_id"])
+        device_id = int(payload["device_id"])
+        channel = int(payload["channel"])
+        if store.find_device(type_="cover", subnet_id=subnet_id, device_id=device_id, channel=channel) is not None:
+            raise HTTPException(status_code=409, detail="Device already exists with same address")
+
+        device = { 
+            "name": str(payload["name"]), 
+            "subnet_id": subnet_id, 
+            "device_id": device_id, 
+            "channel": channel, 
+            "type": "cover", 
+            "opening_time_up": int(payload.get("opening_time_up") or 20), 
+            "opening_time_down": int(payload.get("opening_time_down") or 20), 
+            "start_delay_s": float(payload.get("start_delay_s") or 0.0),
+            "use_position": bool(payload.get("use_position") or False),
+        } 
+        if "reverse_icon" in payload:
+            device["reverse_icon"] = bool(payload.get("reverse_icon"))
+        icon = payload.get("icon")
+        if icon:
+            device["icon"] = str(icon)
+        category = payload.get("category") 
+        if category: 
+            device["category"] = str(category) 
+        group = payload.get("group")
+        if group is not None:
+            g = str(group).strip()
+            if g.startswith("#"):
+                g = g[1:].strip()
+            if g:
+                device["group"] = g
+
+        store.add_device(device) 
+        asyncio.create_task(_sync_icons_for_devices([device])) 
+
+        gw: BusproGateway | None = api.state.gateway
+        if gw is not None:
+            gw.ensure_cover(
+                subnet_id=device["subnet_id"],
+                device_id=device["device_id"],
+                channel=device["channel"],
+                name=device["name"],
+                opening_time_up=device["opening_time_up"],
+                opening_time_down=device["opening_time_down"],
+                start_delay_s=float(device.get("start_delay_s") or 0.0),
+            )
+            await gw.read_cover_status(subnet_id=device["subnet_id"], device_id=device["device_id"], channel=device["channel"])
+
+        await _republish_discovery()
+        await _broadcast_devices()
+        return device
+
+    def _temp_config_topic(*, subnet_id: int, device_id: int, sensor_id: int) -> str:
+        nid = f"buspro_{settings.gateway.host.replace('.', '_')}_{settings.gateway.port}"
+        oid = f"temp_{int(subnet_id)}_{int(device_id)}_{int(sensor_id)}"
+        return f"{settings.mqtt.discovery_prefix}/sensor/{nid}/{oid}/config"
+
+    def _humidity_config_topic(*, subnet_id: int, device_id: int, sensor_id: int) -> str:
+        nid = f"buspro_{settings.gateway.host.replace('.', '_')}_{settings.gateway.port}"
+        oid = f"humidity_{int(subnet_id)}_{int(device_id)}_{int(sensor_id)}"
+        return f"{settings.mqtt.discovery_prefix}/sensor/{nid}/{oid}/config"
+
+    def _illuminance_config_topic(*, subnet_id: int, device_id: int, sensor_id: int) -> str:
+        nid = f"buspro_{settings.gateway.host.replace('.', '_')}_{settings.gateway.port}"
+        oid = f"illuminance_{int(subnet_id)}_{int(device_id)}_{int(sensor_id)}"
+        return f"{settings.mqtt.discovery_prefix}/sensor/{nid}/{oid}/config"
+
+    def _air_quality_config_topic(*, subnet_id: int, device_id: int, sensor_id: int) -> str:
+        nid = f"buspro_{settings.gateway.host.replace('.', '_')}_{settings.gateway.port}"
+        oid = f"air_quality_{int(subnet_id)}_{int(device_id)}_{int(sensor_id)}"
+        return f"{settings.mqtt.discovery_prefix}/sensor/{nid}/{oid}/config"
+
+    def _gas_percent_config_topic(*, subnet_id: int, device_id: int, sensor_id: int) -> str:
+        nid = f"buspro_{settings.gateway.host.replace('.', '_')}_{settings.gateway.port}"
+        oid = f"gas_percent_{int(subnet_id)}_{int(device_id)}_{int(sensor_id)}"
+        return f"{settings.mqtt.discovery_prefix}/sensor/{nid}/{oid}/config"
+
+    def _dry_contact_config_topic(*, subnet_id: int, device_id: int, input_id: int) -> str:
+        nid = f"buspro_{settings.gateway.host.replace('.', '_')}_{settings.gateway.port}"
+        oid = f"dry_contact_{int(subnet_id)}_{int(device_id)}_{int(input_id)}"
+        return f"{settings.mqtt.discovery_prefix}/binary_sensor/{nid}/{oid}/config"
+
+    def _pir_config_topic(*, subnet_id: int, device_id: int, sensor_id: int) -> str:
+        nid = f"buspro_{settings.gateway.host.replace('.', '_')}_{settings.gateway.port}"
+        oid = f"pir_{int(subnet_id)}_{int(device_id)}_{int(sensor_id)}"
+        return f"{settings.mqtt.discovery_prefix}/binary_sensor/{nid}/{oid}/config"
+
+    def _ultrasonic_config_topic(*, subnet_id: int, device_id: int, sensor_id: int) -> str:
+        nid = f"buspro_{settings.gateway.host.replace('.', '_')}_{settings.gateway.port}"
+        oid = f"ultrasonic_{int(subnet_id)}_{int(device_id)}_{int(sensor_id)}"
+        return f"{settings.mqtt.discovery_prefix}/binary_sensor/{nid}/{oid}/config"
+
+    @api.get("/api/temp/states")
+    async def api_temp_states():
+        # Admin-only via port gate
+        return {"states": store.get_temp_states()}
+
+    @api.get("/api/humidity/states")
+    async def api_humidity_states():
+        # Admin-only via port gate
+        return {"states": store.get_humidity_states()}
+
+    @api.get("/api/illuminance/states")
+    async def api_illuminance_states():
+        # Admin-only via port gate
+        return {"states": store.get_illuminance_states()}
+
+    @api.get("/api/air/states")
+    async def api_air_states():
+        # Admin-only via port gate
+        return {"air_quality_states": store.get_air_quality_states(), "gas_percent_states": store.get_gas_percent_states()}
+
+    @api.get("/api/dry_contact/states")
+    async def api_dry_contact_states():
+        # Admin-only via port gate
+        return {"states": store.get_dry_contact_states()}
+
+    @api.get("/api/presence/states")
+    async def api_presence_states():
+        # Admin-only via port gate
+        return {"pir_states": store.get_pir_states(), "ultrasonic_states": store.get_ultrasonic_states()}
+
+    @api.post("/api/devices/temp")
+    async def add_temp(payload: dict[str, Any]):
+        required = ("name", "subnet_id", "device_id")
+        missing = [k for k in required if k not in payload]
+        if missing:
+            raise HTTPException(status_code=400, detail=f"Missing: {', '.join(missing)}")
+
+        sensor_id = payload.get("sensor_id", payload.get("channel"))
+        if sensor_id is None:
+            raise HTTPException(status_code=400, detail="Missing: sensor_id")
+
+        subnet_id = int(payload["subnet_id"])
+        device_id = int(payload["device_id"])
+        channel = int(sensor_id)
+        if store.find_device(type_="temp", subnet_id=subnet_id, device_id=device_id, channel=channel) is not None:
+            raise HTTPException(status_code=409, detail="Device already exists with same address")
+
+        device: dict[str, Any] = {
+            "name": str(payload["name"]),
+            "subnet_id": subnet_id,
+            "device_id": device_id,
+            "channel": channel,
+            "type": "temp",
+        }
+
+        # Optional config
+        if payload.get("decimals") is not None:
+            try:
+                device["decimals"] = max(0, min(3, int(payload.get("decimals"))))  # 0..3
+            except Exception:
+                device["decimals"] = 1
+        if payload.get("min_value") is not None:
+            try:
+                device["min_value"] = float(payload.get("min_value"))
+            except Exception:
+                pass
+        if payload.get("max_value") is not None:
+            try:
+                device["max_value"] = float(payload.get("max_value"))
+            except Exception:
+                pass
+
+        icon = payload.get("icon")
+        if icon:
+            device["icon"] = str(icon)
+        category = payload.get("category")
+        if category:
+            device["category"] = str(category)
+        group = payload.get("group")
+        if group is not None:
+            g = str(group).strip()
+            if g.startswith("#"):
+                g = g[1:].strip()
+            if g:
+                device["group"] = g
+
+        # Optional decoding (for 12-in-1 style sensors that send 2-byte temperature payloads)
+        tf = payload.get("temp_format", payload.get("format"))
+        if tf is not None:
+            tf_s = str(tf).strip()
+            if tf_s:
+                device["temp_format"] = tf_s
+        if payload.get("temp_scale") is not None:
+            try:
+                device["temp_scale"] = float(payload.get("temp_scale"))
+            except Exception:
+                pass
+        if payload.get("temp_offset") is not None:
+            try:
+                device["temp_offset"] = float(payload.get("temp_offset"))
+            except Exception:
+                pass
+
+        store.add_device(device)
+        _rebuild_temp_index()
+        asyncio.create_task(_sync_icons_for_devices([device]))
+
+        await _republish_discovery()
+        await _broadcast_devices()
+        return device
+
+    @api.post("/api/devices/humidity")
+    async def add_humidity(payload: dict[str, Any]):
+        required = ("name", "subnet_id", "device_id")
+        missing = [k for k in required if k not in payload]
+        if missing:
+            raise HTTPException(status_code=400, detail=f"Missing: {', '.join(missing)}")
+
+        subnet_id = int(payload["subnet_id"])
+        device_id = int(payload["device_id"])
+        sensor_id = payload.get("sensor_id", payload.get("channel", 0))
+        channel = int(sensor_id) if sensor_id is not None else 0
+
+        if store.find_device(type_="humidity", subnet_id=subnet_id, device_id=device_id, channel=channel) is not None:
+            raise HTTPException(status_code=409, detail="Device already exists with same address")
+
+        device: dict[str, Any] = {
+            "name": str(payload["name"]),
+            "subnet_id": subnet_id,
+            "device_id": device_id,
+            "channel": channel,
+            "type": "humidity",
+        }
+
+        # Optional config
+        if payload.get("decimals") is not None:
+            try:
+                device["decimals"] = max(0, min(3, int(payload.get("decimals"))))  # 0..3
+            except Exception:
+                device["decimals"] = 0
+        if payload.get("min_value") is not None:
+            try:
+                device["min_value"] = float(payload.get("min_value"))
+            except Exception:
+                pass
+        if payload.get("max_value") is not None:
+            try:
+                device["max_value"] = float(payload.get("max_value"))
+            except Exception:
+                pass
+
+        icon = payload.get("icon")
+        if icon:
+            device["icon"] = str(icon)
+        category = payload.get("category")
+        if category:
+            device["category"] = str(category)
+        group = payload.get("group")
+        if group is not None:
+            g = str(group).strip()
+            if g.startswith("#"):
+                g = g[1:].strip()
+            if g:
+                device["group"] = g
+
+        store.add_device(device)
+        _rebuild_humidity_index()
+        asyncio.create_task(_sync_icons_for_devices([device]))
+
+        await _republish_discovery()
+        await _broadcast_devices()
+        return device
+
+    @api.post("/api/devices/illuminance")
+    async def add_illuminance(payload: dict[str, Any]):
+        required = ("name", "subnet_id", "device_id")
+        missing = [k for k in required if k not in payload]
+        if missing:
+            raise HTTPException(status_code=400, detail=f"Missing: {', '.join(missing)}")
+
+        subnet_id = int(payload["subnet_id"])
+        device_id = int(payload["device_id"])
+        sensor_id = payload.get("sensor_id", payload.get("channel", 0))
+        channel = int(sensor_id) if sensor_id is not None else 0
+
+        if store.find_device(type_="illuminance", subnet_id=subnet_id, device_id=device_id, channel=channel) is not None:
+            raise HTTPException(status_code=409, detail="Device already exists with same address")
+
+        device: dict[str, Any] = {
+            "name": str(payload["name"]),
+            "subnet_id": subnet_id,
+            "device_id": device_id,
+            "channel": channel,
+            "type": "illuminance",
+        }
+
+        # Optional config
+        if payload.get("decimals") is not None:
+            try:
+                device["decimals"] = max(0, min(3, int(payload.get("decimals"))))  # 0..3
+            except Exception:
+                device["decimals"] = 0
+        if payload.get("min_value") is not None:
+            try:
+                device["min_value"] = float(payload.get("min_value"))
+            except Exception:
+                pass
+        if payload.get("max_value") is not None:
+            try:
+                device["max_value"] = float(payload.get("max_value"))
+            except Exception:
+                pass
+
+        if payload.get("lux_scale") is not None:
+            try:
+                device["lux_scale"] = float(payload.get("lux_scale"))
+            except Exception:
+                pass
+        if payload.get("lux_offset") is not None:
+            try:
+                device["lux_offset"] = float(payload.get("lux_offset"))
+            except Exception:
+                pass
+
+        icon = payload.get("icon")
+        if icon:
+            device["icon"] = str(icon)
+        category = payload.get("category")
+        if category:
+            device["category"] = str(category)
+        group = payload.get("group")
+        if group is not None:
+            g = str(group).strip()
+            if g.startswith("#"):
+                g = g[1:].strip()
+            if g:
+                device["group"] = g
+
+        store.add_device(device)
+        _rebuild_illuminance_index()
+        asyncio.create_task(_sync_icons_for_devices([device]))
+
+        await _republish_discovery()
+        await _broadcast_devices()
+        return device
+
+    @api.post("/api/devices/air")
+    async def add_air(payload: dict[str, Any]):
+        required = ("name", "subnet_id", "device_id")
+        missing = [k for k in required if k not in payload]
+        if missing:
+            raise HTTPException(status_code=400, detail=f"Missing: {', '.join(missing)}")
+
+        subnet_id = int(payload["subnet_id"])
+        device_id = int(payload["device_id"])
+        sensor_id = payload.get("sensor_id", payload.get("channel", 248))
+        channel = int(sensor_id) if sensor_id is not None else 248
+
+        if store.find_device(type_="air", subnet_id=subnet_id, device_id=device_id, channel=channel) is not None:
+            raise HTTPException(status_code=409, detail="Device already exists with same address")
+
+        device: dict[str, Any] = {
+            "name": str(payload["name"]),
+            "subnet_id": subnet_id,
+            "device_id": device_id,
+            "channel": channel,
+            "type": "air",
+        }
+
+        icon = payload.get("icon")
+        if icon:
+            device["icon"] = str(icon)
+        gas_icon = payload.get("gas_icon")
+        if gas_icon:
+            device["gas_icon"] = str(gas_icon)
+        category = payload.get("category")
+        if category:
+            device["category"] = str(category)
+        group = payload.get("group")
+        if group is not None:
+            g = str(group).strip()
+            if g.startswith("#"):
+                g = g[1:].strip()
+            if g:
+                device["group"] = g
+
+        store.add_device(device)
+        _rebuild_air_index()
+        asyncio.create_task(_sync_icons_for_devices([device]))
+
+        await _republish_discovery()
+        await _broadcast_devices()
+        return device
+
+    @api.post("/api/devices/pir")
+    async def add_pir(payload: dict[str, Any]):
+        required = ("name", "subnet_id", "device_id")
+        missing = [k for k in required if k not in payload]
+        if missing:
+            raise HTTPException(status_code=400, detail=f"Missing: {', '.join(missing)}")
+
+        subnet_id = int(payload["subnet_id"])
+        device_id = int(payload["device_id"])
+        sensor_id = payload.get("sensor_id", payload.get("channel"))
+        if sensor_id is None:
+            raise HTTPException(status_code=400, detail="Missing: sensor_id")
+        channel = int(sensor_id)
+
+        if store.find_device(type_="pir", subnet_id=subnet_id, device_id=device_id, channel=channel) is not None:
+            raise HTTPException(status_code=409, detail="Device already exists with same address")
+
+        device: dict[str, Any] = {
+            "name": str(payload["name"]),
+            "subnet_id": subnet_id,
+            "device_id": device_id,
+            "channel": channel,
+            "type": "pir",
+        }
+
+        icon = payload.get("icon")
+        if icon:
+            device["icon"] = str(icon)
+        category = payload.get("category")
+        if category:
+            device["category"] = str(category)
+        group = payload.get("group")
+        if group is not None:
+            g = str(group).strip()
+            if g.startswith("#"):
+                g = g[1:].strip()
+            if g:
+                device["group"] = g
+
+        store.add_device(device)
+        _rebuild_pir_index()
+        asyncio.create_task(_sync_icons_for_devices([device]))
+
+        await _republish_discovery()
+        await _broadcast_devices()
+        return device
+
+    @api.post("/api/devices/ultrasonic")
+    async def add_ultrasonic(payload: dict[str, Any]):
+        required = ("name", "subnet_id", "device_id")
+        missing = [k for k in required if k not in payload]
+        if missing:
+            raise HTTPException(status_code=400, detail=f"Missing: {', '.join(missing)}")
+
+        subnet_id = int(payload["subnet_id"])
+        device_id = int(payload["device_id"])
+        sensor_id = payload.get("sensor_id", payload.get("channel"))
+        if sensor_id is None:
+            raise HTTPException(status_code=400, detail="Missing: sensor_id")
+        channel = int(sensor_id)
+
+        if store.find_device(type_="ultrasonic", subnet_id=subnet_id, device_id=device_id, channel=channel) is not None:
+            raise HTTPException(status_code=409, detail="Device already exists with same address")
+
+        device: dict[str, Any] = {
+            "name": str(payload["name"]),
+            "subnet_id": subnet_id,
+            "device_id": device_id,
+            "channel": channel,
+            "type": "ultrasonic",
+        }
+
+        icon = payload.get("icon")
+        if icon:
+            device["icon"] = str(icon)
+        category = payload.get("category")
+        if category:
+            device["category"] = str(category)
+        group = payload.get("group")
+        if group is not None:
+            g = str(group).strip()
+            if g.startswith("#"):
+                g = g[1:].strip()
+            if g:
+                device["group"] = g
+
+        store.add_device(device)
+        _rebuild_ultrasonic_index()
+        asyncio.create_task(_sync_icons_for_devices([device]))
+
+        await _republish_discovery()
+        await _broadcast_devices()
+        return device
+
+    @api.post("/api/devices/dry_contact")
+    async def add_dry_contact(payload: dict[str, Any]):
+        required = ("name", "subnet_id", "device_id")
+        missing = [k for k in required if k not in payload]
+        if missing:
+            raise HTTPException(status_code=400, detail=f"Missing: {', '.join(missing)}")
+
+        input_id = payload.get("input_id", payload.get("channel"))
+        if input_id is None:
+            raise HTTPException(status_code=400, detail="Missing: input_id")
+
+        subnet_id = int(payload["subnet_id"])
+        device_id = int(payload["device_id"])
+        channel = int(input_id)
+
+        if store.find_device(type_="dry_contact", subnet_id=subnet_id, device_id=device_id, channel=channel) is not None:
+            raise HTTPException(status_code=409, detail="Device already exists with same address")
+
+        device: dict[str, Any] = {
+            "name": str(payload["name"]),
+            "subnet_id": subnet_id,
+            "device_id": device_id,
+            "channel": channel,
+            "type": "dry_contact",
+        }
+
+        icon = payload.get("icon")
+        if icon:
+            device["icon"] = str(icon)
+        category = payload.get("category")
+        if category:
+            device["category"] = str(category)
+        group = payload.get("group")
+        if group is not None:
+            g = str(group).strip()
+            if g.startswith("#"):
+                g = g[1:].strip()
+            if g:
+                device["group"] = g
+        device_class = payload.get("device_class")
+        if device_class is not None:
+            dc = str(device_class or "").strip()
+            if dc:
+                device["device_class"] = dc
+        if "invert" in payload:
+            device["invert"] = bool(payload.get("invert"))
+
+        store.add_device(device)
+        _rebuild_dry_contact_index()
+        asyncio.create_task(_sync_icons_for_devices([device]))
+
+        await _republish_discovery()
+        await _broadcast_devices()
+        return device
+
+    @api.post("/api/control/cover/{subnet_id}/{device_id}/{channel}")
+    async def control_cover(subnet_id: int, device_id: int, channel: int, payload: dict[str, Any]):
+        gw: BusproGateway | None = api.state.gateway
+        if gw is None:
+            raise HTTPException(status_code=503, detail="Gateway not ready")
+        if not gw.started or not gw.transport_ready():
+            raise HTTPException(status_code=503, detail=gw.last_error or "UDP transport not ready")
+
+        t0 = time.monotonic()
+        cmd = str(payload.get("command") or "").upper()
+        if cmd not in ("OPEN", "CLOSE", "STOP", "SET_POSITION", "OPEN_RAW", "CLOSE_RAW"):
+            raise HTTPException(status_code=400, detail="command must be OPEN/CLOSE/STOP/SET_POSITION/OPEN_RAW/CLOSE_RAW")
+        dev = _find_cover_device(subnet_id, device_id, channel) or {}
+        use_pos = bool(dev.get("use_position"))
+        if cmd == "SET_POSITION":
+            if not use_pos:
+                raise HTTPException(status_code=400, detail="position disabled for this cover")
+        if cmd == "OPEN":
+            if use_pos:
+                await gw.cover_open(subnet_id=subnet_id, device_id=device_id, channel=channel)
+            else:
+                _start_cover_sim(subnet_id, device_id, channel, "OPEN")
+                await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+        elif cmd == "OPEN_RAW":
+            await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+        elif cmd == "CLOSE":
+            if use_pos:
+                await gw.cover_close(subnet_id=subnet_id, device_id=device_id, channel=channel)
+            else:
+                _start_cover_sim(subnet_id, device_id, channel, "CLOSE")
+                await gw.cover_close_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+        elif cmd == "CLOSE_RAW":
+            await gw.cover_close_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+        elif cmd == "STOP":
+            if not use_pos:
+                _start_cover_sim(subnet_id, device_id, channel, "STOP")
+            await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
+        else:
+            pos = int(payload.get("position") or 0)
+            await gw.cover_set_position(subnet_id=subnet_id, device_id=device_id, channel=channel, position=pos)
+        _LOGGER.debug(
+            "control_cover %s %s.%s.%s in %.1fms",
+            cmd,
+            subnet_id,
+            device_id,
+            channel,
+            (time.monotonic() - t0) * 1000.0,
+        )
+        return {"ok": True}
+
+    @api.patch("/api/devices/light/{subnet_id}/{device_id}/{channel}")
+    async def update_light(subnet_id: int, device_id: int, channel: int, payload: dict[str, Any]): 
+        updates: dict[str, Any] = {} 
+        move_to = None
+        if "name" in payload: 
+            updates["name"] = str(payload["name"]) 
+        if "dimmable" in payload: 
+            updates["dimmable"] = bool(payload["dimmable"]) 
+        if "subnet_id" in payload or "device_id" in payload or "channel" in payload:
+            move_to = (
+                int(payload.get("subnet_id") or subnet_id),
+                int(payload.get("device_id") or device_id),
+                int(payload.get("channel") or channel),
+            )
+        if "icon" in payload: 
+            icon = str(payload.get("icon") or "").strip() 
+            updates["icon"] = icon or None 
+        if "category" in payload: 
+            category = str(payload.get("category") or "").strip() 
+            updates["category"] = category or None 
+        if "group" in payload:
+            group = str(payload.get("group") or "").strip()
+            if group.startswith("#"):
+                group = group[1:].strip()
+            updates["group"] = group or None 
+        if "rgb_group" in payload:
+            rgb_group = str(payload.get("rgb_group") or "").strip()
+            updates["rgb_group"] = rgb_group or None
+        if "rgb_channel" in payload:
+            rgb_channel = str(payload.get("rgb_channel") or "").strip().lower()
+            updates["rgb_channel"] = rgb_channel if rgb_channel in ("red", "green", "blue") else None
+ 
+        try:
+            if move_to and (move_to[0], move_to[1], move_to[2]) != (subnet_id, device_id, channel):
+                updated = store.move_device(
+                    type_="light",
+                    from_subnet_id=subnet_id,
+                    from_device_id=device_id,
+                    from_channel=channel,
+                    to_subnet_id=move_to[0],
+                    to_device_id=move_to[1],
+                    to_channel=move_to[2],
+                    updates=updates,
+                )
+            else:
+                updated = store.update_device_typed(type_="light", subnet_id=subnet_id, device_id=device_id, channel=channel, updates=updates)
+        except ValueError as e:
+            if "duplicate" in str(e).lower():
+                raise HTTPException(status_code=409, detail="Device already exists with same address")
+            raise HTTPException(status_code=400, detail=str(e))
+        if updated is None: 
+            raise HTTPException(status_code=404, detail="Not Found") 
+ 
+        asyncio.create_task(_sync_icons_for_devices([updated])) 
+        gw: BusproGateway | None = api.state.gateway
+        if gw is not None:
+            gw.ensure_light(
+                subnet_id=int(updated["subnet_id"]),
+                device_id=int(updated["device_id"]),
+                channel=int(updated["channel"]),
+                name=str(updated.get("name") or ""),
+            )
+            await gw.read_light_status(
+                subnet_id=int(updated["subnet_id"]),
+                device_id=int(updated["device_id"]),
+                channel=int(updated["channel"]),
+            )
+        await _republish_discovery() 
+        await _broadcast_devices() 
+        return updated 
+
+    @api.patch("/api/devices/cover/{subnet_id}/{device_id}/{channel}")
+    async def update_cover(subnet_id: int, device_id: int, channel: int, payload: dict[str, Any]): 
+        updates: dict[str, Any] = {} 
+        move_to = None
+        if "name" in payload: 
+            updates["name"] = str(payload["name"]) 
+        if "reverse_icon" in payload: 
+            updates["reverse_icon"] = bool(payload.get("reverse_icon")) 
+        if "subnet_id" in payload or "device_id" in payload or "channel" in payload:
+            move_to = (
+                int(payload.get("subnet_id") or subnet_id),
+                int(payload.get("device_id") or device_id),
+                int(payload.get("channel") or channel),
+            )
+        if "icon" in payload: 
+            icon = str(payload.get("icon") or "").strip() 
+            updates["icon"] = icon or None 
+        if "category" in payload: 
+            category = str(payload.get("category") or "").strip() 
+            updates["category"] = category or None 
+        if "opening_time_up" in payload: 
+            updates["opening_time_up"] = int(payload.get("opening_time_up") or 20) 
+        if "opening_time_down" in payload: 
+            updates["opening_time_down"] = int(payload.get("opening_time_down") or 20) 
+        if "start_delay_s" in payload:
+            updates["start_delay_s"] = float(payload.get("start_delay_s") or 0.0)
+        if "use_position" in payload:
+            updates["use_position"] = bool(payload.get("use_position"))
+        if "group" in payload:
+            group = str(payload.get("group") or "").strip()
+            if group.startswith("#"):
+                group = group[1:].strip()
+            updates["group"] = group or None 
+
+        try:
+            if move_to and (move_to[0], move_to[1], move_to[2]) != (subnet_id, device_id, channel):
+                updated = store.move_device(
+                    type_="cover",
+                    from_subnet_id=subnet_id,
+                    from_device_id=device_id,
+                    from_channel=channel,
+                    to_subnet_id=move_to[0],
+                    to_device_id=move_to[1],
+                    to_channel=move_to[2],
+                    updates=updates,
+                )
+            else:
+                updated = store.update_device_typed(type_="cover", subnet_id=subnet_id, device_id=device_id, channel=channel, updates=updates)
+        except ValueError as e:
+            if "duplicate" in str(e).lower():
+                raise HTTPException(status_code=409, detail="Device already exists with same address")
+            raise HTTPException(status_code=400, detail=str(e))
+        if updated is None: 
+            raise HTTPException(status_code=404, detail="Not Found") 
+ 
+        asyncio.create_task(_sync_icons_for_devices([updated])) 
+        gw: BusproGateway | None = api.state.gateway 
+        if gw is not None: 
+            gw.ensure_cover( 
+                subnet_id=int(updated["subnet_id"]), 
+                device_id=int(updated["device_id"]), 
+                channel=int(updated["channel"]), 
+                name=str(updated.get("name") or ""), 
+                opening_time_up=int(updated.get("opening_time_up") or 20), 
+                opening_time_down=int(updated.get("opening_time_down") or 20), 
+                start_delay_s=float(updated.get("start_delay_s") or 0.0),
+            ) 
+            # if address changed, force a status read
+            await gw.read_cover_status(subnet_id=int(updated["subnet_id"]), device_id=int(updated["device_id"]), channel=int(updated["channel"]))
+ 
+        await _republish_discovery() 
+        await _broadcast_devices() 
+        return updated 
+
+    @api.patch("/api/devices/temp/{subnet_id}/{device_id}/{channel}")
+    async def update_temp(subnet_id: int, device_id: int, channel: int, payload: dict[str, Any]):
+        updates: dict[str, Any] = {}
+        move_to = None
+        if "name" in payload:
+            updates["name"] = str(payload["name"])
+        if "subnet_id" in payload or "device_id" in payload or "sensor_id" in payload or "channel" in payload:
+            move_to = (
+                int(payload.get("subnet_id") or subnet_id),
+                int(payload.get("device_id") or device_id),
+                int(payload.get("sensor_id") or payload.get("channel") or channel),
+            )
+        if "icon" in payload:
+            icon = str(payload.get("icon") or "").strip()
+            updates["icon"] = icon or None
+        if "category" in payload:
+            category = str(payload.get("category") or "").strip()
+            updates["category"] = category or None
+        if "group" in payload:
+            group = str(payload.get("group") or "").strip()
+            if group.startswith("#"):
+                group = group[1:].strip()
+            updates["group"] = group or None
+        if "decimals" in payload:
+            try:
+                updates["decimals"] = max(0, min(3, int(payload.get("decimals"))))
+            except Exception:
+                updates["decimals"] = 1
+        if "min_value" in payload:
+            mv = payload.get("min_value")
+            updates["min_value"] = float(mv) if mv is not None and str(mv).strip() != "" else None
+        if "max_value" in payload:
+            mv = payload.get("max_value")
+            updates["max_value"] = float(mv) if mv is not None and str(mv).strip() != "" else None
+        if "temp_format" in payload or "format" in payload:
+            tf = payload.get("temp_format", payload.get("format"))
+            tf_s = str(tf or "").strip()
+            updates["temp_format"] = tf_s or None
+        if "temp_scale" in payload:
+            v = payload.get("temp_scale")
+            updates["temp_scale"] = float(v) if v is not None and str(v).strip() != "" else None
+        if "temp_offset" in payload:
+            v = payload.get("temp_offset")
+            updates["temp_offset"] = float(v) if v is not None and str(v).strip() != "" else None
+
+        old_addr = f"{int(subnet_id)}.{int(device_id)}.{int(channel)}"
+        try:
+            if move_to and (move_to[0], move_to[1], move_to[2]) != (subnet_id, device_id, channel):
+                # Clear retained discovery/state for old address to avoid duplicates in HA.
+                mqtt.publish(_temp_config_topic(subnet_id=subnet_id, device_id=device_id, sensor_id=channel), "", retain=True)
+                mqtt.publish(f"{settings.mqtt.base_topic}/state/temp/{subnet_id}/{device_id}/{channel}", "", retain=True)
+
+                updated = store.move_device(
+                    type_="temp",
+                    from_subnet_id=subnet_id,
+                    from_device_id=device_id,
+                    from_channel=channel,
+                    to_subnet_id=move_to[0],
+                    to_device_id=move_to[1],
+                    to_channel=move_to[2],
+                    updates=updates,
+                )
+            else:
+                updated = store.update_device_typed(type_="temp", subnet_id=subnet_id, device_id=device_id, channel=channel, updates=updates)
+        except ValueError as e:
+            if "duplicate" in str(e).lower():
+                raise HTTPException(status_code=409, detail="Device already exists with same address")
+            raise HTTPException(status_code=400, detail=str(e))
+        if updated is None:
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        # Keep runtime index/cache aligned
+        last_t: dict[str, float] = getattr(api.state, "_last_temp_value", {}) or {}
+        last_t.pop(old_addr, None)
+        api.state._last_temp_value = last_t
+        _rebuild_temp_index()
+
+        asyncio.create_task(_sync_icons_for_devices([updated]))
+        await _republish_discovery()
+        await _broadcast_devices()
+        return updated
+
+    @api.delete("/api/devices/temp/{subnet_id}/{device_id}/{channel}")
+    async def delete_temp(subnet_id: int, device_id: int, channel: int):
+        removed = store.remove_device_typed(type_="temp", subnet_id=subnet_id, device_id=device_id, channel=channel)
+        if not removed:
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        mqtt.publish(_temp_config_topic(subnet_id=subnet_id, device_id=device_id, sensor_id=channel), "", retain=True)
+        mqtt.publish(f"{settings.mqtt.base_topic}/state/temp/{subnet_id}/{device_id}/{channel}", "", retain=True)
+
+        last_t: dict[str, float] = getattr(api.state, "_last_temp_value", {}) or {}
+        last_t.pop(f"{int(subnet_id)}.{int(device_id)}.{int(channel)}", None)
+        api.state._last_temp_value = last_t
+        _rebuild_temp_index()
+
+        await _republish_discovery()
+        await _broadcast_devices()
+        return {"ok": True}
+
+    @api.patch("/api/devices/humidity/{subnet_id}/{device_id}/{channel}")
+    async def update_humidity(subnet_id: int, device_id: int, channel: int, payload: dict[str, Any]):
+        updates: dict[str, Any] = {}
+        move_to = None
+        if "name" in payload:
+            updates["name"] = str(payload["name"])
+        if "subnet_id" in payload or "device_id" in payload or "sensor_id" in payload or "channel" in payload:
+            move_to = (
+                int(payload.get("subnet_id") or subnet_id),
+                int(payload.get("device_id") or device_id),
+                int(payload.get("sensor_id") or payload.get("channel") or channel),
+            )
+        if "icon" in payload:
+            icon = str(payload.get("icon") or "").strip()
+            updates["icon"] = icon or None
+        if "category" in payload:
+            category = str(payload.get("category") or "").strip()
+            updates["category"] = category or None
+        if "group" in payload:
+            group = str(payload.get("group") or "").strip()
+            if group.startswith("#"):
+                group = group[1:].strip()
+            updates["group"] = group or None
+        if "decimals" in payload:
+            try:
+                updates["decimals"] = max(0, min(3, int(payload.get("decimals"))))
+            except Exception:
+                updates["decimals"] = 0
+        if "min_value" in payload:
+            mv = payload.get("min_value")
+            updates["min_value"] = float(mv) if mv is not None and str(mv).strip() != "" else None
+        if "max_value" in payload:
+            mv = payload.get("max_value")
+            updates["max_value"] = float(mv) if mv is not None and str(mv).strip() != "" else None
+
+        old_addr = f"{int(subnet_id)}.{int(device_id)}.{int(channel)}"
+        try:
+            if move_to and (move_to[0], move_to[1], move_to[2]) != (subnet_id, device_id, channel):
+                mqtt.publish(_humidity_config_topic(subnet_id=subnet_id, device_id=device_id, sensor_id=channel), "", retain=True)
+                mqtt.publish(f"{settings.mqtt.base_topic}/state/humidity/{subnet_id}/{device_id}/{channel}", "", retain=True)
+
+                updated = store.move_device(
+                    type_="humidity",
+                    from_subnet_id=subnet_id,
+                    from_device_id=device_id,
+                    from_channel=channel,
+                    to_subnet_id=move_to[0],
+                    to_device_id=move_to[1],
+                    to_channel=move_to[2],
+                    updates=updates,
+                )
+            else:
+                updated = store.update_device_typed(type_="humidity", subnet_id=subnet_id, device_id=device_id, channel=channel, updates=updates)
+        except ValueError as e:
+            if "duplicate" in str(e).lower():
+                raise HTTPException(status_code=409, detail="Device already exists with same address")
+            raise HTTPException(status_code=400, detail=str(e))
+        if updated is None:
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        last_h: dict[str, float] = getattr(api.state, "_last_humidity_value", {}) or {}
+        last_h.pop(old_addr, None)
+        api.state._last_humidity_value = last_h
+        _rebuild_humidity_index()
+
+        asyncio.create_task(_sync_icons_for_devices([updated]))
+        await _republish_discovery()
+        await _broadcast_devices()
+        return updated
+
+    @api.delete("/api/devices/humidity/{subnet_id}/{device_id}/{channel}")
+    async def delete_humidity(subnet_id: int, device_id: int, channel: int):
+        removed = store.remove_device_typed(type_="humidity", subnet_id=subnet_id, device_id=device_id, channel=channel)
+        if not removed:
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        mqtt.publish(_humidity_config_topic(subnet_id=subnet_id, device_id=device_id, sensor_id=channel), "", retain=True)
+        mqtt.publish(f"{settings.mqtt.base_topic}/state/humidity/{subnet_id}/{device_id}/{channel}", "", retain=True)
+
+        last_h: dict[str, float] = getattr(api.state, "_last_humidity_value", {}) or {}
+        last_h.pop(f"{int(subnet_id)}.{int(device_id)}.{int(channel)}", None)
+        api.state._last_humidity_value = last_h
+        _rebuild_humidity_index()
+
+        await _republish_discovery()
+        await _broadcast_devices()
+        return {"ok": True}
+
+    @api.patch("/api/devices/illuminance/{subnet_id}/{device_id}/{channel}")
+    async def update_illuminance(subnet_id: int, device_id: int, channel: int, payload: dict[str, Any]):
+        updates: dict[str, Any] = {}
+        move_to = None
+
+        old_addr = f"{int(subnet_id)}.{int(device_id)}.{int(channel)}"
+
+        if "name" in payload:
+            updates["name"] = str(payload["name"])
+        if "decimals" in payload:
+            try:
+                updates["decimals"] = max(0, min(3, int(payload.get("decimals"))))
+            except Exception:
+                updates["decimals"] = 0
+        if "min_value" in payload:
+            updates["min_value"] = payload.get("min_value")
+        if "max_value" in payload:
+            updates["max_value"] = payload.get("max_value")
+        if "lux_scale" in payload:
+            updates["lux_scale"] = payload.get("lux_scale")
+        if "lux_offset" in payload:
+            updates["lux_offset"] = payload.get("lux_offset")
+        if "icon" in payload:
+            icon = str(payload.get("icon") or "").strip()
+            updates["icon"] = icon or None
+        if "category" in payload:
+            category = str(payload.get("category") or "").strip()
+            updates["category"] = category or None
+        if "group" in payload:
+            group = str(payload.get("group") or "").strip()
+            if group.startswith("#"):
+                group = group[1:].strip()
+            updates["group"] = group or None
+
+        if "subnet_id" in payload or "device_id" in payload or "sensor_id" in payload or "channel" in payload:
+            move_to = (
+                int(payload.get("subnet_id") or subnet_id),
+                int(payload.get("device_id") or device_id),
+                int(payload.get("sensor_id", payload.get("channel", channel)) or channel),
+            )
+
+        try:
+            if move_to and (move_to[0], move_to[1], move_to[2]) != (subnet_id, device_id, channel):
+                mqtt.publish(_illuminance_config_topic(subnet_id=subnet_id, device_id=device_id, sensor_id=channel), "", retain=True)
+                mqtt.publish(f"{settings.mqtt.base_topic}/state/illuminance/{subnet_id}/{device_id}/{channel}", "", retain=True)
+
+                updated = store.move_device(
+                    type_="illuminance",
+                    from_subnet_id=subnet_id,
+                    from_device_id=device_id,
+                    from_channel=channel,
+                    to_subnet_id=move_to[0],
+                    to_device_id=move_to[1],
+                    to_channel=move_to[2],
+                    updates=updates,
+                )
+            else:
+                updated = store.update_device_typed(type_="illuminance", subnet_id=subnet_id, device_id=device_id, channel=channel, updates=updates)
+        except ValueError as e:
+            if "duplicate" in str(e).lower():
+                raise HTTPException(status_code=409, detail="Device already exists with same address")
+            raise HTTPException(status_code=400, detail=str(e))
+        if updated is None:
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        last_lx: dict[str, float] = getattr(api.state, "_last_illuminance_value", {}) or {}
+        last_lx.pop(old_addr, None)
+        api.state._last_illuminance_value = last_lx
+        _rebuild_illuminance_index()
+
+        asyncio.create_task(_sync_icons_for_devices([updated]))
+        await _republish_discovery()
+        await _broadcast_devices()
+        return updated
+
+    @api.delete("/api/devices/illuminance/{subnet_id}/{device_id}/{channel}")
+    async def delete_illuminance(subnet_id: int, device_id: int, channel: int):
+        removed = store.remove_device_typed(type_="illuminance", subnet_id=subnet_id, device_id=device_id, channel=channel)
+        if not removed:
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        mqtt.publish(_illuminance_config_topic(subnet_id=subnet_id, device_id=device_id, sensor_id=channel), "", retain=True)
+        mqtt.publish(f"{settings.mqtt.base_topic}/state/illuminance/{subnet_id}/{device_id}/{channel}", "", retain=True)
+
+        last_lx: dict[str, float] = getattr(api.state, "_last_illuminance_value", {}) or {}
+        last_lx.pop(f"{int(subnet_id)}.{int(device_id)}.{int(channel)}", None)
+        api.state._last_illuminance_value = last_lx
+        _rebuild_illuminance_index()
+
+        await _republish_discovery()
+        await _broadcast_devices()
+        return {"ok": True}
+
+    @api.patch("/api/devices/air/{subnet_id}/{device_id}/{channel}")
+    async def update_air(subnet_id: int, device_id: int, channel: int, payload: dict[str, Any]):
+        updates: dict[str, Any] = {}
+        move_to = None
+        old_addr = f"{int(subnet_id)}.{int(device_id)}.{int(channel)}"
+
+        if "name" in payload:
+            updates["name"] = str(payload["name"])
+        if "icon" in payload:
+            icon = str(payload.get("icon") or "").strip()
+            updates["icon"] = icon or None
+        if "gas_icon" in payload:
+            icon = str(payload.get("gas_icon") or "").strip()
+            updates["gas_icon"] = icon or None
+        if "category" in payload:
+            category = str(payload.get("category") or "").strip()
+            updates["category"] = category or None
+        if "group" in payload:
+            group = str(payload.get("group") or "").strip()
+            if group.startswith("#"):
+                group = group[1:].strip()
+            updates["group"] = group or None
+
+        if "subnet_id" in payload or "device_id" in payload or "sensor_id" in payload or "channel" in payload:
+            move_to = (
+                int(payload.get("subnet_id") or subnet_id),
+                int(payload.get("device_id") or device_id),
+                int(payload.get("sensor_id", payload.get("channel", channel)) or channel),
+            )
+
+        try:
+            if move_to and (move_to[0], move_to[1], move_to[2]) != (subnet_id, device_id, channel):
+                mqtt.publish(_air_quality_config_topic(subnet_id=subnet_id, device_id=device_id, sensor_id=channel), "", retain=True)
+                mqtt.publish(_gas_percent_config_topic(subnet_id=subnet_id, device_id=device_id, sensor_id=channel), "", retain=True)
+                mqtt.publish(f"{settings.mqtt.base_topic}/state/air_quality/{subnet_id}/{device_id}/{channel}", "", retain=True)
+                mqtt.publish(f"{settings.mqtt.base_topic}/state/gas_percent/{subnet_id}/{device_id}/{channel}", "", retain=True)
+
+                updated = store.move_device(
+                    type_="air",
+                    from_subnet_id=subnet_id,
+                    from_device_id=device_id,
+                    from_channel=channel,
+                    to_subnet_id=move_to[0],
+                    to_device_id=move_to[1],
+                    to_channel=move_to[2],
+                    updates=updates,
+                )
+            else:
+                updated = store.update_device_typed(type_="air", subnet_id=subnet_id, device_id=device_id, channel=channel, updates=updates)
+        except ValueError as e:
+            if "duplicate" in str(e).lower():
+                raise HTTPException(status_code=409, detail="Device already exists with same address")
+            raise HTTPException(status_code=400, detail=str(e))
+        if updated is None:
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        last_a: dict[str, str] = getattr(api.state, "_last_air_quality", {}) or {}
+        last_a.pop(old_addr, None)
+        api.state._last_air_quality = last_a
+        last_g: dict[str, float] = getattr(api.state, "_last_gas_percent", {}) or {}
+        last_g.pop(old_addr, None)
+        api.state._last_gas_percent = last_g
+        _rebuild_air_index()
+
+        asyncio.create_task(_sync_icons_for_devices([updated]))
+        await _republish_discovery()
+        await _broadcast_devices()
+        return updated
+
+    @api.delete("/api/devices/air/{subnet_id}/{device_id}/{channel}")
+    async def delete_air(subnet_id: int, device_id: int, channel: int):
+        removed = store.remove_device_typed(type_="air", subnet_id=subnet_id, device_id=device_id, channel=channel)
+        if not removed:
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        mqtt.publish(_air_quality_config_topic(subnet_id=subnet_id, device_id=device_id, sensor_id=channel), "", retain=True)
+        mqtt.publish(_gas_percent_config_topic(subnet_id=subnet_id, device_id=device_id, sensor_id=channel), "", retain=True)
+        mqtt.publish(f"{settings.mqtt.base_topic}/state/air_quality/{subnet_id}/{device_id}/{channel}", "", retain=True)
+        mqtt.publish(f"{settings.mqtt.base_topic}/state/gas_percent/{subnet_id}/{device_id}/{channel}", "", retain=True)
+
+        last_a: dict[str, str] = getattr(api.state, "_last_air_quality", {}) or {}
+        last_a.pop(f"{int(subnet_id)}.{int(device_id)}.{int(channel)}", None)
+        api.state._last_air_quality = last_a
+        last_g: dict[str, float] = getattr(api.state, "_last_gas_percent", {}) or {}
+        last_g.pop(f"{int(subnet_id)}.{int(device_id)}.{int(channel)}", None)
+        api.state._last_gas_percent = last_g
+        _rebuild_air_index()
+
+        await _republish_discovery()
+        await _broadcast_devices()
+        return {"ok": True}
+
+    @api.patch("/api/devices/pir/{subnet_id}/{device_id}/{channel}")
+    async def update_pir(subnet_id: int, device_id: int, channel: int, payload: dict[str, Any]):
+        updates: dict[str, Any] = {}
+        move_to = None
+
+        old_addr = f"{int(subnet_id)}.{int(device_id)}.{int(channel)}"
+
+        if "name" in payload:
+            updates["name"] = str(payload["name"])
+        if "icon" in payload:
+            icon = str(payload.get("icon") or "").strip()
+            updates["icon"] = icon or None
+        if "category" in payload:
+            category = str(payload.get("category") or "").strip()
+            updates["category"] = category or None
+        if "group" in payload:
+            group = str(payload.get("group") or "").strip()
+            if group.startswith("#"):
+                group = group[1:].strip()
+            updates["group"] = group or None
+
+        if "subnet_id" in payload or "device_id" in payload or "sensor_id" in payload or "channel" in payload:
+            move_to = (
+                int(payload.get("subnet_id") or subnet_id),
+                int(payload.get("device_id") or device_id),
+                int(payload.get("sensor_id") or payload.get("channel") or channel),
+            )
+
+        try:
+            if move_to and (move_to[0], move_to[1], move_to[2]) != (subnet_id, device_id, channel):
+                mqtt.publish(_pir_config_topic(subnet_id=subnet_id, device_id=device_id, sensor_id=channel), "", retain=True)
+                mqtt.publish(f"{settings.mqtt.base_topic}/state/pir/{subnet_id}/{device_id}/{channel}", "", retain=True)
+
+                updated = store.move_device(
+                    type_="pir",
+                    from_subnet_id=subnet_id,
+                    from_device_id=device_id,
+                    from_channel=channel,
+                    to_subnet_id=move_to[0],
+                    to_device_id=move_to[1],
+                    to_channel=move_to[2],
+                    updates=updates,
+                )
+            else:
+                updated = store.update_device_typed(type_="pir", subnet_id=subnet_id, device_id=device_id, channel=channel, updates=updates)
+        except ValueError as e:
+            if "duplicate" in str(e).lower():
+                raise HTTPException(status_code=409, detail="Device already exists with same address")
+            raise HTTPException(status_code=400, detail=str(e))
+        if updated is None:
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        last_p: dict[str, str] = getattr(api.state, "_last_pir_state", {}) or {}
+        last_p.pop(old_addr, None)
+        api.state._last_pir_state = last_p
+        _rebuild_pir_index()
+
+        asyncio.create_task(_sync_icons_for_devices([updated]))
+        await _republish_discovery()
+        await _broadcast_devices()
+        return updated
+
+    @api.delete("/api/devices/pir/{subnet_id}/{device_id}/{channel}")
+    async def delete_pir(subnet_id: int, device_id: int, channel: int):
+        removed = store.remove_device_typed(type_="pir", subnet_id=subnet_id, device_id=device_id, channel=channel)
+        if not removed:
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        mqtt.publish(_pir_config_topic(subnet_id=subnet_id, device_id=device_id, sensor_id=channel), "", retain=True)
+        mqtt.publish(f"{settings.mqtt.base_topic}/state/pir/{subnet_id}/{device_id}/{channel}", "", retain=True)
+
+        last_p: dict[str, str] = getattr(api.state, "_last_pir_state", {}) or {}
+        last_p.pop(f"{int(subnet_id)}.{int(device_id)}.{int(channel)}", None)
+        api.state._last_pir_state = last_p
+        _rebuild_pir_index()
+
+        await _republish_discovery()
+        await _broadcast_devices()
+        return {"ok": True}
+
+    @api.patch("/api/devices/ultrasonic/{subnet_id}/{device_id}/{channel}")
+    async def update_ultrasonic(subnet_id: int, device_id: int, channel: int, payload: dict[str, Any]):
+        updates: dict[str, Any] = {}
+        move_to = None
+
+        old_addr = f"{int(subnet_id)}.{int(device_id)}.{int(channel)}"
+
+        if "name" in payload:
+            updates["name"] = str(payload["name"])
+        if "icon" in payload:
+            icon = str(payload.get("icon") or "").strip()
+            updates["icon"] = icon or None
+        if "category" in payload:
+            category = str(payload.get("category") or "").strip()
+            updates["category"] = category or None
+        if "group" in payload:
+            group = str(payload.get("group") or "").strip()
+            if group.startswith("#"):
+                group = group[1:].strip()
+            updates["group"] = group or None
+
+        if "subnet_id" in payload or "device_id" in payload or "sensor_id" in payload or "channel" in payload:
+            move_to = (
+                int(payload.get("subnet_id") or subnet_id),
+                int(payload.get("device_id") or device_id),
+                int(payload.get("sensor_id") or payload.get("channel") or channel),
+            )
+
+        try:
+            if move_to and (move_to[0], move_to[1], move_to[2]) != (subnet_id, device_id, channel):
+                mqtt.publish(_ultrasonic_config_topic(subnet_id=subnet_id, device_id=device_id, sensor_id=channel), "", retain=True)
+                mqtt.publish(f"{settings.mqtt.base_topic}/state/ultrasonic/{subnet_id}/{device_id}/{channel}", "", retain=True)
+
+                updated = store.move_device(
+                    type_="ultrasonic",
+                    from_subnet_id=subnet_id,
+                    from_device_id=device_id,
+                    from_channel=channel,
+                    to_subnet_id=move_to[0],
+                    to_device_id=move_to[1],
+                    to_channel=move_to[2],
+                    updates=updates,
+                )
+            else:
+                updated = store.update_device_typed(type_="ultrasonic", subnet_id=subnet_id, device_id=device_id, channel=channel, updates=updates)
+        except ValueError as e:
+            if "duplicate" in str(e).lower():
+                raise HTTPException(status_code=409, detail="Device already exists with same address")
+            raise HTTPException(status_code=400, detail=str(e))
+        if updated is None:
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        last_u: dict[str, str] = getattr(api.state, "_last_ultrasonic_state", {}) or {}
+        last_u.pop(old_addr, None)
+        api.state._last_ultrasonic_state = last_u
+        _rebuild_ultrasonic_index()
+
+        asyncio.create_task(_sync_icons_for_devices([updated]))
+        await _republish_discovery()
+        await _broadcast_devices()
+        return updated
+
+    @api.delete("/api/devices/ultrasonic/{subnet_id}/{device_id}/{channel}")
+    async def delete_ultrasonic(subnet_id: int, device_id: int, channel: int):
+        removed = store.remove_device_typed(type_="ultrasonic", subnet_id=subnet_id, device_id=device_id, channel=channel)
+        if not removed:
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        mqtt.publish(_ultrasonic_config_topic(subnet_id=subnet_id, device_id=device_id, sensor_id=channel), "", retain=True)
+        mqtt.publish(f"{settings.mqtt.base_topic}/state/ultrasonic/{subnet_id}/{device_id}/{channel}", "", retain=True)
+
+        last_u: dict[str, str] = getattr(api.state, "_last_ultrasonic_state", {}) or {}
+        last_u.pop(f"{int(subnet_id)}.{int(device_id)}.{int(channel)}", None)
+        api.state._last_ultrasonic_state = last_u
+        _rebuild_ultrasonic_index()
+
+        await _republish_discovery()
+        await _broadcast_devices()
+        return {"ok": True}
+
+    @api.patch("/api/devices/dry_contact/{subnet_id}/{device_id}/{channel}")
+    async def update_dry_contact(subnet_id: int, device_id: int, channel: int, payload: dict[str, Any]):
+        updates: dict[str, Any] = {}
+        move_to = None
+
+        old_addr = f"{int(subnet_id)}.{int(device_id)}.{int(channel)}"
+
+        if "name" in payload:
+            updates["name"] = str(payload["name"])
+        if "icon" in payload:
+            icon = str(payload.get("icon") or "").strip()
+            updates["icon"] = icon or None
+        if "category" in payload:
+            category = str(payload.get("category") or "").strip()
+            updates["category"] = category or None
+        if "group" in payload:
+            group = str(payload.get("group") or "").strip()
+            if group.startswith("#"):
+                group = group[1:].strip()
+            updates["group"] = group or None
+        if "device_class" in payload:
+            dc = str(payload.get("device_class") or "").strip()
+            updates["device_class"] = dc or None
+        if "invert" in payload:
+            updates["invert"] = bool(payload.get("invert"))
+
+        if "subnet_id" in payload or "device_id" in payload or "input_id" in payload or "channel" in payload:
+            move_to = (
+                int(payload.get("subnet_id") or subnet_id),
+                int(payload.get("device_id") or device_id),
+                int(payload.get("input_id") or payload.get("channel") or channel),
+            )
+
+        try:
+            if move_to and (move_to[0], move_to[1], move_to[2]) != (subnet_id, device_id, channel):
+                mqtt.publish(_dry_contact_config_topic(subnet_id=subnet_id, device_id=device_id, input_id=channel), "", retain=True)
+                mqtt.publish(f"{settings.mqtt.base_topic}/state/dry_contact/{subnet_id}/{device_id}/{channel}", "", retain=True)
+
+                updated = store.move_device(
+                    type_="dry_contact",
+                    from_subnet_id=subnet_id,
+                    from_device_id=device_id,
+                    from_channel=channel,
+                    to_subnet_id=move_to[0],
+                    to_device_id=move_to[1],
+                    to_channel=move_to[2],
+                    updates=updates,
+                )
+            else:
+                updated = store.update_device_typed(type_="dry_contact", subnet_id=subnet_id, device_id=device_id, channel=channel, updates=updates)
+        except ValueError as e:
+            if "duplicate" in str(e).lower():
+                raise HTTPException(status_code=409, detail="Device already exists with same address")
+            raise HTTPException(status_code=400, detail=str(e))
+        if updated is None:
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        last_dc: dict[str, str] = getattr(api.state, "_last_dry_contact_state", {}) or {}
+        last_dc.pop(old_addr, None)
+        api.state._last_dry_contact_state = last_dc
+        _rebuild_dry_contact_index()
+
+        asyncio.create_task(_sync_icons_for_devices([updated]))
+        await _republish_discovery()
+        await _broadcast_devices()
+        return updated
+
+    @api.delete("/api/devices/dry_contact/{subnet_id}/{device_id}/{channel}")
+    async def delete_dry_contact(subnet_id: int, device_id: int, channel: int):
+        removed = store.remove_device_typed(type_="dry_contact", subnet_id=subnet_id, device_id=device_id, channel=channel)
+        if not removed:
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        mqtt.publish(_dry_contact_config_topic(subnet_id=subnet_id, device_id=device_id, input_id=channel), "", retain=True)
+        mqtt.publish(f"{settings.mqtt.base_topic}/state/dry_contact/{subnet_id}/{device_id}/{channel}", "", retain=True)
+
+        last_dc: dict[str, str] = getattr(api.state, "_last_dry_contact_state", {}) or {}
+        last_dc.pop(f"{int(subnet_id)}.{int(device_id)}.{int(channel)}", None)
+        api.state._last_dry_contact_state = last_dc
+        _rebuild_dry_contact_index()
+
+        await _republish_discovery()
+        await _broadcast_devices()
+        return {"ok": True}
+
+     
+    @api.delete("/api/devices/light/{subnet_id}/{device_id}/{channel}")
+    async def delete_light(subnet_id: int, device_id: int, channel: int):
+        removed = store.remove_device_typed(type_="light", subnet_id=subnet_id, device_id=device_id, channel=channel)
+        if not removed:
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        # Cleanup retained discovery + state to prevent ghost entities in Home Assistant
+        try:
+            topics = _topics_for_retained_cleanup(
+                dtype="light",
+                subnet_id=int(subnet_id),
+                device_id=int(device_id),
+                channel=int(channel),
+                clear_config=True,
+                clear_state=True,
+            )
+            for t in topics:
+                mqtt.publish(t, "", retain=True)
+        except Exception:
+            pass
+        try:
+            last_light: dict[str, Any] = getattr(api.state, "_last_light_state", {}) or {}
+            last_light.pop(f"{int(subnet_id)}.{int(device_id)}.{int(channel)}", None)
+            api.state._last_light_state = last_light
+        except Exception:
+            pass
+
+        await _republish_discovery()
+        await _broadcast_devices()
+        return {"ok": True}
+
+    @api.delete("/api/devices/cover/{subnet_id}/{device_id}/{channel}")
+    async def delete_cover(subnet_id: int, device_id: int, channel: int):
+        removed = store.remove_device_typed(type_="cover", subnet_id=subnet_id, device_id=device_id, channel=channel)
+        if not removed:
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        # Cleanup retained discovery + state to prevent ghost entities in Home Assistant
+        try:
+            topics = _topics_for_retained_cleanup(
+                dtype="cover",
+                subnet_id=int(subnet_id),
+                device_id=int(device_id),
+                channel=int(channel),
+                clear_config=True,
+                clear_state=True,
+            )
+            for t in topics:
+                mqtt.publish(t, "", retain=True)
+        except Exception:
+            pass
+        try:
+            last_cover: dict[str, Any] = getattr(api.state, "_last_cover_state", {}) or {}
+            last_cover.pop(f"{int(subnet_id)}.{int(device_id)}.{int(channel)}", None)
+            api.state._last_cover_state = last_cover
+        except Exception:
+            pass
+
+        await _republish_discovery()
+        await _broadcast_devices()
+        return {"ok": True}
+    @api.delete("/api/devices")
+    async def delete_all_devices():
+        store.clear_devices()
+        _rebuild_temp_index()
+        _rebuild_humidity_index()
+        _rebuild_illuminance_index()
+        _rebuild_dry_contact_index()
+        _rebuild_air_index()
+        _rebuild_pir_index()
+        _rebuild_ultrasonic_index()
+        await _republish_discovery()
+        await _broadcast_devices()
+        return {"ok": True}
+
+
+    @api.get("/api/buspro/status")
+    async def buspro_status():
+        gw: BusproGateway | None = api.state.gateway
+        if gw is None:
+            return {"ready": False, "error": "Gateway not initialized"}
+        tx_host, tx_port = gw.send_target()
+        rx = gw.last_rx
+        return {
+            "ready": bool(gw.started and gw.transport_ready()),
+            "started": bool(gw.started),
+            "transport_ready": bool(gw.transport_ready()),
+            "host": gw.host,
+            "port": gw.port,
+            "tx_host": tx_host,
+            "tx_port": tx_port,
+            "rx_host": rx[0] if rx else None,
+            "rx_port": rx[1] if rx else None,
+            "last_error": gw.last_error,
+        }
+    @api.get("/api/mqtt/status")
+    async def mqtt_status():
+        st = mqtt.status()
+        return {"connected": st.connected, "last_error": st.last_error}
+
+    def _topics_for_retained_cleanup(
+        *,
+        dtype: str,
+        subnet_id: int,
+        device_id: int,
+        channel: int,
+        clear_config: bool,
+        clear_state: bool,
+        gateway_host: str | None = None,
+        gateway_port: int | None = None,
+    ) -> list[str]:
+        t = str(dtype or "").strip().lower()
+        topics: list[str] = []
+        gw_host = str(gateway_host or settings.gateway.host)
+        gw_port = int(gateway_port if gateway_port is not None else settings.gateway.port)
+
+        if clear_config:
+            if t == "cover":
+                dev = {
+                    "type": "cover",
+                    "subnet_id": int(subnet_id),
+                    "device_id": int(device_id),
+                    "channel": int(channel),
+                    "name": f"Cover {subnet_id}.{device_id}.{channel}",
+                }
+                t1, _ = cover_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=gw_host,
+                    gateway_port=gw_port,
+                    device=dev,
+                )
+                t2, _ = cover_no_pct_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=gw_host,
+                    gateway_port=gw_port,
+                    device=dev,
+                )
+                topics.extend([t1, t2])
+            elif t == "temp":
+                dev = {"type": "temp", "subnet_id": int(subnet_id), "device_id": int(device_id), "channel": int(channel), "name": f"Temp {subnet_id}.{device_id}.{channel}"}
+                t1, _ = temperature_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=gw_host,
+                    gateway_port=gw_port,
+                    device=dev,
+                )
+                topics.append(t1)
+            elif t == "humidity":
+                dev = {"type": "humidity", "subnet_id": int(subnet_id), "device_id": int(device_id), "channel": int(channel), "name": f"Humidity {subnet_id}.{device_id}.{channel}"}
+                t1, _ = humidity_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=gw_host,
+                    gateway_port=gw_port,
+                    device=dev,
+                )
+                topics.append(t1)
+            elif t == "illuminance":
+                dev = {"type": "illuminance", "subnet_id": int(subnet_id), "device_id": int(device_id), "channel": int(channel), "name": f"Illuminance {subnet_id}.{device_id}.{channel}"}
+                t1, _ = illuminance_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=gw_host,
+                    gateway_port=gw_port,
+                    device=dev,
+                )
+                topics.append(t1)
+            elif t == "air":
+                dev = {"type": "air", "subnet_id": int(subnet_id), "device_id": int(device_id), "channel": int(channel), "name": f"Air {subnet_id}.{device_id}.{channel}"}
+                t1, _ = air_quality_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=gw_host,
+                    gateway_port=gw_port,
+                    device=dev,
+                )
+                t2, _ = gas_percent_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=gw_host,
+                    gateway_port=gw_port,
+                    device=dev,
+                )
+                topics.extend([t1, t2])
+            elif t == "pir":
+                dev = {"type": "pir", "subnet_id": int(subnet_id), "device_id": int(device_id), "channel": int(channel), "name": f"PIR {subnet_id}.{device_id}.{channel}"}
+                t1, _ = pir_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=gw_host,
+                    gateway_port=gw_port,
+                    device=dev,
+                )
+                topics.append(t1)
+            elif t == "ultrasonic":
+                dev = {"type": "ultrasonic", "subnet_id": int(subnet_id), "device_id": int(device_id), "channel": int(channel), "name": f"Ultrasonic {subnet_id}.{device_id}.{channel}"}
+                t1, _ = ultrasonic_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=gw_host,
+                    gateway_port=gw_port,
+                    device=dev,
+                )
+                topics.append(t1)
+            elif t == "dry_contact":
+                dev = {"type": "dry_contact", "subnet_id": int(subnet_id), "device_id": int(device_id), "channel": int(channel), "name": f"Dry {subnet_id}.{device_id}.{channel}"}
+                t1, _ = dry_contact_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=gw_host,
+                    gateway_port=gw_port,
+                    device=dev,
+                )
+                topics.append(t1)
+            else:  # light default
+                dev = {
+                    "type": "light",
+                    "subnet_id": int(subnet_id),
+                    "device_id": int(device_id),
+                    "channel": int(channel),
+                    "dimmable": True,
+                    "name": f"Light {subnet_id}.{device_id}.{channel}",
+                }
+                t1, _ = light_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=gw_host,
+                    gateway_port=gw_port,
+                    device=dev,
+                )
+                t2, _ = switch_discovery(
+                    discovery_prefix=settings.mqtt.discovery_prefix,
+                    base_topic=settings.mqtt.base_topic,
+                    gateway_host=gw_host,
+                    gateway_port=gw_port,
+                    device=dev,
+                )
+                topics.extend([t1, t2])
+
+        if clear_state:
+            if t == "cover":
+                topics.append(f"{settings.mqtt.base_topic}/state/cover_state/{subnet_id}/{device_id}/{channel}")
+                topics.append(f"{settings.mqtt.base_topic}/state/cover_pos/{subnet_id}/{device_id}/{channel}")
+            elif t == "temp":
+                topics.append(f"{settings.mqtt.base_topic}/state/temp/{subnet_id}/{device_id}/{channel}")
+            elif t == "humidity":
+                topics.append(f"{settings.mqtt.base_topic}/state/humidity/{subnet_id}/{device_id}/{channel}")
+            elif t == "illuminance":
+                topics.append(f"{settings.mqtt.base_topic}/state/illuminance/{subnet_id}/{device_id}/{channel}")
+            elif t == "air":
+                topics.append(f"{settings.mqtt.base_topic}/state/air_quality/{subnet_id}/{device_id}/{channel}")
+                topics.append(f"{settings.mqtt.base_topic}/state/gas_percent/{subnet_id}/{device_id}/{channel}")
+            elif t == "pir":
+                topics.append(f"{settings.mqtt.base_topic}/state/pir/{subnet_id}/{device_id}/{channel}")
+            elif t == "ultrasonic":
+                topics.append(f"{settings.mqtt.base_topic}/state/ultrasonic/{subnet_id}/{device_id}/{channel}")
+            elif t == "dry_contact":
+                topics.append(f"{settings.mqtt.base_topic}/state/dry_contact/{subnet_id}/{device_id}/{channel}")
+            else:
+                topics.append(f"{settings.mqtt.base_topic}/state/light/{subnet_id}/{device_id}/{channel}")
+
+        uniq: list[str] = []
+        seen: set[str] = set()
+        for x in topics:
+            xx = str(x or "").strip()
+            if not xx or xx in seen:
+                continue
+            seen.add(xx)
+            uniq.append(xx)
+        return uniq
+
+    @api.post("/api/mqtt/republish")
+    async def mqtt_republish():
+        await _republish_discovery()
+        return {"ok": True}
+
+    @api.post("/api/mqtt/clear_retained_device")
+    async def mqtt_clear_retained_device(payload: dict[str, Any]):
+        # Admin-only via port gate
+        st = mqtt.status()
+        if not st.connected:
+            raise HTTPException(status_code=503, detail=st.last_error or "MQTT not connected")
+
+        dtype = str(payload.get("type") or "").strip().lower() or "light"
+        try:
+            subnet_id = int(payload.get("subnet_id"))
+            device_id = int(payload.get("device_id"))
+            channel = int(payload.get("channel"))
+        except Exception:
+            raise HTTPException(status_code=400, detail="subnet_id/device_id/channel required")
+
+        clear_config = bool(payload.get("clear_config", True))
+        clear_state = bool(payload.get("clear_state", True))
+        if not clear_config and not clear_state:
+            raise HTTPException(status_code=400, detail="nothing to do (clear_config and clear_state are false)")
+
+        gw_host = payload.get("gateway_host")
+        gw_port_raw = payload.get("gateway_port")
+        gw_port: int | None = None
+        if gw_port_raw is not None and str(gw_port_raw).strip() != "":
+            try:
+                gw_port = int(gw_port_raw)
+            except Exception:
+                raise HTTPException(status_code=400, detail="gateway_port must be int")
+
+        topics = _topics_for_retained_cleanup(
+            dtype=dtype,
+            subnet_id=subnet_id,
+            device_id=device_id,
+            channel=channel,
+            clear_config=clear_config,
+            clear_state=clear_state,
+            gateway_host=str(gw_host).strip() if gw_host is not None and str(gw_host).strip() else None,
+            gateway_port=gw_port,
+        )
+        for t in topics:
+            mqtt.publish(t, "", retain=True)
+        return {"ok": True, "cleared": len(topics), "topics": topics}
+
+    @api.post("/api/mqtt/discovery_reset")
+    async def mqtt_discovery_reset():
+        # Admin-only via port gate
+        st = mqtt.status()
+        if not st.connected:
+            raise HTTPException(status_code=503, detail=st.last_error or "MQTT not connected")
+
+        # Clear retained discovery configs for current entities (then re-publish).
+        topics: list[str] = []
+        devices = store.list_devices()
+        for dev in devices:
+            dtype = str(dev.get("type") or "light").strip().lower()
+            try:
+                if dtype == "cover":
+                    t1, _ = cover_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    t2, _ = cover_no_pct_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    topics.extend([t1, t2])
+                elif dtype == "humidity":
+                    t1, _ = humidity_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    topics.append(t1)
+                elif dtype == "illuminance":
+                    t1, _ = illuminance_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    topics.append(t1)
+                elif dtype == "temp":
+                    t1, _ = temperature_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    topics.append(t1)
+                elif dtype == "dry_contact":
+                    t1, _ = dry_contact_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    topics.append(t1)
+                elif dtype == "pir":
+                    t1, _ = pir_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    topics.append(t1)
+                elif dtype == "ultrasonic":
+                    t1, _ = ultrasonic_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    topics.append(t1)
+                elif dtype == "air":
+                    t1, _ = air_quality_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    t2, _ = gas_percent_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    topics.extend([t1, t2])
+                else:
+                    # Clear both possible retained configs (light + switch) for the same addr.
+                    t1, _ = light_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    t2, _ = switch_discovery(
+                        discovery_prefix=settings.mqtt.discovery_prefix,
+                        base_topic=settings.mqtt.base_topic,
+                        gateway_host=settings.gateway.host,
+                        gateway_port=settings.gateway.port,
+                        device=dev,
+                    )
+                    topics.extend([t1, t2])
+            except Exception:
+                continue
+
+        # RGB master entities + previously published masters (for cleanup).
+        rgb_ids = set(store.get_published_rgb_group_ids()) | set(_rgb_groups())
+        for gid in rgb_ids:
+            topic, _ = rgb_light_discovery(
+                discovery_prefix=settings.mqtt.discovery_prefix,
+                base_topic=settings.mqtt.base_topic,
+                gateway_host=settings.gateway.host,
+                gateway_port=settings.gateway.port,
+                group_name=gid,
+                group_slug=gid,
+            )
+            topics.append(topic)
+
+        # Cover groups + previously published groups (for cleanup)
+        gids: set[str] = set()
+        for g in store.list_cover_groups():
+            try:
+                name = str(g.get("name") or "").strip()
+                gid = str(g.get("id") or "").strip() or slugify(name)
+                if gid:
+                    gids.add(gid)
+            except Exception:
+                continue
+        for gid in store.get_published_cover_group_ids():
+            if gid:
+                gids.add(str(gid))
+        for gid in gids:
+            topics.append(_cover_group_config_topic(gid=gid))
+            topics.append(_cover_group_no_pct_config_topic(gid=gid))
+
+        # Light scenarios + previously published scenarios (for cleanup)
+        sids: set[str] = set()
+        for sc in store.list_light_scenarios():
+            try:
+                sid = str(sc.get("id") or "").strip()
+                if sid:
+                    sids.add(sid)
+            except Exception:
+                continue
+        for sid in store.get_published_light_scenario_ids():
+            if sid:
+                sids.add(str(sid))
+        for sid in sids:
+            topics.append(_light_scenario_config_topic(sid=sid))
+            topics.append(_light_scenario_switch_config_topic(sid=sid))
+            topics.append(_light_scenario_state_topic(sid=sid))
+
+        # Scenario HA triggers (admin-defined)
+        tids: set[str] = set()
+        for tr in store.list_scenario_ha_triggers():
+            try:
+                tid = str(tr.get("id") or "").strip()
+                if tid:
+                    tids.add(tid)
+            except Exception:
+                continue
+        for tid in store.get_published_scenario_ha_trigger_ids():
+            if tid:
+                tids.add(str(tid))
+        for tid in tids:
+            topics.append(_scenario_ha_trigger_config_topic(trigger_id=tid))
+
+        # de-dupe topics preserving order
+        uniq: list[str] = []
+        seen: set[str] = set()
+        for t in topics:
+            tt = str(t or "").strip()
+            if not tt or tt in seen:
+                continue
+            seen.add(tt)
+            uniq.append(tt)
+
+        for t in uniq:
+            mqtt.publish(t, "", retain=True)
+
+        await _republish_discovery()
+        return {"ok": True, "cleared": len(uniq)}
+
+    @api.get("/api/user/light_scenarios")
+    async def list_light_scenarios():
+        return {"items": store.list_light_scenarios()}
+
+    @api.get("/api/user/light_scenarios_status")
+    async def list_light_scenarios_status():
+        items = store.list_light_scenarios()
+        out: dict[str, str] = {}
+        running_map: dict[str, bool] = {}
+        running_state: dict[str, bool] = getattr(api.state, "scenario_running", {}) or {}
+        for sc in items:
+            sid = str(sc.get("id") or "").strip()
+            if not sid:
+                continue
+            out[sid] = _scenario_switch_state(sc)
+            running_map[sid] = bool(running_state.get(sid))
+        return {"states": out, "running": running_map}
+
+    @api.get("/api/user/scenario_ha_triggers")
+    async def list_user_scenario_ha_triggers():
+        return {"items": store.list_scenario_ha_triggers()}
+
+    @api.get("/api/scenario_ha_triggers")
+    async def list_scenario_ha_triggers():
+        return {"items": store.list_scenario_ha_triggers()}
+
+    @api.post("/api/scenario_ha_triggers")
+    async def create_scenario_ha_trigger(payload: dict[str, Any]):
+        try:
+            out = store.add_scenario_ha_trigger(payload)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        try:
+            await _republish_discovery()
+        except Exception:
+            pass
+        return out
+
+    @api.put("/api/scenario_ha_triggers/{trigger_id}")
+    async def update_scenario_ha_trigger(trigger_id: str, payload: dict[str, Any]):
+        try:
+            out = store.update_scenario_ha_trigger(trigger_id=trigger_id, payload=payload)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        if out is None:
+            raise HTTPException(status_code=404, detail="Not Found")
+        try:
+            await _republish_discovery()
+        except Exception:
+            pass
+        return out
+
+    @api.delete("/api/scenario_ha_triggers/{trigger_id}")
+    async def delete_scenario_ha_trigger(trigger_id: str):
+        ok = store.delete_scenario_ha_trigger(trigger_id=trigger_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Not Found")
+        try:
+            await _republish_discovery()
+        except Exception:
+            pass
+        return {"ok": True}
+
+    @api.post("/api/user/light_scenarios")
+    async def create_light_scenario(payload: dict[str, Any]):
+        try:
+            out = store.add_light_scenario(payload)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        try:
+            await _republish_discovery()
+        except Exception:
+            pass
+        return out
+
+    @api.put("/api/user/light_scenarios/{scenario_id}")
+    async def update_light_scenario(scenario_id: str, payload: dict[str, Any]):
+        try:
+            out = store.update_light_scenario(scenario_id=scenario_id, payload=payload)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        if out is None:
+            raise HTTPException(status_code=404, detail="Not Found")
+        try:
+            await _republish_discovery()
+        except Exception:
+            pass
+        return out
+
+    @api.delete("/api/user/light_scenarios/{scenario_id}")
+    async def delete_light_scenario(scenario_id: str):
+        ok = store.delete_light_scenario(scenario_id=scenario_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Not Found")
+        try:
+            await _republish_discovery()
+        except Exception:
+            pass
+        return {"ok": True}
+
+    @api.post("/api/control/light_scenario/{scenario_id}")
+    async def run_light_scenario(scenario_id: str, payload: dict[str, Any] | None = None):
+        gw: BusproGateway | None = api.state.gateway
+        if gw is None:
+            raise HTTPException(status_code=503, detail="Gateway not ready")
+        if not gw.started or not gw.transport_ready():
+            raise HTTPException(status_code=503, detail=gw.last_error or "UDP transport not ready")
+
+        sc = store.find_light_scenario(scenario_id=scenario_id)
+        if not sc:
+            raise HTTPException(status_code=404, detail="Not Found")
+        sid_current = str(sc.get("id") or "").strip()
+        desired = None
+        command = None
+        if isinstance(payload, dict):
+            v = str(payload.get("state") or "").strip().upper()
+            if v in ("ON", "OFF"):
+                desired = v
+            c = str(payload.get("command") or "").strip().upper()
+            if c in ("STOP", "RUN"):
+                command = c
+
+        def _track_scenario_task(sid: str, task: asyncio.Task) -> None:
+            tasks: dict[str, set[asyncio.Task]] = getattr(api.state, "scenario_tasks", {}) or {}
+            s = tasks.get(sid)
+            if s is None:
+                s = set()
+                tasks[sid] = s
+            s.add(task)
+            api.state.scenario_tasks = tasks
+            def _done(_t: asyncio.Task) -> None:
+                tasks2: dict[str, set[asyncio.Task]] = getattr(api.state, "scenario_tasks", {}) or {}
+                s2 = tasks2.get(sid)
+                if s2 and _t in s2:
+                    s2.remove(_t)
+                if s2 is not None and not s2:
+                    tasks2.pop(sid, None)
+                    try:
+                        asyncio.create_task(_set_light_scenario_running(sid, False))
+                    except Exception:
+                        pass
+                api.state.scenario_tasks = tasks2
+            try:
+                task.add_done_callback(_done)
+            except Exception:
+                pass
+
+        def _cancel_scenario_tasks(sid: str) -> None:
+            tasks: dict[str, set[asyncio.Task]] = getattr(api.state, "scenario_tasks", {}) or {}
+            s = tasks.pop(sid, None)
+            if not s:
+                api.state.scenario_tasks = tasks
+                return
+            for t in list(s):
+                if t and not t.done():
+                    t.cancel()
+            api.state.scenario_tasks = tasks
+
+        def _invert_state(st: str) -> str:
+            return "OFF" if str(st).upper() == "ON" else "ON"
+
+        if command == "STOP":
+            try:
+                await hub.broadcast("light_scenario_command", {"id": sid_current, "action": "stop"})
+            except Exception:
+                pass
+            _cancel_scenario_tasks(sid_current)
+            covers = sc.get("covers") or []
+            if isinstance(covers, list):
+                for it in covers:
+                    if not isinstance(it, dict):
+                        continue
+                    kind = str(it.get("kind") or "single").strip().lower()
+                    if kind == "ha":
+                        if not _ha_enabled():
+                            continue
+                        eid = str(it.get("entity_id") or "").strip().lower()
+                        if not eid.startswith("cover."):
+                            continue
+                        try:
+                            await asyncio.to_thread(
+                                _ha_request,
+                                "POST",
+                                "/api/services/cover/stop_cover",
+                                payload={"entity_id": eid},
+                                timeout_s=10,
+                            )
+                        except Exception:
+                            continue
+                        continue
+                    if kind == "group":
+                        gid = str(it.get("group_id") or "").strip()
+                        if not gid:
+                            continue
+                        try:
+                            await _run_cover_group_command(gid, "STOP", raw=True)
+                        except Exception:
+                            continue
+                        continue
+                    try:
+                        subnet_id = int(it.get("subnet_id"))
+                        device_id = int(it.get("device_id"))
+                        channel = int(it.get("channel"))
+                    except Exception:
+                        continue
+                    try:
+                        await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                        _start_cover_sim(subnet_id, device_id, channel, "STOP")
+                    except Exception:
+                        continue
+            await _set_light_scenario_running(sid_current, False)
+            return {"ok": True, "stopped": True}
+
+        try:
+            await hub.broadcast("light_scenario_command", {"id": sid_current, "action": (desired or command or "RUN").lower()})
+        except Exception:
+            pass
+        await _set_light_scenario_running(sid_current, True)
+
+        combination_targets_raw = sc.get("combination_targets") or []
+        combination_targets: list[dict[str, int]] = []
+        if isinstance(combination_targets_raw, list):
+            for ct in combination_targets_raw:
+                if not isinstance(ct, dict):
+                    continue
+                try:
+                    subnet_id = int(ct.get("subnet_id"))
+                    device_id = int(ct.get("device_id"))
+                    switch_number = int(ct.get("switch_number"))
+                except Exception:
+                    continue
+                if switch_number < 1 or switch_number > 255:
+                    continue
+                combination_targets.append(
+                    {
+                        "subnet_id": subnet_id,
+                        "device_id": device_id,
+                        "switch_number": switch_number,
+                    }
+                )
+        items_raw = sc.get("items") or []
+        if not isinstance(items_raw, list) or not items_raw:
+            items_raw = []
+        _LOGGER.warning(
+            "scenario %s: start command=%s desired=%s items=%s covers=%s combination_targets=%s",
+            sid_current,
+            command or "",
+            desired or "",
+            len(items_raw),
+            len(sc.get("covers") or []) if isinstance(sc.get("covers"), list) else 0,
+            len(combination_targets),
+        )
+
+        # Safety: de-duplicate scenario light targets by final key, keeping the latest
+        # configured command for each target. This avoids conflicting ON/OFF commands
+        # on the same address/entity when legacy/edited scenarios contain duplicates.
+        dedup_items: dict[str, dict[str, Any]] = {}
+        for it in items_raw:
+            if not isinstance(it, dict):
+                continue
+            eid = str(it.get("entity_id") or "").strip().lower()
+            if eid and "." in eid:
+                dedup_items[f"ha:{eid}"] = it
+                continue
+            try:
+                subnet_id = int(it.get("subnet_id"))
+                device_id = int(it.get("device_id"))
+                channel = int(it.get("channel"))
+            except Exception:
+                continue
+            dedup_items[f"buspro:{subnet_id}.{device_id}.{channel}"] = it
+        items = list(dedup_items.values())
+        has_on_items = any(
+            isinstance(it, dict) and str(it.get("state") or "").strip().upper() == "ON"
+            for it in items
+        )
+
+        sent = 0
+        if combination_targets:
+            combo_on = False if desired == "OFF" else True
+            _LOGGER.warning(
+                "scenario %s: using combination path state=%s targets=%s",
+                sid_current,
+                "ON" if combo_on else "OFF",
+                len(combination_targets),
+            )
+            for ct in combination_targets:
+                try:
+                    await gw.set_universal_switch(
+                        subnet_id=int(ct["subnet_id"]),
+                        device_id=int(ct["device_id"]),
+                        switch_number=int(ct["switch_number"]),
+                        on=combo_on,
+                    )
+                    sent += 1
+                except Exception as e:
+                    _LOGGER.warning(
+                        "scenario %s: failed combination target=%s.%s sw=%s state=%s err=%s",
+                        sid_current,
+                        ct.get("subnet_id"),
+                        ct.get("device_id"),
+                        ct.get("switch_number"),
+                        "ON" if combo_on else "OFF",
+                        e,
+                    )
+            # If combination targets are configured, skip per-light item burst to avoid duplicate/conflicting commands.
+            items = []
+
+        # Extra pacing for scenario light bursts (in addition to gateway pacing).
+        scenario_light_delay_s = max(
+            0.0,
+            float(getattr(settings, "light_cmd_interval_s", 0.12) or 0.0) + 0.12,
+        )
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+
+            eid = str(it.get("entity_id") or "").strip().lower()
+            if eid and "." in eid:
+                dom = str(it.get("domain") or eid.split(".", 1)[0]).strip().lower()
+                base_state = str(it.get("state") or "").strip().upper()
+                state = base_state
+                if desired == "OFF":
+                    state = _invert_state(base_state)
+                elif desired == "ON":
+                    state = base_state
+                elif desired is None:
+                    state = base_state
+                if state not in ("ON", "OFF"):
+                    continue
+                try:
+                    if dom == "switch" or eid.startswith("switch."):
+                        svc = "turn_on" if state == "ON" else "turn_off"
+                        await asyncio.to_thread(_ha_request, "POST", f"/api/services/switch/{svc}", payload={"entity_id": eid}, timeout_s=10)
+                        sent += 1
+                        continue
+                    if dom != "light" and not eid.startswith("light."):
+                        continue
+                    if state == "OFF":
+                        await asyncio.to_thread(_ha_request, "POST", "/api/services/light/turn_off", payload={"entity_id": eid}, timeout_s=10)
+                        sent += 1
+                        continue
+                    data: dict[str, Any] = {"entity_id": eid}
+                    br = it.get("brightness")
+                    if br is not None:
+                        try:
+                            data["brightness"] = int(br)
+                        except Exception:
+                            pass
+                    await asyncio.to_thread(_ha_request, "POST", "/api/services/light/turn_on", payload=data, timeout_s=10)
+                    sent += 1
+                except Exception as e:
+                    _LOGGER.warning("scenario %s: failed HA light/switch target=%s state=%s err=%s", sid_current, eid, state, e)
+                    continue
+                continue
+
+            try:
+                subnet_id = int(it.get("subnet_id"))
+                device_id = int(it.get("device_id"))
+                channel = int(it.get("channel"))
+            except Exception:
+                continue
+            base_state = str(it.get("state") or "").strip().upper()
+            state = base_state
+            if desired == "OFF":
+                state = _invert_state(base_state)
+            elif desired == "ON":
+                state = base_state
+            elif desired is None:
+                state = base_state
+            if state not in ("ON", "OFF"):
+                continue
+            # RUN behavior safety:
+            # - legacy default (ON/OFF enabled): mixed scenarios avoid OFF on RUN
+            # - explicit RUN-only scenarios (ON/OFF disabled): apply OFF too, so RUN can enforce a full scene
+            #   (e.g. "Cinema": keep only selected lights ON, switch all others OFF)
+            onoff_enabled = bool(sc.get("onoff_enabled")) if ("onoff_enabled" in sc) else True
+            if desired is None and state == "OFF" and has_on_items and onoff_enabled:
+                continue
+            on = state == "ON"
+            br = it.get("brightness")
+            try:
+                br255 = int(br) if (br is not None and on) else None
+            except Exception:
+                br255 = None
+
+            try:
+                await gw.set_light(subnet_id=subnet_id, device_id=device_id, channel=channel, on=on, brightness255=br255)
+                sent += 1
+                if scenario_light_delay_s > 0:
+                    await asyncio.sleep(scenario_light_delay_s)
+            except Exception as e:
+                # Best-effort: continue other lights
+                _LOGGER.warning(
+                    "scenario %s: failed BusPro light target=%s.%s.%s state=%s err=%s",
+                    sid_current,
+                    subnet_id,
+                    device_id,
+                    channel,
+                    state,
+                    e,
+                )
+                continue
+
+        async def _run_single_cover_direct(subnet_id: int, device_id: int, channel: int, cmd_eff: str) -> bool:
+            try:
+                if cmd_eff == "OPEN":
+                    await gw.cover_open_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                    _start_cover_sim(subnet_id, device_id, channel, "OPEN")
+                elif cmd_eff == "CLOSE":
+                    await gw.cover_close_raw(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                    _start_cover_sim(subnet_id, device_id, channel, "CLOSE")
+                elif cmd_eff == "STOP":
+                    await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                    _start_cover_sim(subnet_id, device_id, channel, "STOP")
+                else:
+                    return False
+                return True
+            except Exception:
+                return False
+
+        cover_sent = 0
+        single_direct_tasks: list[asyncio.Task] = []
+        covers = sc.get("covers") or []
+        if isinstance(covers, list):
+            for it in covers:
+                if not isinstance(it, dict):
+                    continue
+                cmd = str(it.get("command") or "").strip().upper()
+                if cmd not in ("OPEN", "CLOSE", "STOP", "SET_POSITION"):
+                    continue
+                cmd_eff = cmd
+                if desired == "OFF":
+                    cmd_eff = _invert_cover_command(cmd)
+                elif desired == "ON":
+                    cmd_eff = cmd
+                elif desired is None:
+                    cmd_eff = cmd
+                if cmd_eff == "SET_POSITION":
+                    continue
+                ramp_minutes = 0
+                step_seconds = 5
+                try:
+                    ramp_minutes = int(float(it.get("ramp_minutes") or 0))
+                except Exception:
+                    ramp_minutes = 0
+                try:
+                    step_seconds = int(float(it.get("step_seconds") or 5))
+                except Exception:
+                    step_seconds = 5
+                ramp_minutes = max(0, min(240, ramp_minutes))
+                step_seconds = max(1, min(120, step_seconds))
+                two_phase_open_raw = it.get("two_phase_open")
+                if isinstance(two_phase_open_raw, str):
+                    two_phase_open = two_phase_open_raw.strip().lower() in ("1", "true", "yes", "on")
+                else:
+                    two_phase_open = bool(two_phase_open_raw)
+                try:
+                    phase1_pct = int(float(it.get("phase1_pct") or 25))
+                except Exception:
+                    phase1_pct = 25
+                phase1_pct = max(1, min(99, phase1_pct))
+                try:
+                    phase2_delay_minutes = int(float(it.get("phase2_delay_minutes") or 4))
+                except Exception:
+                    phase2_delay_minutes = 4
+                phase2_delay_minutes = max(0, min(240, phase2_delay_minutes))
+                kind = str(it.get("kind") or "single").strip().lower()
+                if kind == "ha":
+                    if not _ha_enabled():
+                        continue
+                    eid = str(it.get("entity_id") or "").strip().lower()
+                    if not eid.startswith("cover."):
+                        continue
+                    if _ha_cover_is_inverted(eid):
+                        cmd_eff = _invert_cover_command(cmd_eff)
+                    try:
+                        svc = "open_cover" if cmd_eff == "OPEN" else ("close_cover" if cmd_eff == "CLOSE" else "stop_cover")
+                        await asyncio.to_thread(
+                            _ha_request,
+                            "POST",
+                            f"/api/services/cover/{svc}",
+                            payload={"entity_id": eid},
+                            timeout_s=10,
+                        )
+                        cover_sent += 1
+                    except Exception:
+                        continue
+                    continue
+                if kind == "group":
+                    gid = str(it.get("group_id") or "").strip()
+                    if not gid:
+                        continue
+                    if two_phase_open and cmd_eff == "OPEN":
+                        g = _find_cover_group_by_gid(gid) or {}
+                        members = g.get("members") or []
+                        for m in members:
+                            addr = str(m or "").strip()
+                            if not addr:
+                                continue
+                            try:
+                                subnet_id, device_id, channel = [int(x) for x in addr.split(".")]
+                            except Exception:
+                                continue
+                            t = asyncio.create_task(
+                                _run_cover_two_phase_open_buspro(
+                                    gw=gw,
+                                    subnet_id=subnet_id,
+                                    device_id=device_id,
+                                    channel=channel,
+                                    phase1_pct=phase1_pct,
+                                    phase2_delay_minutes=phase2_delay_minutes,
+                                )
+                            )
+                            _track_scenario_task(str(sc.get("id") or ""), t)
+                        cover_sent += 1
+                    elif ramp_minutes > 0 and step_seconds > 0 and cmd_eff in ("OPEN", "CLOSE"):
+                        g = _find_cover_group_by_gid(gid) or {}
+                        members = g.get("members") or []
+                        for m in members:
+                            addr = str(m or "").strip()
+                            if not addr:
+                                continue
+                            try:
+                                subnet_id, device_id, channel = [int(x) for x in addr.split(".")]
+                            except Exception:
+                                continue
+                            t = asyncio.create_task(
+                                _run_cover_ramp_buspro(
+                                    gw=gw,
+                                    subnet_id=subnet_id,
+                                    device_id=device_id,
+                                    channel=channel,
+                                    cmd=cmd_eff,
+                                    ramp_minutes=ramp_minutes,
+                                    step_seconds=step_seconds,
+                                )
+                            )
+                            _track_scenario_task(str(sc.get("id") or ""), t)
+                        cover_sent += 1
+                    else:
+                        try:
+                            await _run_cover_group_command(gid, cmd_eff, raw=True)
+                            cover_sent += 1
+                        except Exception:
+                            continue
+                    continue
+
+                try:
+                    subnet_id = int(it.get("subnet_id"))
+                    device_id = int(it.get("device_id"))
+                    channel = int(it.get("channel"))
+                except Exception:
+                    continue
+                try:
+                    # Scenario single covers: use direct (raw) commands only.
+                    if two_phase_open and cmd_eff == "OPEN":
+                        t = asyncio.create_task(
+                            _run_cover_two_phase_open_buspro(
+                                gw=gw,
+                                subnet_id=subnet_id,
+                                device_id=device_id,
+                                channel=channel,
+                                phase1_pct=phase1_pct,
+                                phase2_delay_minutes=phase2_delay_minutes,
+                            )
+                        )
+                        _track_scenario_task(str(sc.get("id") or ""), t)
+                        cover_sent += 1
+                    elif ramp_minutes > 0 and step_seconds > 0 and cmd_eff in ("OPEN", "CLOSE"):
+                        t = asyncio.create_task(
+                            _run_cover_ramp_buspro(
+                                gw=gw,
+                                subnet_id=subnet_id,
+                                device_id=device_id,
+                                channel=channel,
+                                cmd=cmd_eff,
+                                ramp_minutes=ramp_minutes,
+                                step_seconds=step_seconds,
+                            )
+                        )
+                        _track_scenario_task(str(sc.get("id") or ""), t)
+                        cover_sent += 1
+                    else:
+                        t = asyncio.create_task(_run_single_cover_direct(subnet_id, device_id, channel, cmd_eff))
+                        _track_scenario_task(str(sc.get("id") or ""), t)
+                        single_direct_tasks.append(t)
+                except Exception:
+                    continue
+        if single_direct_tasks:
+            results = await asyncio.gather(*single_direct_tasks, return_exceptions=True)
+            for res in results:
+                if res is True:
+                    cover_sent += 1
+
+        tasks_now: dict[str, set[asyncio.Task]] = getattr(api.state, "scenario_tasks", {}) or {}
+        s_now = tasks_now.get(sid_current)
+        if not s_now:
+            await _set_light_scenario_running(sid_current, False)
+
+        # Best-effort: publish scenario switch state (optimistic)
+        try:
+            await _publish_light_scenario_state(sc)
+        except Exception:
+            pass
+        return {"ok": True, "sent": sent, "cover_sent": cover_sent}
+
+    async def run_scenarios_by_ha_trigger(*, trigger_id: str) -> dict[str, Any]:
+        tid = str(trigger_id or "").strip()
+        if not tid:
+            return {"ok": False, "trigger_id": "", "matched": 0, "started": 0}
+        matched = 0
+        started = 0
+        for sc in store.list_light_scenarios():
+            if not isinstance(sc, dict):
+                continue
+            if not bool(sc.get("ha_trigger_enabled")):
+                continue
+            if str(sc.get("ha_trigger_id") or "").strip() != tid:
+                continue
+            sid = str(sc.get("id") or "").strip()
+            if not sid:
+                continue
+            matched += 1
+            try:
+                await run_light_scenario(sid, {"command": "RUN"})
+                started += 1
+            except Exception:
+                continue
+        return {"ok": True, "trigger_id": tid, "matched": matched, "started": started}
+
+    @api.post("/api/control/light/{subnet_id}/{device_id}/{channel}")
+    async def control_light(subnet_id: int, device_id: int, channel: int, payload: dict[str, Any]):
+        gw: BusproGateway | None = api.state.gateway
+        if gw is None:
+            raise HTTPException(status_code=503, detail="Gateway not ready")
+        if not gw.started or not gw.transport_ready():
+            raise HTTPException(status_code=503, detail=gw.last_error or "UDP transport not ready")
+
+        state = str(payload.get("state") or "").upper()
+        if state not in ("ON", "OFF"):
+            raise HTTPException(status_code=400, detail="state must be ON/OFF")
+        on = state == "ON"
+        br = payload.get("brightness")
+        br255 = int(br) if br is not None else None
+
+        await gw.set_light(subnet_id=subnet_id, device_id=device_id, channel=channel, on=on, brightness255=br255)
+        try:
+            await gw.read_light_status(subnet_id=subnet_id, device_id=device_id, channel=channel)
+        except Exception:
+            pass
+        return {"ok": True}
+
+    @api.post("/api/user/smart-home/{source}/{device_id}/command")
+    async def control_smart_home(source: str, device_id: str, payload: dict[str, Any]):
+        source = str(source or "").strip().lower()
+        requested_id = str(device_id or "").strip()
+        action = str(payload.get("action") or "").strip().lower()
+        value = payload.get("value")
+        catalog = _smart_home_payload()
+        item = next((x for x in catalog.get("devices") or [] if x.get("source") == source and x.get("device_id") == requested_id), None)
+        try:
+            action = validate_command_request(item, action)
+        except ValueError as exc:
+            detail = str(exc)
+            status = 404 if "not catalogued" in detail and "device" in detail else 503 if "unavailable" in detail else 409 if "orphaned" in detail else 400
+            raise HTTPException(status_code=status, detail=detail)
+        handler = api.state.smart_home_command_handlers.get(source)
+        if handler is None:
+            raise HTTPException(status_code=404, detail="unknown Smart Home source")
+        try:
+            return await _audited_bus_command(handler, item, action, value)
+        except ContractError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    async def _smart_home_hdl_command(item: dict[str, Any], action: str, value: Any):
+        requested_id = str(item.get("device_id") or "")
+        native = next((d for d in store.list_devices() if str(d.get("addr") or f"{d.get('subnet_id')}.{d.get('device_id')}.{d.get('channel')}") == requested_id), None)
+        if not native:
+            raise HTTPException(status_code=404, detail="HDL device not found")
+        try:
+            subnet_id, hdl_device_id, channel = (int(x) for x in requested_id.split("."))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="invalid HDL device identity")
+        kind = hdl_device_kind(native)
+        if kind == "light":
+            if action in {"on", "off"}:
+                return await control_light(subnet_id, hdl_device_id, channel, {"state": action.upper()})
+            if action == "level":
+                try:
+                    level = float(value)
+                except (TypeError, ValueError):
+                    raise HTTPException(status_code=400, detail="level must be 0..100")
+                if level < 0 or level > 100:
+                    raise HTTPException(status_code=400, detail="level must be 0..100")
+                return await control_light(subnet_id, hdl_device_id, channel, {"state": "OFF" if level == 0 else "ON", "brightness": round(level * 255 / 100)})
+        if kind == "cover":
+            commands = {"open": "OPEN", "close": "CLOSE", "stop": "STOP"}
+            if action in commands:
+                return await control_cover(subnet_id, hdl_device_id, channel, {"command": commands[action]})
+            if action == "position":
+                try:
+                    position = int(value)
+                except (TypeError, ValueError):
+                    raise HTTPException(status_code=400, detail="position must be 0..100")
+                if position < 0 or position > 100:
+                    raise HTTPException(status_code=400, detail="position must be 0..100")
+                return await control_cover(subnet_id, hdl_device_id, channel, {"command": "SET_POSITION", "position": position})
+        raise HTTPException(status_code=400, detail="unsupported Smart Home command")
+
+    async def _smart_home_ksenia_command(item: dict[str, Any], action: str, value: Any):
+        return await asyncio.to_thread(ksenia.execute, str(item.get("device_id") or ""), action, value)
+
+    async def _smart_home_nuki_command(item: dict[str, Any], action: str, value: Any):
+        try:
+            return await asyncio.to_thread(nuki_manager.command, str(item.get("device_id") or ""), action)
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    async def _smart_home_ha_command(item: dict[str, Any], action: str, value: Any):
+        if item.get("source") == "mqtt":
+            try:
+                return await mqtt_manager.command_entity(item["device_id"], {"action": action, "value": value})
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from None
+        entity_id = str(item.get("home_assistant_entity_id") or "").strip().lower()
+        if not entity_id or "." not in entity_id:
+            raise HTTPException(status_code=409, detail="il dispositivo non ha una mappatura esterna")
+        domain = entity_id.split(".", 1)[0]
+        service = ""
+        data: dict[str, Any] = {"entity_id": entity_id}
+        if domain in {"light", "switch", "fan"} and action in {"on", "off"}:
+            service = "turn_on" if action == "on" else "turn_off"
+        elif domain == "light" and action == "level":
+            try:
+                level = max(0.0, min(100.0, float(value)))
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="level must be 0..100")
+            service = "turn_off" if level == 0 else "turn_on"
+            if level:
+                data["brightness_pct"] = level
+        elif domain == "cover" and action in {"open", "close", "stop"}:
+            service = {"open": "open_cover", "close": "close_cover", "stop": "stop_cover"}[action]
+        elif domain == "cover" and action == "position":
+            try:
+                position = int(value)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="position must be 0..100")
+            if not 0 <= position <= 100:
+                raise HTTPException(status_code=400, detail="position must be 0..100")
+            service = "set_cover_position"
+            data["position"] = position
+        elif domain == "scene" and action == "execute":
+            service = "turn_on"
+        elif domain == "button" and action == "execute":
+            service = "press"
+        elif domain == "lock" and action in {"lock", "unlock", "open"}:
+            service = {"lock": "lock", "unlock": "unlock", "open": "open"}[action]
+        elif domain == "climate" and action == "temperature":
+            try:
+                data["temperature"] = float(value)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="temperature must be numeric")
+            service = "set_temperature"
+        elif domain == "number" and action == "level":
+            try:
+                data["value"] = float(value)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="value must be numeric")
+            service = "set_value"
+        elif domain == "select" and action == "mode":
+            data["option"] = str(value or "")
+            service = "select_option"
+        if not service:
+            raise HTTPException(status_code=400, detail="unsupported KNX command")
+        await asyncio.to_thread(_ha_request, "POST", f"/api/services/{domain}/{service}", payload=data, timeout_s=10)
+        return {"ok": True, "accepted": True, "confirmed": False, "source": str(item.get("source") or "ha")}
+
+    async def _smart_home_netatmo_command(item: dict[str, Any], action: str, value: Any):
+        if action != "temperature":
+            raise HTTPException(status_code=400, detail="Comando Netatmo non supportato")
+        try:
+            result = await asyncio.to_thread(
+                netatmo_direct.set_room_temperature,
+                home_id=str(item.get("command_home_id") or ""),
+                room_id=str(item.get("command_room_id") or ""),
+                temperature=float(value),
+            )
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        modules = await asyncio.to_thread(netatmo_direct.discover)
+        bticino_manager.store.sync_direct_netatmo(modules)
+        _sync_organization()
+        await _broadcast_devices()
+        return {"ok": True, "accepted": True, "confirmed": True, "source": "home_plus_control", "result": result}
+
+    api.state.smart_home_command_handlers.update({
+        "hdl": _smart_home_hdl_command,
+        "ksenia": _smart_home_ksenia_command,
+        "knx": _smart_home_ha_command,
+        "myhome_scs": _smart_home_ha_command,
+        "home_plus_control": _smart_home_netatmo_command,
+        "modbus": _smart_home_ha_command,
+        "esphome": _smart_home_ha_command,
+        "mqtt": _smart_home_ha_command,
+        "nuki": _smart_home_nuki_command,
+        "ha": _smart_home_ha_command,
+    })
+
+    def _admin_bus_command_item(source: str, device_id: str) -> dict[str, Any] | None:
+        states = getattr(api.state, "ha_states", {}) or {}
+        if source == "mqtt":
+            return next((row for row in mqtt_manager.store.rows(mqtt_manager.states) if row.get("device_id") == device_id), None)
+        if source == "esphome":
+            return next((row for row in esphome_manager.store.rows(states) if row.get("device_id") == device_id), None)
+        if source == "nuki":
+            return next((row for row in nuki_manager.store.rows() if row.get("device_id") == device_id), None)
+        if source in {"hdl", "ksenia", "ha"}:
+            return next((row for row in (_smart_home_payload().get("devices") or []) if row.get("source") == source and row.get("device_id") == device_id), None)
+        row: dict[str, Any] | None = None
+        if source == "knx":
+            row = (knx_manager.store.load().get("devices") or {}).get(device_id)
+        elif source == "modbus":
+            row = (modbus_manager.store.load().get("catalog") or {}).get(device_id)
+        elif source in {"myhome_scs", "home_plus_control"}:
+            row = (((bticino_manager.store.load().get("integrations") or {}).get(source) or {}).get("devices") or {}).get(device_id)
+        if not isinstance(row, dict):
+            return None
+        state = deepcopy(row.get("state") or {}) if row.get("direct") else deepcopy(states.get(str(row.get("entity_id") or "")) or {})
+        raw_state = state.get("state") if isinstance(state, dict) else None
+        attributes = state.get("attributes") if isinstance(state, dict) and isinstance(state.get("attributes"), dict) else {}
+        available = (bool(row.get("direct")) or raw_state not in {None, "unknown", "unavailable"}) and not row.get("orphaned")
+        return {
+            **deepcopy(row), "source": source, "device_id": device_id,
+            "home_assistant_entity_id": None if row.get("direct") else row.get("entity_id"),
+            "home_id": row.get("home_id") or attributes.get("home_id"),
+            "room_id": row.get("room_id") or attributes.get("room_id"),
+            "available": available, "state": state,
+        }
+
+    @api.post("/api/integrations/{source}/devices/{device_id}/command")
+    async def admin_bus_device_command(source: str, device_id: str, payload: dict[str, Any]):
+        source = str(source or "").strip().lower()
+        action = str(payload.get("action") or "").strip().lower()
+        item = _admin_bus_command_item(source, str(device_id or "").strip())
+        try:
+            action = validate_command_request(item, action)
+        except ValueError as exc:
+            detail = str(exc)
+            raise HTTPException(status_code=404 if "not catalogued" in detail else 400, detail=detail)
+        handler = api.state.smart_home_command_handlers.get(source)
+        if handler is None:
+            raise HTTPException(status_code=404, detail="Bus non supportato")
+        try:
+            return await _audited_bus_command(handler, item, action, payload.get("value"))
+        except ContractError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    async def _audited_bus_command(handler, item, action, value):
+        event = {**activity_feed.device(item), "category": "command", "action": action,
+                 "origin": "econtrol_api", "status": "accepted"}
+        try:
+            result = await handler(item, action, value)
+        except Exception:
+            await asyncio.to_thread(activity_feed.append, {**event, "status": "failed"})
+            raise
+        if isinstance(result, dict) and result.get("ok") is False:
+            event["status"] = "failed"
+        audit_id = await asyncio.to_thread(activity_feed.append, event)
+        return {**(result if isinstance(result, dict) else {"ok": True}), "audit_id": audit_id}
+
+    @api.post("/api/control/ha/light/{entity_id}")
+    async def control_ha_light(entity_id: str, payload: dict[str, Any]):
+        if not _ha_enabled():
+            raise HTTPException(status_code=503, detail="Servizi di integrazione not available")
+        eid = str(entity_id or "").strip().lower()
+        if not eid.startswith("light."):
+            raise HTTPException(status_code=400, detail="entity_id must start with light.")
+        state = str(payload.get("state") or "").upper()
+        if state not in ("ON", "OFF"):
+            raise HTTPException(status_code=400, detail="state must be ON/OFF")
+        if state == "OFF":
+            await asyncio.to_thread(_ha_request, "POST", "/api/services/light/turn_off", payload={"entity_id": eid}, timeout_s=10)
+            return {"ok": True}
+        data: dict[str, Any] = {"entity_id": eid}
+        br = payload.get("brightness")
+        if br is not None:
+            try:
+                data["brightness"] = int(br)
+            except Exception:
+                pass
+        await asyncio.to_thread(_ha_request, "POST", "/api/services/light/turn_on", payload=data, timeout_s=10)
+        return {"ok": True}
+
+    @api.post("/api/control/ha/switch/{entity_id}")
+    async def control_ha_switch(entity_id: str, payload: dict[str, Any]):
+        if not _ha_enabled():
+            raise HTTPException(status_code=503, detail="Servizi di integrazione not available")
+        eid = str(entity_id or "").strip().lower()
+        if not eid.startswith("switch."):
+            raise HTTPException(status_code=400, detail="entity_id must start with switch.")
+        state = str(payload.get("state") or "").upper()
+        if state not in ("ON", "OFF"):
+            raise HTTPException(status_code=400, detail="state must be ON/OFF")
+        svc = "turn_on" if state == "ON" else "turn_off"
+        await asyncio.to_thread(_ha_request, "POST", f"/api/services/switch/{svc}", payload={"entity_id": eid}, timeout_s=10)
+        return {"ok": True}
+
+    @api.post("/api/control/ha/cover/{entity_id}")
+    async def control_ha_cover(entity_id: str, payload: dict[str, Any]):
+        if not _ha_enabled():
+            raise HTTPException(status_code=503, detail="Servizi di integrazione not available")
+        eid = str(entity_id or "").strip().lower()
+        if not eid.startswith("cover."):
+            raise HTTPException(status_code=400, detail="entity_id must start with cover.")
+        cmd = str(payload.get("command") or "").strip().upper()
+        if cmd in ("OPEN", "CLOSE", "STOP"):
+            svc = "open_cover" if cmd == "OPEN" else ("close_cover" if cmd == "CLOSE" else "stop_cover")
+            await asyncio.to_thread(_ha_request, "POST", f"/api/services/cover/{svc}", payload={"entity_id": eid}, timeout_s=10)
+            return {"ok": True}
+        if cmd == "SET_POSITION":
+            pos = payload.get("position")
+            try:
+                pos_i = int(pos)
+            except Exception:
+                raise HTTPException(status_code=400, detail="position required")
+            pos_i = max(0, min(100, pos_i))
+            await asyncio.to_thread(_ha_request, "POST", "/api/services/cover/set_cover_position", payload={"entity_id": eid, "position": pos_i}, timeout_s=10)
+            return {"ok": True}
+        raise HTTPException(status_code=400, detail="unsupported command")
+
+    @api.post("/api/control/ha/lock/{entity_id}")
+    async def control_ha_lock(entity_id: str, payload: dict[str, Any]):
+        if not _ha_enabled():
+            raise HTTPException(status_code=503, detail="Servizi di integrazione not available")
+        eid = str(entity_id or "").strip().lower()
+        if not (eid.startswith("lock.") or eid.startswith("switch.")):
+            raise HTTPException(status_code=400, detail="entity_id must start with lock. or switch.")
+        cmd = str(payload.get("command") or "").strip().upper()
+        if eid.startswith("switch."):
+            if cmd == "LOCK":
+                await asyncio.to_thread(_ha_request, "POST", "/api/services/switch/turn_off", payload={"entity_id": eid}, timeout_s=10)
+                return {"ok": True}
+            if cmd in ("UNLOCK", "OPEN"):
+                await asyncio.to_thread(_ha_request, "POST", "/api/services/switch/turn_on", payload={"entity_id": eid}, timeout_s=10)
+                return {"ok": True}
+        else:
+            if cmd == "LOCK":
+                await asyncio.to_thread(_ha_request, "POST", "/api/services/lock/lock", payload={"entity_id": eid}, timeout_s=10)
+                return {"ok": True}
+            if cmd == "UNLOCK":
+                await asyncio.to_thread(_ha_request, "POST", "/api/services/lock/unlock", payload={"entity_id": eid}, timeout_s=10)
+                return {"ok": True}
+            if cmd == "OPEN":
+                await asyncio.to_thread(_ha_request, "POST", "/api/services/lock/open", payload={"entity_id": eid}, timeout_s=10)
+                return {"ok": True}
+        raise HTTPException(status_code=400, detail="unsupported command")
+
+    @api.post("/api/control/home_action/{action_id}")
+    async def control_home_action(action_id: str, payload: dict[str, Any] | None = None):
+        gw: BusproGateway | None = api.state.gateway
+
+        item = store.find_home_action(action_id=str(action_id or ""))
+        if not item:
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        kind = str(item.get("kind") or "").strip().lower()
+        action = str(item.get("action") or "").strip().upper()
+        data = item.get("data") or {}
+        if not isinstance(data, dict):
+            data = {}
+
+        if kind == "ha":
+            if not _ha_enabled():
+                raise HTTPException(status_code=503, detail="Servizi di integrazione not available")
+            eid = str(data.get("entity_id") or "").strip().lower()
+            if not eid or "." not in eid:
+                raise HTTPException(status_code=400, detail="Invalid action: data.entity_id required")
+            domain = eid.split(".", 1)[0]
+
+            if domain in ("light", "switch"):
+                desired = action
+                if desired == "TOGGLE":
+                    st = (getattr(api.state, "ha_states", {}) or {}).get(eid)
+                    cur_on = isinstance(st, dict) and str(st.get("state") or "").upper() == "ON"
+                    desired = "OFF" if cur_on else "ON"
+                if desired not in ("ON", "OFF"):
+                    raise HTTPException(status_code=400, detail="Invalid action")
+                if domain == "switch":
+                    svc = "turn_on" if desired == "ON" else "turn_off"
+                    await asyncio.to_thread(_ha_request, "POST", f"/api/services/switch/{svc}", payload={"entity_id": eid}, timeout_s=10)
+                    return {"ok": True}
+                if desired == "OFF":
+                    await asyncio.to_thread(_ha_request, "POST", "/api/services/light/turn_off", payload={"entity_id": eid}, timeout_s=10)
+                    return {"ok": True}
+                await asyncio.to_thread(_ha_request, "POST", "/api/services/light/turn_on", payload={"entity_id": eid}, timeout_s=10)
+                return {"ok": True}
+
+            if domain == "cover":
+                cmd = action
+                if cmd in ("OPEN", "CLOSE", "STOP"):
+                    svc = "open_cover" if cmd == "OPEN" else ("close_cover" if cmd == "CLOSE" else "stop_cover")
+                    await asyncio.to_thread(_ha_request, "POST", f"/api/services/cover/{svc}", payload={"entity_id": eid}, timeout_s=10)
+                    return {"ok": True}
+                if cmd == "SET_POSITION":
+                    pos = None
+                    if isinstance(payload, dict) and payload.get("position") is not None:
+                        pos = payload.get("position")
+                    else:
+                        pos = data.get("position")
+                    try:
+                        pos_i = int(pos)
+                    except Exception:
+                        raise HTTPException(status_code=400, detail="position required")
+                    pos_i = max(0, min(100, pos_i))
+                    await asyncio.to_thread(
+                        _ha_request,
+                        "POST",
+                        "/api/services/cover/set_cover_position",
+                        payload={"entity_id": eid, "position": pos_i},
+                        timeout_s=10,
+                    )
+                    return {"ok": True}
+                raise HTTPException(status_code=400, detail="Invalid action")
+
+            raise HTTPException(status_code=400, detail="Invalid action: unsupported domain")
+
+        if kind == "buspro_light":
+            if gw is None:
+                raise HTTPException(status_code=503, detail="Gateway not ready")
+            if not gw.started or not gw.transport_ready():
+                raise HTTPException(status_code=503, detail=gw.last_error or "UDP transport not ready")
+
+            addr = str(data.get("addr") or "").strip()
+            parts = addr.split(".") if addr else []
+            if len(parts) != 3:
+                raise HTTPException(status_code=400, detail="Invalid action: data.addr required")
+            try:
+                subnet_id, device_id, channel = (int(parts[0]), int(parts[1]), int(parts[2]))
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid action: data.addr must be subnet.device.channel")
+
+            desired = action
+            if desired == "TOGGLE":
+                st = store.get_states().get(f"light:{addr}") or {}
+                cur_on = isinstance(st, dict) and str(st.get("state") or "").upper() == "ON"
+                desired = "OFF" if cur_on else "ON"
+            if desired not in ("ON", "OFF"):
+                raise HTTPException(status_code=400, detail="Invalid action")
+            await gw.set_light(subnet_id=subnet_id, device_id=device_id, channel=channel, on=(desired == "ON"), brightness255=None)
+            try:
+                await gw.read_light_status(subnet_id=subnet_id, device_id=device_id, channel=channel)
+            except Exception:
+                pass
+            return {"ok": True}
+
+        if kind == "buspro_cover":
+            if gw is None:
+                raise HTTPException(status_code=503, detail="Gateway not ready")
+            if not gw.started or not gw.transport_ready():
+                raise HTTPException(status_code=503, detail=gw.last_error or "UDP transport not ready")
+
+            addr = str(data.get("addr") or "").strip()
+            parts = addr.split(".") if addr else []
+            if len(parts) != 3:
+                raise HTTPException(status_code=400, detail="Invalid action: data.addr required")
+            try:
+                subnet_id, device_id, channel = (int(parts[0]), int(parts[1]), int(parts[2]))
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid action: data.addr must be subnet.device.channel")
+
+            cmd = action
+            if cmd == "OPEN":
+                await gw.cover_open(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                return {"ok": True}
+            if cmd == "CLOSE":
+                await gw.cover_close(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                return {"ok": True}
+            if cmd == "STOP":
+                await gw.cover_stop(subnet_id=subnet_id, device_id=device_id, channel=channel)
+                return {"ok": True}
+            if cmd == "SET_POSITION":
+                pos = None
+                if isinstance(payload, dict) and payload.get("position") is not None:
+                    pos = payload.get("position")
+                else:
+                    pos = data.get("position")
+                try:
+                    pos_i = int(pos)
+                except Exception:
+                    raise HTTPException(status_code=400, detail="position required")
+                pos_i = max(0, min(100, pos_i))
+                await gw.cover_set_position(subnet_id=subnet_id, device_id=device_id, channel=channel, position=pos_i)
+                return {"ok": True}
+            raise HTTPException(status_code=400, detail="Invalid action")
+
+        if kind == "cover_group":
+            gid = str(data.get("group_id") or "").strip()
+            if not gid:
+                raise HTTPException(status_code=400, detail="Invalid action: data.group_id required")
+            cmd = action
+            if cmd in ("OPEN", "CLOSE", "STOP"):
+                await _run_cover_group_command(gid, cmd, pos=None, raw=True)
+                return {"ok": True}
+            raise HTTPException(status_code=400, detail="Invalid action")
+
+        if kind == "scenario":
+            sid = str(data.get("scenario_id") or "").strip()
+            if not sid:
+                raise HTTPException(status_code=400, detail="Invalid action: data.scenario_id required")
+            sc = store.find_light_scenario(scenario_id=sid)
+            if not sc:
+                raise HTTPException(status_code=404, detail="Scenario not found")
+
+            desired: str | None = None
+            if action == "RUN":
+                desired = None
+            elif action in ("ON", "OFF"):
+                desired = action
+            elif action == "TOGGLE":
+                cur = _scenario_switch_state(sc)
+                desired = "OFF" if cur == "ON" else "ON"
+            else:
+                raise HTTPException(status_code=400, detail="Invalid action")
+
+            if desired is None:
+                await run_light_scenario(sid, None)
+            else:
+                await run_light_scenario(sid, {"state": desired})
+            return {"ok": True}
+
+        raise HTTPException(status_code=400, detail="Invalid action kind")
+
+    @api.websocket("/ws")
+    async def ws_endpoint(ws: WebSocket):
+        # websocket auth: allow if ingress, or auth_mode none, or token provided
+        options_ = read_options()
+        settings_ = load_settings(options_)
+        headers = {k.lower(): v for k, v in ws.headers.items()}
+        query = dict(ws.query_params)
+        port = None
+        try:
+            port = int((ws.scope.get("server") or ("", 0))[1])
+        except Exception:
+            port = None
+        if port == USER_PORT:
+            if not _is_ingress_headers(headers) and not _check_auth_headers(headers, query, settings_.user_auth):
+                await ws.close(code=1008)
+                return
+        else:
+            if not _check_auth_headers(headers, query, settings_.auth):
+                await ws.close(code=1008)
+                return
+
+        await hub.connect(ws)
+        try:
+            # snapshot
+            await ws.send_text(
+                json.dumps(
+                    {
+                        "type": "snapshot",
+                        "data": _user_snapshot_payload(),
+	                    },
+	                    ensure_ascii=False,
+                )
+            )
+
+            while True:
+                msg = await ws.receive_text()
+                # optional ping/pong
+                if msg.strip().lower() == "ping":
+                    await ws.send_text("pong")
+        except WebSocketDisconnect:
+            pass
+        finally:
+            await hub.disconnect(ws)
+
+    @api.get("/ingress", response_class=HTMLResponse, include_in_schema=False)
+    @api.get("/ingress/", response_class=HTMLResponse, include_in_schema=False)
+    async def ingress_index(request: Request):
+        return await index(request)
+
+    @api.get("/{full_path:path}", response_class=HTMLResponse, include_in_schema=False)
+    async def spa_fallback(full_path: str, request: Request):
+        # If we're on USER_PORT and a proxy target is active, proxy unknown paths to upstream.
+        try:
+            port = _server_port(request.scope)
+            px = str(request.cookies.get("buspro_px") or "").strip()
+            if port == USER_PORT and px and store.find_proxy_target(name=px):
+                if not full_path.startswith(("api/", "static/", "ws", "www/", "ext/", "extws/")) and full_path not in ("health", "favicon.ico"):
+                    return await ext_proxy(name=px, path=full_path, request=request)
+        except Exception:
+            pass
+
+        if full_path.startswith("api/") or full_path.startswith("static/") or full_path == "health":
+            raise HTTPException(status_code=404, detail="Not Found")
+        return await index(request)
+
+    return api
+
+
+def main() -> None:
+    import uvicorn
+
+    app = create_app()
+
+    async def _serve() -> None:
+        settings_ = load_settings(read_options())
+        cfg_user = uvicorn.Config(app, host="0.0.0.0", port=USER_PORT, log_level="info", access_log=settings_.access_log)
+        cfg_admin = uvicorn.Config(app, host="0.0.0.0", port=ADMIN_PORT, log_level="info", access_log=settings_.access_log)
+        srv_user = uvicorn.Server(cfg_user)
+        srv_admin = uvicorn.Server(cfg_admin)
+        await asyncio.gather(srv_user.serve(), srv_admin.serve())
+
+    asyncio.run(_serve())
+
+
+if __name__ == "__main__":
+    main()
+

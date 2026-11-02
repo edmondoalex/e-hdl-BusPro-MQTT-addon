@@ -1,0 +1,62 @@
+(function(){
+  'use strict';
+  function url(path){return new URL(path,window.location.href).toString();}
+  function current(){const p=location.pathname.replace(/\/$/,'');return p.split('/').pop()||'home';}
+  function mdi(name){const asset=url('api/icons/mdi/'+name+'.svg');return '<span class="hub-nav-icon hub-mdi" style="-webkit-mask-image:url(\''+asset+'\');mask-image:url(\''+asset+'\')" aria-hidden="true"></span>';}
+  function navIcon(icon){if(icon==='')return '';return icon&&icon.startsWith('mdi:')?mdi(icon.slice(4)):'<span class="hub-nav-icon">'+(icon||'•')+'</span>';}
+  function busBrand(label,file,status,source){return '<span class="hub-bus-name"><span class="hub-bus-mark"><img src="'+url('static/hub/brands/'+file)+'" alt=""></span><span>'+label+'</span>'+(status?'<span class="hub-badge"'+(source?' data-driver-status="'+source+'"':'')+'>'+status+'</span>':'')+'</span>';}
+  function link(label,path,icon,key,extra){return '<a class="hub-nav-link '+(current()===key?'active ':'')+(extra||'')+'" href="'+url(path)+'">'+navIcon(icon)+'<span>'+label+'</span></a>';}
+  function adminUrl(view){return url('index.html')+'#'+view;}
+  function init(){
+    if(document.documentElement.dataset.econtrolPage==='operator')return;
+    if(document.querySelector('.hub-sidebar'))return;
+    document.body.classList.add('hub-shell-ready');
+    const side=document.createElement('nav');side.className='hub-sidebar';side.setAttribute('aria-label','Navigazione e-Control Hub');
+    const tree=(title,icon,content,open)=>'<details class="hub-tree" '+(open?'open':'')+'><summary>'+navIcon(icon)+title+'</summary><div class="hub-tree-items">'+content+'</div></details>';
+    const planned=[['Tuya','tuya.png'],['DALI','dali.png'],['Zigbee','zigbee.svg'],['Z-Wave','zwave.svg'],['Shelly','shelly.png'],['Aqara','aqara.png'],['LoRa','lora.png'],['Yale','yale.png'],['Tado','tado.png'],['Sensibo','sensibo.png'],['Somfy','somfy.png'],['Ecowitt','ecowitt.png'],['Nice','nice.svg'],['FAAC','faac.svg']].map(([n,file])=>'<div class="hub-driver-head hub-planned" aria-disabled="true" title="Integrazione dedicata prevista, non ancora implementata">'+busBrand(n,file)+'<span class="hub-badge">PREVISTA</span></div>').join('');
+    const adminCurrent=String(location.hash||'').slice(1).split('/')[0];
+    const adminLink=(label,view,icon)=>'<a class="hub-nav-link '+(adminCurrent===view?'active':'')+'" href="'+adminUrl(view)+'">'+navIcon(icon||'•')+'<span>'+label+'</span></a>';
+    const integrationLink=(label,view,logo,status,badgeId)=>'<a class="hub-driver-head hub-integration-link" href="'+adminUrl(view)+'"><span class="hub-bus-mark"><img src="'+url(logo)+'" alt=""></span><span class="hub-integration-name">'+label+'</span><span class="hub-badge"'+(badgeId?' id="'+badgeId+'"':'')+'>'+status+'</span></a>';
+    const kseniaLink=(label,section,icon)=>'<a class="hub-nav-link" href="'+url('ksenia')+(section?'#'+section:'')+'">'+navIcon(icon)+'<span>'+label+'</span></a>';
+    side.innerHTML='<a class="hub-brand" href="'+url('index.html')+'#info"><img src="'+url('static/logo.png')+'" alt=""><span><strong>e-Control Hub</strong><small class="hub-version" id="hubVersion">v…</small><span>Configurazione impianto</span></span></a>'+
+      '<div class="hub-nav-title">Amministrazione</div>'+adminLink('Stato e informazioni','info','mdi:home-analytics')+
+      tree('Programmazione','mdi:application-braces',adminLink('Dispositivi e presentazione','device_organization','mdi:devices')+adminLink('Piani, stanze e gruppi','rooms','mdi:floor-plan')+tree('Scenari e automazioni','mdi:vector-arrange-above',adminLink('Scenari multi-bus','scenario_management','mdi:creation')+adminLink('Trigger automazioni','scenario_triggers','mdi:home-automation'),false)+adminLink('Azioni Home','organization','mdi:gesture-tap-button')+tree('Esposizione interfacce','mdi:share-variant-outline',adminLink('Collegamenti Home','exposure_home','mdi:home-automation')+adminLink('Ordine Home2','exposure_order','mdi:floor-plan')+adminLink('WebApp Home2','exposure_pwa','mdi:tablet-dashboard')+adminLink('Proxy e collegamenti esterni','exposure_proxy','mdi:share-variant-outline')+adminLink('Telecamere e-Guard','exposure_guard','mdi:view-dashboard-outline'),false),true)+
+      '<div class="hub-nav-title">Bus e integrazioni</div>'+tree(busBrand('HDL BusPro','hdl.png','ATTIVO'),'',tree('Dispositivi HDL','mdi:view-dashboard-outline',adminLink('Luci e dimmer','hdl_lights','mdi:lightbulb-group')+adminLink('Cover','hdl_covers','mdi:window-shutter')+adminLink('Gruppi cover','hdl_cover_groups','mdi:window-shutter')+adminLink('Temperature','hdl_temperature','mdi:thermometer')+adminLink('Umidità','hdl_humidity','mdi:access-point')+adminLink('Luminosità','hdl_illuminance','mdi:lightbulb-on-outline')+adminLink('Qualità aria','hdl_air','mdi:access-point')+adminLink('Presenza','hdl_presence','mdi:access-point')+adminLink('Contatti','hdl_dry_contact','mdi:gesture-tap-button'),false)+adminLink('Diagnostica HDL','hdl_diagnostics','mdi:pulse'),true)+tree(busBrand('Ksenia Smart Home','ksenia.png','ATTIVO'),'',kseniaLink('Panoramica e diagnostica','','mdi:view-dashboard-outline')+kseniaLink('Uscite e luci','light','mdi:lightbulb-on-outline')+kseniaLink('Cover e varchi','cover','mdi:window-shutter')+kseniaLink('Sensori ambientali','sensor','mdi:access-point')+kseniaLink('Termostati','climate','mdi:home-automation')+kseniaLink('Scenari Smart Home','scene','mdi:creation'),false)+tree(busBrand('e-KNX Manager','knx.png','INATTIVO','knx'),'',adminLink('Panoramica KNX','knx_overview','mdi:view-dashboard-outline')+adminLink('Progetto ETS','knx_project','mdi:application-import')+adminLink('Dispositivi KNX','knx_devices','mdi:devices')+adminLink('Diagnostica KNX','knx_diagnostics','mdi:pulse'),false)+tree(busBrand('BTicino / Legrand · Netatmo','bticino.png','INATTIVO','bticino'),'',tree('MyHOME SCS','mdi:home-automation',adminLink('Panoramica','myhome_overview','mdi:view-dashboard-outline')+adminLink('Dispositivi','myhome_devices','mdi:devices')+adminLink('Diagnostica','myhome_diagnostics','mdi:pulse'),false)+tree('Home + Control','mdi:cloud-outline',adminLink('Panoramica','homeplus_overview','mdi:view-dashboard-outline')+adminLink('Dispositivi','homeplus_devices','mdi:devices')+adminLink('Diagnostica','homeplus_diagnostics','mdi:pulse'),false),false)+integrationLink('Ferroli OMNIA','ferroli_omnia','static/hub/brands/ferroli.png','CONFIGURA')+tree(busBrand('e-Modbus Manager','modbus.png','INATTIVO','modbus'),'',adminLink('Panoramica Modbus','modbus_overview','mdi:view-dashboard-outline')+adminLink('Connessioni','modbus_connections','mdi:lan-connect')+adminLink('Profili e registri','modbus_profiles','mdi:table-cog')+adminLink('Dispositivi','modbus_devices','mdi:devices')+adminLink('Diagnostica','modbus_diagnostics','mdi:pulse'),false)+integrationLink('Integrazioni esterne','entities','static/mdi/home-assistant.svg','ATTIVO')+tree(busBrand('MQTT','mqtt.png','VERIFICA','mqtt'),'',adminLink('Rete, configurazione e strumenti','mqtt','mdi:access-point'),false)+planned+
+      integrationLink('ESPHome Device Builder','esphome_builder','static/hub/brands/esphome.svg','ATTIVO','hubEspHomeBadge')+integrationLink('Nuki Smart Access','nuki','static/mdi/lock-smart.svg','CONFIGURA','hubNukiBadge')+'<div class="hub-nav-title">UI</div>'+tree('Anteprima interfacce utente','mdi:tablet-dashboard',link('Home','home','mdi:home-analytics','home')+link('Home2','home2','mdi:home-automation','home2')+link('e-Face','e-face','mdi:tablet-dashboard','e-face')+link('Luci','lights','mdi:lightbulb-group','lights')+link('Cover','covers','mdi:window-shutter','covers')+link('Extra','extra','mdi:shape-outline','extra')+link('Scenari','scenarios','mdi:creation','scenarios')+link('Serrature','locks','mdi:lock-smart','locks'),false)+
+      '<div class="hub-nav-title">Sistema</div>'+adminLink('Registro globale','event_register','mdi:history')+adminLink('Manutenzione','maintenance','mdi:pin-outline')+adminLink('Backup e strumenti','tools','mdi:tools');
+    const bar=document.createElement('div');bar.className='hub-mobilebar';bar.innerHTML='<button class="hub-menu-btn" type="button" aria-label="Apri menu" aria-expanded="false">☰</button><span class="hub-mobile-title">e-Control Hub</span>';
+    const overlay=document.createElement('div');overlay.className='hub-overlay';
+    document.body.prepend(overlay);document.body.prepend(side);document.body.prepend(bar);
+    const nukiLogo=document.getElementById('hubNukiBadge')?.closest('a')?.querySelector('img');if(nukiLogo)nukiLogo.src=url('static/hub/brands/nuki.svg');
+    let mqttLoading=false;
+    async function refreshMqtt(){
+      if(document.hidden||mqttLoading)return;
+      mqttLoading=true;
+      const badge=side.querySelector('[data-driver-status="mqtt"]');
+      try{const response=await fetch(url('api/integrations/mqtt/client-status'),{cache:'no-store'});if(!response.ok)throw Error();const data=await response.json();if(badge)badge.textContent=data.error?'ERRORE':data.loaded?'CARICATO':data.configured?'IN ATTESA':'NON CONFIGURATO';}
+      catch{if(badge)badge.textContent='NON VERIFICATO';}
+      finally{mqttLoading=false;}
+    }
+    refreshMqtt();setInterval(refreshMqtt,10000);document.addEventListener('visibilitychange',refreshMqtt);
+    fetch(url('api/meta')).then(r=>r.ok?r.json():Promise.reject()).then(meta=>{const el=document.getElementById('hubVersion');if(el&&meta.version)el.textContent='v'+meta.version;}).catch(()=>{});
+    Promise.all([
+      fetch(url('api/integrations/knx'),{cache:'no-store'}).then(r=>r.ok?r.json():{}).catch(()=>({})),
+      fetch(url('api/integrations/bticino/myhome_scs'),{cache:'no-store'}).then(r=>r.ok?r.json():{}).catch(()=>({})),
+      fetch(url('api/integrations/bticino/home_plus_control'),{cache:'no-store'}).then(r=>r.ok?r.json():{}).catch(()=>({})),
+      fetch(url('api/integrations/modbus'),{cache:'no-store'}).then(r=>r.ok?r.json():{}).catch(()=>({})),
+      fetch(url('api/integrations/esphome'),{cache:'no-store'}).then(r=>r.ok?r.json():{}).catch(()=>({}))
+    ]).then(([knx,myhome,homeplus,modbus,esphome])=>{
+      const set=(source,active)=>{const badge=side.querySelector('[data-driver-status="'+source+'"]');if(badge)badge.textContent=active?'ATTIVO':'INATTIVO';};
+      set('knx',!!knx.status?.connected);
+      set('bticino',!!myhome.status?.connected||!!homeplus.status?.connected);
+      set('modbus',!!modbus.status?.connected);
+      const espBadge=document.getElementById('hubEspHomeBadge'),updates=Number(esphome.status?.device_updates||0)+(esphome.status?.builder_update_available?1:0);if(espBadge)espBadge.textContent=updates?updates+' UPDATE':(esphome.status?.running?'ATTIVO':'INATTIVO');
+    });
+    const treeKey='econtrol.hub.tree.v1';let saved={};try{saved=JSON.parse(localStorage.getItem(treeKey)||'{}')||{};}catch(e){}
+    side.querySelectorAll('.hub-tree').forEach((node,index)=>{const key=(node.querySelector(':scope>summary')?.textContent||String(index)).trim();const active=[...node.querySelectorAll('a')].some(a=>a.href===location.href);if(active)node.open=true;else if(Object.prototype.hasOwnProperty.call(saved,key))node.open=!!saved[key];node.addEventListener('toggle',()=>{saved[key]=node.open;try{localStorage.setItem(treeKey,JSON.stringify(saved));}catch(e){}});});
+    const btn=bar.querySelector('button');function close(){document.body.classList.remove('hub-shell-open');btn.setAttribute('aria-expanded','false');}
+    btn.addEventListener('click',()=>{const open=document.body.classList.toggle('hub-shell-open');btn.setAttribute('aria-expanded',String(open));});overlay.addEventListener('click',close);document.addEventListener('keydown',e=>{if(e.key==='Escape')close();});
+    side.addEventListener('click',e=>{const a=e.target.closest('a[href]');if(!a||e.defaultPrevented||e.button!==0||e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)return;e.preventDefault();close();window.location.assign(a.href);});
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();

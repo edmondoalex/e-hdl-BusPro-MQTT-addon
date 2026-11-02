@@ -1,0 +1,3113 @@
+<!doctype html>
+<html data-econtrol-page="operator">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>e-Control Hub - HDL BusPro - Luci</title>
+    <style>
+      :root{
+        --bg0:#05070b;
+        --text:#f2f5ff;
+        --muted:rgba(255,255,255,.60);
+        --line:rgba(255,255,255,.08);
+        --danger:#ff6b6b;
+      }
+      body{
+        margin:0;
+        font-family:system-ui,Segoe UI,Roboto,Arial;
+        color:var(--text);
+        -webkit-font-smoothing:antialiased;
+        text-rendering:optimizeLegibility;
+        min-height:100vh;
+      }
+      body::before{
+        content:'';
+        position:fixed;
+        inset:0;
+        z-index:-2;
+        background: radial-gradient(1200px 800px at 50% 50%, rgba(26,34,48,.65) 0%, var(--bg0) 52%, #000 100%);
+        background-position:center center;
+        background-repeat:no-repeat;
+      }
+      body::after{
+        content:'';
+        position:fixed;
+        inset:0;
+        z-index:-1;
+        pointer-events:none;
+        background-image:url('static/user/e-light-addon2.png');
+        background-repeat:no-repeat;
+        background-position:50% 50%;
+        background-size:min(380px, 41vmin);
+        opacity:1;
+        filter:brightness(1.05);
+      }
+      main{max-width:820px;margin:0 auto;padding:10px 14px 24px;min-height:100vh;display:flex;flex-direction:column}
+      main.centerY{justify-content:center}
+      .list{border-radius:18px;overflow:hidden;border:1px solid var(--line);background:rgba(0,0,0,.05);backdrop-filter: blur(10px)}
+      .topBtns{
+        position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:20;
+        display:flex;gap:10px;align-items:center;justify-content:center;
+      }
+      .filterBtn{
+        width:42px;height:42px;border-radius:999px;
+        border:1px solid rgba(255,255,255,.10);
+        background:rgba(0,0,0,.28);
+        backdrop-filter: blur(10px);
+        display:flex;align-items:center;justify-content:center;
+        cursor:pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .filterBtn:active{transform:scale(.98)}
+      .filterBtn svg{width:20px;height:20px}
+      .filterBtn path{stroke:rgba(242,245,255,.78);stroke-width:2.2;stroke-linecap:round}
+      .filterBtn.on path{stroke:rgba(255,215,0,.95)}
+      .section{
+        padding:12px 16px;
+        font-size:12px;
+        letter-spacing:.12em;
+        text-transform:uppercase;
+        color:rgba(255,255,255,.55);
+        border-top:1px solid rgba(255,255,255,.06);
+        background:rgba(0,0,0,.03);
+        display:flex;align-items:center;justify-content:space-between;
+        cursor:pointer;
+        user-select:none;
+      }
+      .section:active{background:rgba(0,0,0,.14)}
+      .section .count{font-size:11px;letter-spacing:.08em;color:rgba(255,255,255,.40)}
+      .section.active{
+        color:rgba(255,255,255,.82);
+        background:linear-gradient(90deg, rgba(255,215,0,.12), rgba(255,215,0,.03) 48%, rgba(0,0,0,.04));
+        box-shadow:0 0 20px rgba(255,215,0,.08) inset;
+      }
+      .section.active .count{color:rgba(255,232,120,.76)}
+      .sectionLabel{display:flex;align-items:center;gap:10px;min-width:0}
+      .sectionLabel span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .sectionIcon{
+        width:18px;height:18px;flex:0 0 18px;
+        background:rgba(242,245,255,.34);
+        -webkit-mask-repeat:no-repeat;
+        -webkit-mask-position:center;
+        -webkit-mask-size:contain;
+        mask-repeat:no-repeat;
+        mask-position:center;
+        mask-size:contain;
+      }
+      .section.active .sectionIcon{
+        background:rgba(255,215,0,.96);
+        filter:drop-shadow(0 0 7px rgba(255,215,0,.45));
+      }
+      .floorSection{
+        --floor-color:rgba(255,255,255,.62);
+        padding:16px 16px 8px;
+        font-size:13px;
+        font-weight:700;
+        letter-spacing:.16em;
+        text-transform:uppercase;
+        color:var(--floor-color);
+        border-top:1px solid color-mix(in srgb, var(--floor-color) 36%, transparent);
+        background:linear-gradient(180deg, color-mix(in srgb, var(--floor-color) 12%, transparent), rgba(0,0,0,.02));
+      }
+      .row{
+        display:flex;gap:14px;align-items:center;
+        padding:14px 16px;
+        border-top:1px solid rgba(255,255,255,.06);
+        background:rgba(0,0,0,.05);
+        cursor:pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .row:active{background:rgba(0,0,0,.08)}
+      .row.on{
+        background:linear-gradient(180deg, rgba(255,215,0, calc(.04 + var(--int,1)*.10)) 0%, rgba(0,0,0,.20) 100%);
+        box-shadow:0 0 22px rgba(255,215,0, calc(.02 + var(--int,1)*.18)) inset;
+      }
+      .rgbGroup{
+        display:flex;
+        flex-direction:column;
+        gap:0;
+        border-top:1px solid rgba(255,255,255,.06);
+        background:rgba(0,0,0,.05);
+      }
+      .rgbMaster{
+        display:flex;
+        gap:14px;
+        align-items:center;
+        padding:14px 16px;
+        background:linear-gradient(90deg, rgba(255,255,255,.03), rgba(0,0,0,.10));
+      }
+      .rgbMaster.on{
+        background:linear-gradient(180deg, var(--rgb-master-bg, rgba(255,255,255,.12)) 0%, rgba(0,0,0,.20) 100%);
+        box-shadow:0 0 28px var(--rgb-master-glow, rgba(255,255,255,.20)) inset;
+      }
+      .rgbMaster.on .ico{
+        background:var(--rgb-master-color,#ffffff);
+        box-shadow:0 0 16px var(--rgb-master-glow, rgba(255,255,255,.22));
+        opacity:1;
+      }
+      .rgbSlaves{
+        border-top:1px solid rgba(255,255,255,.06);
+      }
+      .rgbSlave{
+        display:flex;
+        gap:14px;
+        align-items:center;
+        padding:12px 16px 12px 64px;
+        border-top:1px solid rgba(255,255,255,.05);
+        background:rgba(0,0,0,.08);
+      }
+      .rgbSlave.on{
+        background:linear-gradient(90deg, var(--rgb-bg, rgba(255,255,255,.10)), rgba(0,0,0,.14));
+        box-shadow:0 0 26px var(--rgb-glow, rgba(255,255,255,.18)) inset;
+      }
+      .rgbSlave:first-child{border-top:none}
+      .rgbDot{
+        width:14px;
+        height:14px;
+        flex:0 0 14px;
+        border-radius:999px;
+        background:var(--rgb,#fff);
+        box-shadow:0 0 12px var(--rgb,#fff);
+      }
+      .rgbSlave .name{font-size:15px}
+      .rgbSlave .ctrl{margin-top:6px}
+      .rgbSlave.on .bubble{
+        border-color:var(--rgb-border, rgba(255,255,255,.22));
+        color:rgba(255,255,255,.86);
+      }
+      .rgbMasterHead{
+        display:flex;
+        align-items:center;
+        gap:10px;
+      }
+      .rgbMasterHead .name{flex:1}
+      .rgbPaletteBtn{
+        width:36px;
+        height:32px;
+        border-radius:999px;
+        border:1px solid rgba(255,255,255,.14);
+        background:rgba(0,0,0,.24);
+        color:rgba(242,245,255,.86);
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        cursor:pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .rgbPaletteBtn::before{
+        content:'';
+        width:9px;
+        height:9px;
+        border-right:2px solid currentColor;
+        border-bottom:2px solid currentColor;
+        transform:rotate(45deg) translateY(-2px);
+      }
+      .rgbPaletteBtn.open::before{
+        transform:rotate(225deg) translateY(-2px);
+      }
+      .rgbPalette{
+        display:none;
+        padding:14px 16px 16px 64px;
+        border-top:1px solid rgba(255,255,255,.06);
+        background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(0,0,0,.13));
+      }
+      .rgbPalette.open{display:block}
+      .rgbPalettePreview{
+        height:34px;
+        border-radius:999px;
+        border:1px solid rgba(255,255,255,.14);
+        background:linear-gradient(90deg, var(--rgb-preview,#ffffff), rgba(255,255,255,.08));
+        box-shadow:0 0 22px var(--rgb-preview,#ffffff);
+        margin-bottom:12px;
+      }
+      .rgbWheelWrap{
+        display:flex;
+        flex-direction:column;
+        gap:14px;
+        align-items:center;
+        justify-content:center;
+        margin:0 0 12px;
+      }
+      .rgbWheel{
+        position:relative;
+        width:148px;
+        height:148px;
+        flex:0 0 148px;
+        border-radius:50%;
+        border:1px solid rgba(255,255,255,.18);
+        background:
+          radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,255,255,0) 66%),
+          conic-gradient(from 90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+        box-shadow:0 12px 28px rgba(0,0,0,.35), 0 0 28px var(--rgb-preview,#ffffff);
+        cursor:crosshair;
+        touch-action:none;
+      }
+      .rgbWheel::after{
+        content:'';
+        position:absolute;
+        left:var(--wheel-x, 50%);
+        top:var(--wheel-y, 50%);
+        width:14px;
+        height:14px;
+        border-radius:999px;
+        border:2px solid rgba(255,255,255,.95);
+        box-shadow:0 0 0 2px rgba(0,0,0,.45), 0 0 16px rgba(0,0,0,.35);
+        transform:translate(-50%, -50%);
+        pointer-events:none;
+      }
+      .rgbSwatches{
+        display:grid;
+        grid-template-columns:repeat(8, minmax(28px, 1fr));
+        gap:8px;
+      }
+      .rgbSwatch{
+        height:34px;
+        border-radius:10px;
+        border:1px solid rgba(255,255,255,.18);
+        background:var(--swatch,#fff);
+        cursor:pointer;
+        box-shadow:0 0 14px rgba(0,0,0,.22) inset;
+      }
+      .rgbCustom{
+        display:flex;
+        gap:10px;
+        align-items:center;
+        margin-top:12px;
+      }
+      .rgbCustom input[type="color"]{
+        width:52px;
+        height:36px;
+        padding:0;
+        border-radius:10px;
+        border:1px solid rgba(255,255,255,.18);
+        background:rgba(0,0,0,.24);
+      }
+      .rgbCustom .bubble{height:34px;min-width:82px}
+      .ico{
+        width:34px;height:34px;flex:0 0 34px;
+        background:rgba(242,245,255,.70);
+        -webkit-mask-repeat:no-repeat;
+        -webkit-mask-position:center;
+        -webkit-mask-size:contain;
+        mask-repeat:no-repeat;
+        mask-position:center;
+        mask-size:contain;
+        box-shadow:0 0 10px rgba(255,255,255,.04);
+        opacity:.92;
+      }
+      .row .ico{opacity:.70}
+      .row.on .ico{
+        background:rgba(255,215,0, calc(.35 + var(--int,1) * .65));
+        box-shadow:0 0 14px rgba(255,215,0, calc(.10 + var(--int,1) * .22));
+        opacity:1;
+      }
+      .content{flex:1;min-width:0}
+      .name{
+        font-size:19px;line-height:1.15;font-weight:420;
+        opacity:.88;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+        cursor:pointer;
+      }
+      .ctrl{margin-top:10px;display:flex;align-items:center;gap:12px}
+      .bubble{
+        min-width:44px;height:30px;padding:0 10px;
+        border-radius:999px;
+        border:1px solid rgba(255,255,255,.16);
+        background:rgba(0,0,0,.25);
+        display:flex;align-items:center;justify-content:center;
+        color:rgba(255,255,255,.68);
+        font-weight:520;font-size:13px;
+        user-select:none;
+      }
+      input[type="range"]{width:100%;accent-color:rgba(242,245,255,.85)}
+      .error{color:var(--danger);font-size:13px;margin-top:10px}
+
+      /* Scenarios modal */
+      .modalBack{
+        position:fixed;inset:0;z-index:50;
+        background:rgba(0,0,0,.55);
+        backdrop-filter: blur(10px);
+        display:none;
+        align-items:flex-start;
+        justify-content:center;
+        padding:calc(env(safe-area-inset-top, 0px) + 72px) 14px 16px;
+        overflow:auto;
+        -webkit-overflow-scrolling:touch;
+      }
+      .modalBack.show{display:flex}
+      .modal{
+        width:min(760px, 100%);
+        max-height:calc(100dvh - env(safe-area-inset-top, 0px) - 88px);
+        overflow:auto;
+        -webkit-overflow-scrolling:touch;
+        overscroll-behavior:contain;
+        border-radius:18px;
+        border:1px solid var(--line);
+        background:rgba(0,0,0,.05);
+        box-shadow:0 18px 50px rgba(0,0,0,.55);
+        padding:14px 14px 10px;
+        backdrop-filter: blur(10px);
+      }
+      .modalTop{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px}
+      .modalTitle{font-size:14px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.70)}
+      .modalMsg{font-size:15px;color:rgba(255,255,255,.88);line-height:1.4}
+      .modalActions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+      .btnRow{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:flex-end}
+      .btn{
+        height:38px;padding:0 12px;
+        border:1px solid rgba(255,255,255,.14);
+        background:rgba(255,255,255,.06);
+        color:rgba(242,245,255,.86);
+        border-radius:12px;
+        cursor:pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .btn:active{transform:scale(.99)}
+      .btn.primary{border-color:rgba(255,215,0,.35); background:rgba(255,215,0,.08)}
+      .btn.danger{border-color:rgba(255,107,107,.40); background:rgba(255,107,107,.10)}
+      .scList{
+        /* Styled by .list (same as lights list) */
+      }
+      .scRow{
+        /* Layout overrides for scenario rows (base style from .row) */
+        justify-content:space-between;
+        align-items:flex-start;
+        flex-wrap:wrap;
+      }
+      .scRow:first-child{border-top:none}
+      .scLeft{min-width:0;flex:1;display:flex;flex-direction:column;gap:4px}
+      .scName{min-width:0;font-size:16px;opacity:.90;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .scMeta{font-size:12px;color:rgba(255,255,255,.55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .scBtns{margin-left:auto}
+      .scEditor{display:none}
+      .scEditor.show{display:block}
+      .scGrid{display:flex;flex-direction:column;gap:10px}
+      .scField{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+      .scField label{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.55)}
+      .scField input[type="text"]{
+        flex:1;min-width:220px;height:38px;padding:0 10px;
+        border:1px solid rgba(255,255,255,.14);
+        background:rgba(0,0,0,.24);
+        color:rgba(242,245,255,.88);
+        outline:none;
+      }
+      .scField select{
+        height:38px;padding:0 10px;
+        border:1px solid rgba(255,255,255,.14);
+        background:rgba(0,0,0,.24);
+        color:rgba(242,245,255,.86);
+      }
+      .scItems{
+        border-radius:18px;
+        overflow:hidden;
+        border:1px solid var(--line);
+        background:rgba(0,0,0,.05);
+        backdrop-filter: blur(10px);
+      }
+      .scItem{
+        display:flex;gap:10px;align-items:center;justify-content:space-between;
+        padding:12px 14px;
+        border-top:1px solid rgba(255,255,255,.06);
+        background:rgba(0,0,0,.05);
+      }
+      .scItem:first-child{border-top:none}
+      .scItemLeft{min-width:190px;flex:1 1 260px}
+      .scItemTitle{font-size:15px;opacity:.90;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .scItemSub{font-size:12px;color:rgba(255,255,255,.55);margin-top:3px;max-width:100%;word-break:normal;overflow-wrap:anywhere}
+      .scItemCtrls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end;flex:1 1 520px}
+      .scItemRamp{display:flex;gap:8px;align-items:center}
+      .scItemRamp label{font-size:12px;color:rgba(255,255,255,.52)}
+      .scItemRamp input{
+        width:64px;
+        background:rgba(255,255,255,.04);
+        border:1px solid rgba(255,255,255,.12);
+        color:var(--text);
+        border-radius:10px;
+        padding:6px 8px;
+        font-size:12px;
+      }
+      .scCoverItem{
+        flex-direction:column;
+        align-items:flex-start;
+        gap:8px;
+      }
+      .scCoverItem .scItemLeft{
+        width:100%;
+        min-width:0;
+      }
+      .scCoverItem .scItemCtrls{
+        width:100%;
+        justify-content:flex-start;
+        gap:8px;
+      }
+      .scCoverItem .scItemRamp{
+        flex-wrap:wrap;
+      }
+      .scSel{
+        height:34px;padding:0 10px;
+        border:1px solid rgba(255,255,255,.14);
+        background:rgba(0,0,0,.24);
+        color:rgba(242,245,255,.86);
+      }
+      .scRange{width:180px;accent-color:rgba(255,215,0,.92)}
+      .scAddBox{
+        border-radius:18px;
+        border:1px solid var(--line);
+        background:rgba(0,0,0,.05);
+        padding:12px 12px 10px;
+        backdrop-filter: blur(10px);
+      }
+      .scAddList{
+        max-height:220px;
+        overflow:auto;
+        border-radius:14px;
+        overflow:hidden;
+        border:1px solid rgba(255,255,255,.10);
+        background:rgba(0,0,0,.05);
+      }
+      .scAddRow{
+        display:flex;gap:10px;align-items:center;justify-content:space-between;
+        padding:12px 12px;
+        border-top:1px solid rgba(255,255,255,.06);
+        cursor:pointer;
+        background:rgba(0,0,0,.05);
+      }
+      .scAddRow:first-child{border-top:none}
+      .scAddRow:active{background:rgba(255,255,255,.04)}
+      .scAddName{min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.86}
+      .scAddMeta{font-size:12px;color:rgba(255,255,255,.55);white-space:nowrap}
+      .scChecks{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+      .scChecks label{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.55)}
+      .pressFx{
+        position:relative;
+        overflow:hidden;
+        transition:transform .12s ease, box-shadow .18s ease, border-color .18s ease;
+      }
+      .pressFx.pressed{
+        transform:scale(.98);
+        border-color:rgba(255,215,0,.35);
+        box-shadow:0 0 0 2px rgba(255,215,0,.18) inset, 0 10px 18px rgba(255,215,0,.08);
+      }
+      .pressFx.pulse{animation:btnPulse .28s ease-out 1}
+      .pressFx.ripple::after{
+        content:'';
+        position:absolute;
+        inset:4px;
+        border-radius:999px;
+        background:radial-gradient(circle at center, rgba(255,215,0,.22) 0%, rgba(255,215,0,.10) 40%, rgba(255,215,0,0) 70%);
+        opacity:0;
+        animation:btnRipple .32s ease-out 1;
+        pointer-events:none;
+      }
+      @keyframes btnPulse{
+        0%{transform:scale(1)}
+        45%{transform:scale(1.04)}
+        100%{transform:scale(1)}
+      }
+      @keyframes btnRipple{
+        0%{opacity:.85;transform:scale(.86)}
+        100%{opacity:0;transform:scale(1.2)}
+      }
+      @media(max-width:600px){
+        .modalTop{flex-direction:column;align-items:flex-start;gap:8px}
+        .modalTop .btnRow{width:100%;justify-content:flex-start}
+        .modalTop .btn{height:34px;padding:0 10px;font-size:13px}
+        .scRow{align-items:flex-start}
+        .scLeft{width:100%}
+        .scName{font-size:16px}
+        .scBtns{width:100%;margin-left:0;justify-content:flex-start}
+        .scItem{flex-direction:column;align-items:flex-start;gap:8px}
+        .scItemCtrls{width:100%;justify-content:flex-start}
+        .scRange{width:100%}
+        .scItemTitle{white-space:normal}
+      }
+      @media(max-width:1100px){
+        .scItem{flex-direction:column;align-items:flex-start;gap:8px}
+        .scItemCtrls{width:100%;justify-content:flex-start}
+        .scItemTitle{white-space:normal}
+      }
+      @media(min-width:901px){
+        .modalBack{
+          align-items:center;
+          padding:18px 14px;
+        }
+        .modal{
+          max-height:min(78vh, 760px);
+        }
+      }
+    </style>
+    <link rel="stylesheet" href="static/hub/hub.css?v=0.1.479" />
+    <script defer src="static/hub/hub-nav.js?v=0.1.564"></script>
+  </head>
+  <body>
+    <div class="topBtns">
+      <button id="filterBtn" class="filterBtn" type="button" aria-label="Mostra solo attivi">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M6 7h12"/><path d="M6 12h12"/><path d="M6 17h12"/>
+        </svg>
+      </button>
+      <button id="collapseBtn" class="filterBtn" type="button" aria-label="Collassa/espandi gruppi">
+        <svg id="collapseIcon" viewBox="0 0 24 24" aria-hidden="true"></svg>
+      </button>
+      <button id="scenesPageBtn" class="filterBtn" type="button" aria-label="Vai a scenari">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 3l2.6 5.4L20.5 9l-4.3 4.2 1 6-5.2-2.8-5.2 2.8 1-6L3.5 9l5.9-.6z" fill="none" />
+          <path d="M14 12h6" fill="none" />
+          <path d="M18 10l2 2-2 2" fill="none" />
+        </svg>
+      </button>
+      <button id="scenesSettingsBtn" class="filterBtn" type="button" aria-label="Impostazioni scenari">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z" fill="none"/>
+          <path d="M19.4 15a7.9 7.9 0 0 0 .1-2l2-1.1-2-3.5-2.3.7a7.7 7.7 0 0 0-1.7-1l-.3-2.4H11l-.3 2.4a7.7 7.7 0 0 0-1.7 1L6.7 8.4l-2 3.5 2 1.1a7.9 7.9 0 0 0 .1 2l-2 1.1 2 3.5 2.3-.7a7.7 7.7 0 0 0 1.7 1l.3 2.4h4.1l.3-2.4a7.7 7.7 0 0 0 1.7-1l2.3.7 2-3.5z" fill="none"/>
+        </svg>
+      </button>
+      <button id="extraPageBtn" class="filterBtn" type="button" aria-label="Vai a extra">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 3l3 5.2 6 .9-4.3 4.2 1 5.9-5.7-3-5.7 3 1-5.9L3 9.1l6-.9z" fill="none"/>
+        </svg>
+      </button>
+    </div>
+    <main>
+      <div id="list" class="list"></div>
+      <div id="err" class="error"></div>
+    </main>
+
+    <div id="scenesModalBack" class="modalBack" role="dialog" aria-modal="true" aria-label="Scenari">
+      <div class="modal">
+        <div class="modalTop">
+          <div class="modalTitle">Scenari</div>
+          <div class="btnRow">
+            <select id="scGroupSelect" class="scSel" aria-label="Gruppo scenari">
+              <option value="__all__">TUTTE</option>
+            </select>
+            <button id="scNewBtn" class="btn" type="button">Nuovo scenario</button>
+            <button id="scSaveOnBtn" class="btn primary" type="button">Salva (solo accese)</button>
+            <button id="scSaveOffBtn" class="btn" type="button">Salva (solo spente)</button>
+            <button id="scSaveAllBtn" class="btn" type="button">Salva (tutte)</button>
+            <button id="scCloseBtn" class="btn" type="button">Chiudi</button>
+          </div>
+        </div>
+        <div id="scErr" class="error" style="margin:0 0 10px 0"></div>
+        <div id="scList" class="list scList"></div>
+        <div id="scEditor" class="scEditor">
+          <div class="scGrid" style="margin-top:12px">
+            <div class="scField">
+              <label for="scNameInput">Nome</label>
+              <input id="scNameInput" type="text" placeholder="Nome scenario" />
+              <div class="btnRow">
+                <button id="scBackBtn" class="btn" type="button">Indietro</button>
+                <button id="scSaveEditBtn" class="btn primary" type="button">Salva modifiche</button>
+              </div>
+            </div>
+            <div class="scField">
+              <label>Azioni</label>
+              <div class="scChecks">
+                <label style="display:flex;align-items:center;gap:8px">
+                  <input id="scFlagRun" type="checkbox" />
+                  RUN
+                </label>
+                <label style="display:flex;align-items:center;gap:8px">
+                  <input id="scFlagOnOff" type="checkbox" checked />
+                  ON/OFF
+                </label>
+              </div>
+            </div>
+            <div class="scField" id="scTimeTriggerField">
+              <label>Trigger</label>
+              <div class="scChecks" style="gap:12px;flex-wrap:wrap">
+                <label style="display:flex;align-items:center;gap:8px">
+                  <input id="scTrigEnabled" type="checkbox" />
+                  Attivo
+                </label>
+                <select id="scTrigType" class="scSel">
+                  <option value="none">Nessuno</option>
+                  <option value="time">Orario</option>
+                  <option value="sveglia">Sveglia (custom)</option>
+                  <option value="sunrise">Alba</option>
+                  <option value="sunset">Tramonto</option>
+                </select>
+                <input id="scTrigTime" type="time" step="60" placeholder="HH:MM" />
+                <input id="scTrigOffset" type="number" min="-1440" max="1440" step="1" placeholder="Offset min" />
+              </div>
+              <div class="scItemSub" style="margin-top:6px">Offset in minuti (es. -15 prima di alba, +10 dopo)</div>
+            </div>
+            <div class="scField">
+              <label>Automazione E-manager</label>
+              <div class="scChecks" style="gap:12px;flex-wrap:wrap">
+                <label style="display:flex;align-items:center;gap:8px">
+                  <input id="scHaTrigEnabled" type="checkbox" />
+                  Attivo
+                </label>
+                <select id="scHaTrigId" class="scSel">
+                  <option value="">Nessun trigger</option>
+                </select>
+              </div>
+              <div class="scItemSub" style="margin-top:6px">Scegli il trigger E-manager definito in Admin che puo' avviare questo scenario.</div>
+            </div>
+            <div class="scItems" id="scItems"></div>
+            <div class="scAddBox">
+              <div class="scField" style="margin-bottom:8px">
+                <label for="scAddSearch">Aggiungi</label>
+                <input id="scAddSearch" type="text" placeholder="Cerca luce..." />
+              </div>
+              <div id="scAddList" class="scAddList"></div>
+            </div>
+            <div class="scItems" id="scCoverItems"></div>
+            <div class="scAddBox">
+              <div class="scField" style="margin-bottom:8px">
+                <label for="scCoverAddSearch">Aggiungi tapparella</label>
+                <input id="scCoverAddSearch" type="text" placeholder="Cerca tapparella/gruppo..." />
+              </div>
+              <div id="scCoverAddList" class="scAddList"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="scNameModalBack" class="modalBack" role="dialog" aria-modal="true" aria-label="Nome scenario">
+      <div class="modal" style="max-width:520px">
+        <div class="modalTop">
+          <div class="modalTitle">Nome scenario</div>
+          <div class="btnRow">
+            <button id="scNameCancel" class="btn" type="button">Annulla</button>
+            <button id="scNameOk" class="btn primary" type="button">OK</button>
+          </div>
+        </div>
+        <div style="padding:0 6px 10px">
+          <input id="scNamePromptInput" type="text" placeholder="Nome scenario" />
+        </div>
+      </div>
+    </div>
+
+    <div id="confirmModalBack" class="modalBack" role="dialog" aria-modal="true" aria-label="Conferma">
+      <div class="modal" style="max-width:520px">
+        <div class="modalTop">
+          <div class="modalTitle">Conferma</div>
+          <div class="btnRow">
+            <button id="confirmCancel" class="btn" type="button">Annulla</button>
+            <button id="confirmOk" class="btn danger" type="button">Conferma</button>
+          </div>
+        </div>
+        <div class="modalMsg" id="confirmMsg"></div>
+      </div>
+    </div>
+
+    <script>
+      const qs = (id) => document.getElementById(id); 
+      const stateByAddr = new Map(); 
+      const lastBrightness = new Map(); // addr -> 1..255 
+      const deviceByAddr = new Map();
+      const rowByAddr = new Map();
+      const sectionByGroup = new Map();
+      const activeByAddr = new Map();
+      const rgbGroupByAddr = new Map();
+      const openRgbPalettes = new Set();
+      const pendingRgbLocalUntil = new Map();
+      let lastDevices = []; 
+      let groupOrder = [];
+      let showActiveOnly = false;
+      let collapsedGroups = new Set(); // groupKey
+      let renderQueued = false;
+      let countsQueued = false;
+      let lightScenarios = [];
+      let scenarioHaTriggers = [];
+      let scenarioStates = {};
+      let scenarioRunning = {};
+      let editingScenarioId = '';
+      let editingScenarioName = '';
+      let editingScenarioItems = [];
+      let editingScenarioCovers = [];
+      let coverGroupsCache = [];
+      const LS_SC_GROUP = 'buspro_scenarios_group_lights';
+
+      const GROUP_NONE = '__none__';
+      const LS_COLLAPSED = 'buspro_collapsed_groups_lights';
+      const LS_RGB = 'buspro_rgb_groups_lights';
+      const RGB_PRESETS = [
+        '#ff0000', '#ff7a00', '#ffd400', '#63ff00',
+        '#00ff5a', '#00f5ff', '#0066ff', '#6d3bff',
+        '#b000ff', '#ff00d4', '#ff4d8d', '#ffffff',
+        '#ffb36b', '#8cffd2', '#91b7ff', '#2a2a2a'
+      ];
+
+      function groupKeyFromGroup(groupValue) {
+        const g = normalizeGroup(groupValue);
+        return g ? g.toLowerCase() : GROUP_NONE;
+      }
+      function groupLabelFromKey(groupKey) {
+        if (!groupKey || groupKey === GROUP_NONE) return 'ALTRO';
+        return String(groupKey).toUpperCase();
+      }
+
+      function setCollapseIcon(allCollapsed) {
+        const svg = qs('collapseIcon');
+        if (!svg) return;
+        // When all collapsed, show "expand" (<>). Otherwise show "collapse" (><).
+        svg.innerHTML = allCollapsed
+          ? '<path d="M10 8L6 12l4 4"/><path d="M14 8l4 4-4 4"/>'
+          : '<path d="M8 8l4 4-4 4"/><path d="M16 8l-4 4 4 4"/>';
+      }
+
+      function queueRender() {
+        if (renderQueued) return;
+        renderQueued = true;
+        try {
+          requestAnimationFrame(() => { renderQueued = false; render(); });
+        } catch (e) {
+          renderQueued = false;
+          render();
+        }
+      }
+
+      function escapeHtml(s){
+        const v = (s === null || s === undefined) ? '' : String(s);
+        return v
+          .replace(/&/g,'&amp;')
+          .replace(/</g,'&lt;')
+          .replace(/>/g,'&gt;')
+          .replace(/\"/g,'&quot;')
+          .replace(/'/g,'&#039;');
+      }
+      function addrOf(d){
+        if (d && String(d.origin || '') === 'ha') return String(d.entity_id || '').trim();
+        return `${Number(d.subnet_id)}.${Number(d.device_id)}.${Number(d.channel)}`;
+      } 
+
+      function rgbChannelOf(d) {
+        const ch = String(d && d.rgb_channel || '').trim().toLowerCase();
+        return (ch === 'red' || ch === 'green' || ch === 'blue') ? ch : '';
+      }
+
+      function rgbGroupNameOf(d) {
+        if (!d || String(d.origin || '') === 'ha') return '';
+        const name = String(d.rgb_group || '').trim();
+        return name && rgbChannelOf(d) ? name : '';
+      }
+
+      function rgbStorageRead() {
+        try {
+          const raw = JSON.parse(localStorage.getItem(LS_RGB) || '{}');
+          return raw && typeof raw === 'object' ? raw : {};
+        } catch (e) {
+          return {};
+        }
+      }
+
+      function rgbStorageWrite(data) {
+        try { localStorage.setItem(LS_RGB, JSON.stringify(data || {})); } catch (e) {}
+      }
+
+      function rgbGroupKey(d) {
+        return String(rgbGroupNameOf(d)).trim().toLowerCase();
+      }
+
+      function channelSort(ch) {
+        if (ch === 'red') return 0;
+        if (ch === 'green') return 1;
+        if (ch === 'blue') return 2;
+        return 9;
+      }
+
+      function channelLabel(ch) {
+        if (ch === 'red') return 'RED';
+        if (ch === 'green') return 'GREEN';
+        if (ch === 'blue') return 'BLUE';
+        return String(ch || '').toUpperCase();
+      }
+
+      function channelColor(ch) {
+        if (ch === 'red') return '#ff4d4d';
+        if (ch === 'green') return '#32d27a';
+        if (ch === 'blue') return '#5b8cff';
+        return '#ffffff';
+      }
+
+      function channelRgbParts(ch) {
+        if (ch === 'red') return [255, 77, 77];
+        if (ch === 'green') return [50, 210, 122];
+        if (ch === 'blue') return [91, 140, 255];
+        return [255, 255, 255];
+      }
+
+      function channelRgba(ch, alpha) {
+        const p = channelRgbParts(ch);
+        return `rgba(${p[0]},${p[1]},${p[2]},${Math.max(0, Math.min(1, Number(alpha) || 0))})`;
+      }
+
+      function hexToRgb(hex) {
+        const s = String(hex || '').trim().replace(/^#/, '');
+        if (!/^[0-9a-fA-F]{6}$/.test(s)) return null;
+        return {
+          red: parseInt(s.slice(0, 2), 16),
+          green: parseInt(s.slice(2, 4), 16),
+          blue: parseInt(s.slice(4, 6), 16)
+        };
+      }
+
+      function hexToRgba(hex, alpha) {
+        const rgb = hexToRgb(hex) || { red: 255, green: 255, blue: 255 };
+        return `rgba(${rgb.red},${rgb.green},${rgb.blue},${Math.max(0, Math.min(1, Number(alpha) || 0))})`;
+      }
+
+      function rgbToHex(red, green, blue) {
+        const part = (v) => Math.max(0, Math.min(255, Number(v || 0))).toString(16).padStart(2, '0');
+        return `#${part(red)}${part(green)}${part(blue)}`;
+      }
+
+      function currentRgbHex(group, rgbState) {
+        const vals = { red: 0, green: 0, blue: 0 };
+        for (const d of (group && group.channels) || []) {
+          const ch = rgbChannelOf(d);
+          if (!ch) continue;
+          const addr = addrOf(d);
+          vals[ch] = Math.max(0, Math.min(255, Number((rgbState && rgbState.slaves && rgbState.slaves[addr]) || 0)));
+        }
+        return rgbToHex(vals.red, vals.green, vals.blue);
+      }
+
+      function hsvToRgb(h, s, v) {
+        const hh = (((Number(h) || 0) % 360) + 360) % 360;
+        const ss = Math.max(0, Math.min(1, Number(s) || 0));
+        const vv = Math.max(0, Math.min(1, Number(v) || 0));
+        const c = vv * ss;
+        const x = c * (1 - Math.abs(((hh / 60) % 2) - 1));
+        const m = vv - c;
+        let r = 0, g = 0, b = 0;
+        if (hh < 60) { r = c; g = x; b = 0; }
+        else if (hh < 120) { r = x; g = c; b = 0; }
+        else if (hh < 180) { r = 0; g = c; b = x; }
+        else if (hh < 240) { r = 0; g = x; b = c; }
+        else if (hh < 300) { r = x; g = 0; b = c; }
+        else { r = c; g = 0; b = x; }
+        return {
+          red: Math.round((r + m) * 255),
+          green: Math.round((g + m) * 255),
+          blue: Math.round((b + m) * 255)
+        };
+      }
+
+      function wheelEventToColor(el, evt) {
+        const rect = el.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const dx = Math.max(-rect.width / 2, Math.min(rect.width / 2, Number(evt.clientX) - cx));
+        const dy = Math.max(-rect.height / 2, Math.min(rect.height / 2, Number(evt.clientY) - cy));
+        const radius = Math.min(rect.width, rect.height) / 2;
+        const dist = Math.min(radius, Math.sqrt(dx * dx + dy * dy));
+        const sat = radius > 0 ? dist / radius : 0;
+        const hue = (((Math.atan2(dy, dx) * 180 / Math.PI) + 360) % 360);
+        const rgb = hsvToRgb(hue, sat, 1);
+        return {
+          hex: rgbToHex(rgb.red, rgb.green, rgb.blue),
+          xPct: 50 + (dx / rect.width) * 100,
+          yPct: 50 + (dy / rect.height) * 100
+        };
+      }
+
+      function getRgbState(key, channels) {
+        const k = String(key || '').trim().toLowerCase();
+        const savedAll = rgbStorageRead();
+        const saved = (savedAll[k] && typeof savedAll[k] === 'object') ? savedAll[k] : {};
+        const out = {
+          master: Math.max(1, Math.min(255, Number(saved.master || 255))),
+          slaves: (saved.slaves && typeof saved.slaves === 'object') ? Object.assign({}, saved.slaves) : {}
+        };
+        for (const d of channels || []) {
+          const addr = addrOf(d);
+          const st = stateByAddr.get(addr) || {};
+          const b = Math.max(0, Math.min(255, Number(st.brightness || 0)));
+          if (!Object.prototype.hasOwnProperty.call(out.slaves, addr) || !Number.isFinite(Number(out.slaves[addr]))) {
+            out.slaves[addr] = b > 0 ? b : 255;
+          } else {
+            out.slaves[addr] = Math.max(0, Math.min(255, Number(out.slaves[addr])));
+          }
+        }
+        const allZero = (channels || []).length > 0 && (channels || []).every((d) => Number(out.slaves[addrOf(d)] || 0) <= 0);
+        if (allZero && !isRgbGroupActive(k)) {
+          for (const d of channels || []) out.slaves[addrOf(d)] = 255;
+        }
+        return out;
+      }
+
+      function saveRgbState(key, state) {
+        const k = String(key || '').trim().toLowerCase();
+        if (!k) return;
+        const saved = rgbStorageRead();
+        saved[k] = state;
+        rgbStorageWrite(saved);
+      }
+
+      function rgbDevicesForKey(key) {
+        const k = String(key || '').trim().toLowerCase();
+        if (!k) return [];
+        return (lastDevices || []).filter((d) => rgbGroupKey(d) === k);
+      }
+
+      function isRgbGroupActive(key) {
+        return rgbDevicesForKey(key).some((d) => isActiveState(stateByAddr.get(addrOf(d))));
+      }
+
+      function syncRgbSlaveFromBusState(addr, st) {
+        const a = String(addr || '').trim();
+        if (!a) return false;
+        const until = Number(pendingRgbLocalUntil.get(a) || 0);
+        if (until && until > Date.now()) return false;
+        pendingRgbLocalUntil.delete(a);
+        const d = deviceByAddr.get(a);
+        if (!d || !rgbGroupNameOf(d)) return false;
+        const key = rgbGroupKey(d);
+        if (!key) return false;
+        const savedAll = rgbStorageRead();
+        const cur = (savedAll[key] && typeof savedAll[key] === 'object') ? savedAll[key] : {};
+        const slaves = (cur.slaves && typeof cur.slaves === 'object') ? Object.assign({}, cur.slaves) : {};
+        const on = st && String(st.state || '').toUpperCase() === 'ON';
+        if (!on && !isRgbGroupActive(key)) return false;
+        const b = on ? Math.max(0, Math.min(255, Number(st.brightness || 0))) : 0;
+        slaves[a] = Number.isFinite(b) ? b : 0;
+        savedAll[key] = { master: Number(cur.master || 255), slaves };
+        rgbStorageWrite(savedAll);
+        return true;
+      }
+
+      function syncRgbSlavesFromKnownStates() {
+        let changed = false;
+        for (const d of (lastDevices || [])) {
+          if (!d || !rgbGroupNameOf(d)) continue;
+          const addr = addrOf(d);
+          if (!addr || !stateByAddr.has(addr)) continue;
+          if (syncRgbSlaveFromBusState(addr, stateByAddr.get(addr))) changed = true;
+        }
+        return changed;
+      }
+
+      async function sendRgbLight(d, addr, state, brightness) {
+        const a = String(addr || '').trim();
+        if (a) pendingRgbLocalUntil.set(a, Date.now() + 4500);
+        await sendLight(d, addr, state, brightness);
+      }
+
+      function rgbEffectiveBrightness(slaveValue, masterValue) {
+        const s = Math.max(0, Math.min(255, Number(slaveValue || 0)));
+        const m = Math.max(1, Math.min(255, Number(masterValue || 1)));
+        return Math.max(0, Math.min(255, Math.round((s * m) / 255)));
+      }
+
+      function buildRgbDisplayItems(lights) {
+        const groups = new Map();
+        const singles = [];
+        rgbGroupByAddr.clear();
+        for (const d of lights || []) {
+          const key = rgbGroupKey(d);
+          if (!key || !d.dimmable) {
+            singles.push({ kind: 'light', d });
+            continue;
+          }
+          const g = groups.get(key) || { kind: 'rgb', key, name: rgbGroupNameOf(d), group: d.group, channels: [] };
+          g.channels.push(d);
+          groups.set(key, g);
+        }
+        const groupedAddrs = new Set();
+        const rgbItems = [];
+        for (const g of groups.values()) {
+          const byChannel = new Map();
+          for (const d of g.channels) {
+            const ch = rgbChannelOf(d);
+            if (!byChannel.has(ch)) byChannel.set(ch, d);
+          }
+          const channels = Array.from(byChannel.values()).sort((a,b) => channelSort(rgbChannelOf(a)) - channelSort(rgbChannelOf(b)));
+          if (channels.length < 2) {
+            for (const d of g.channels) singles.push({ kind: 'light', d });
+            continue;
+          }
+          g.channels = channels;
+          for (const d of channels) {
+            const addr = addrOf(d);
+            groupedAddrs.add(addr);
+            rgbGroupByAddr.set(addr, g.key);
+          }
+          rgbItems.push(g);
+        }
+        const items = singles.filter((it) => !groupedAddrs.has(addrOf(it.d))).concat(rgbItems);
+        return items.sort((a,b) => {
+          const da = a.kind === 'rgb' ? { name: a.name, group: a.group } : a.d;
+          const db = b.kind === 'rgb' ? { name: b.name, group: b.group } : b.d;
+          const ga = normalizeGroup(da.group);
+          const gb = normalizeGroup(db.group);
+          const ia = groupIndex(ga);
+          const ib = groupIndex(gb);
+          if (ia !== ib) return ia - ib;
+          const gcmp = String(ga || '').localeCompare(String(gb || ''), undefined, { sensitivity: 'base' });
+          if (gcmp !== 0) return gcmp;
+          return String(da.name || '').localeCompare(String(db.name || ''), undefined, { sensitivity: 'base' });
+        });
+      }
+
+      async function applyRgbColor(group, color) {
+        const rgb = hexToRgb(color);
+        if (!group || !rgb) return;
+        const rgbState = getRgbState(group.key, group.channels);
+        for (const chDev of group.channels || []) {
+          const ch = rgbChannelOf(chDev);
+          const addr = addrOf(chDev);
+          if (!ch || !addr) continue;
+          rgbState.slaves[addr] = Math.max(0, Math.min(255, Number(rgb[ch] || 0)));
+        }
+        saveRgbState(group.key, rgbState);
+        for (const chDev of group.channels || []) {
+          const addr = addrOf(chDev);
+          await sendRgbLight(chDev, addr, 'ON', rgbEffectiveBrightness(rgbState.slaves[addr], rgbState.master));
+        }
+        queueRender();
+      }
+ 
+      function absUrl(path) { return new URL(path, window.location.href).toString(); } 
+      function cssEscape(s) {
+        const v = String(s || '');
+        try { return CSS.escape(v); } catch (e) {}
+        return v.replace(/[^a-zA-Z0-9_.-]/g, (ch) => `\\${ch.charCodeAt(0).toString(16)} `);
+      }
+
+      function uiLog(phase, detail) {
+        try {
+          const u = new URL('api/ui_log', window.location.href);
+          u.searchParams.set('page', 'lights');
+          u.searchParams.set('phase', String(phase || ''));
+          u.searchParams.set('detail', String(detail || '').slice(0, 220));
+          const img = new Image();
+          img.src = u.toString();
+        } catch (e) {}
+      }
+
+      async function fetchWithTimeout(url, opts, timeoutMs) {
+        const ms = Math.max(1000, Number(timeoutMs || 12000));
+        const init = Object.assign({}, opts || {});
+        let timer = null;
+        if (typeof AbortController !== 'undefined') {
+          const controller = new AbortController();
+          init.signal = controller.signal;
+          timer = setTimeout(() => {
+            try { controller.abort(); } catch (e) {}
+          }, ms);
+          try {
+            return await fetch(url, init);
+          } finally {
+            try { clearTimeout(timer); } catch (e) {}
+          }
+        }
+        return await Promise.race([
+          fetch(url, init),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms))
+        ]);
+      }
+
+      async function getJson(path, opts, timeoutMs) {
+        const r = await fetchWithTimeout(absUrl(path), opts, timeoutMs);
+        if (!r.ok) throw new Error(await r.text());
+        const ct = (r.headers.get('content-type')||'').toLowerCase();
+        if (ct.includes('application/json')) return r.json();
+        return r.text();
+      }
+
+      function getScenarioFlags() {
+        const run = !!(qs('scFlagRun') && qs('scFlagRun').checked);
+        const onoff = !!(qs('scFlagOnOff') && qs('scFlagOnOff').checked);
+        return { run_enabled: run, onoff_enabled: onoff };
+      }
+
+      function getScenarioTrigger() {
+        const enabled = !!(qs('scTrigEnabled') && qs('scTrigEnabled').checked);
+        const type = String((qs('scTrigType') && qs('scTrigType').value) || 'none').trim().toLowerCase();
+        const time = String((qs('scTrigTime') && qs('scTrigTime').value) || '').trim();
+        const offsetRaw = (qs('scTrigOffset') && qs('scTrigOffset').value) || '';
+        let offset = parseInt(String(offsetRaw || '0'), 10);
+        if (!Number.isFinite(offset)) offset = 0;
+        return { enabled: enabled, type: type || 'none', time: time || '', offset_min: offset };
+      }
+
+      function updateTriggerInputs() {
+        const t = String((qs('scTrigType') && qs('scTrigType').value) || 'none').toLowerCase();
+        const timeEl = qs('scTrigTime');
+        const extEnabled = !!(
+          qs('scHaTrigEnabled') &&
+          qs('scHaTrigEnabled').checked &&
+          String((qs('scHaTrigId') && qs('scHaTrigId').value) || '').trim()
+        );
+        const timeWrap = qs('scTimeTriggerField');
+        if (timeWrap) timeWrap.style.display = extEnabled ? 'none' : '';
+        if (extEnabled) {
+          if (qs('scTrigEnabled')) qs('scTrigEnabled').checked = false;
+        }
+        if (timeEl) timeEl.disabled = extEnabled || t !== 'time';
+      }
+
+      function fillScenarioHaTriggerSelect(selectedId) {
+        const sel = qs('scHaTrigId');
+        if (!sel) return;
+        const cur = String(selectedId || '').trim();
+        sel.innerHTML = '<option value="">Nessun trigger</option>';
+        for (const tr of (scenarioHaTriggers || [])) {
+          if (!tr || typeof tr !== 'object') continue;
+          const id = String(tr.id || '').trim();
+          const name = String(tr.name || '').trim();
+          if (!id || !name) continue;
+          const opt = document.createElement('option');
+          opt.value = id;
+          opt.textContent = name;
+          sel.appendChild(opt);
+        }
+        sel.value = cur;
+      }
+
+      function getScenarioHaTrigger() {
+        const enabled = !!(qs('scHaTrigEnabled') && qs('scHaTrigEnabled').checked);
+        const id = String((qs('scHaTrigId') && qs('scHaTrigId').value) || '').trim();
+        return { ha_trigger_enabled: enabled && !!id, ha_trigger_id: id };
+      }
+
+      function animatePress(el) {
+        if (!el) return;
+        el.classList.remove('pressed','pulse','ripple');
+        try { void el.offsetWidth; } catch (e) {}
+        el.classList.add('pressFx','pressed','pulse','ripple');
+        setTimeout(() => {
+          try { el.classList.remove('pressed','pulse','ripple'); } catch (e) {}
+        }, 220);
+      }
+
+      function askScenarioName() {
+        return new Promise((resolve) => {
+          const back = qs('scNameModalBack');
+          const input = qs('scNamePromptInput');
+          const ok = qs('scNameOk');
+          const cancel = qs('scNameCancel');
+          if (!back || !input || !ok || !cancel) { resolve(null); return; }
+
+          function close(val) {
+            back.classList.remove('show');
+            cleanup();
+            resolve(val);
+          }
+          function onOk() {
+            const v = String(input.value || '').trim();
+            if (!v) { input.focus(); return; }
+            close(v);
+          }
+          function onCancel() { close(null); }
+          function onKey(e) {
+            if (e && e.key === 'Enter') { e.preventDefault(); onOk(); }
+            if (e && e.key === 'Escape') { e.preventDefault(); onCancel(); }
+          }
+          function onBackClick(e) { if (e && e.target === back) onCancel(); }
+          function cleanup() {
+            ok.removeEventListener('click', onOk);
+            cancel.removeEventListener('click', onCancel);
+            back.removeEventListener('click', onBackClick);
+            document.removeEventListener('keydown', onKey);
+          }
+
+          ok.addEventListener('click', onOk);
+          cancel.addEventListener('click', onCancel);
+          back.addEventListener('click', onBackClick);
+          document.addEventListener('keydown', onKey);
+          back.classList.add('show');
+          try { input.value = ''; input.focus(); } catch (e) {}
+        });
+      }
+
+      function askConfirm(message) {
+        return new Promise((resolve) => {
+          const back = qs('confirmModalBack');
+          const msg = qs('confirmMsg');
+          const ok = qs('confirmOk');
+          const cancel = qs('confirmCancel');
+          if (!back || !msg || !ok || !cancel) { resolve(false); return; }
+
+          function close(val) {
+            back.classList.remove('show');
+            cleanup();
+            resolve(!!val);
+          }
+          function onOk() { close(true); }
+          function onCancel() { close(false); }
+          function onKey(e) {
+            if (e && e.key === 'Enter') { e.preventDefault(); onOk(); }
+            if (e && e.key === 'Escape') { e.preventDefault(); onCancel(); }
+          }
+          function onBackClick(e) { if (e && e.target === back) onCancel(); }
+          function cleanup() {
+            ok.removeEventListener('click', onOk);
+            cancel.removeEventListener('click', onCancel);
+            back.removeEventListener('click', onBackClick);
+            document.removeEventListener('keydown', onKey);
+          }
+
+          ok.addEventListener('click', onOk);
+          cancel.addEventListener('click', onCancel);
+          back.addEventListener('click', onBackClick);
+          document.addEventListener('keydown', onKey);
+          msg.textContent = String(message || 'Confermi?');
+          back.classList.add('show');
+        });
+      }
+
+      function scenarioModalEl() {
+        try {
+          const back = qs('scenesModalBack');
+          return back ? back.querySelector('.modal') : null;
+        } catch (e) {
+          return null;
+        }
+      }
+      function captureScenarioScroll() {
+        const modal = scenarioModalEl();
+        if (!modal) return null;
+        return modal.scrollTop;
+      }
+      function restoreScenarioScroll(scrollTop) {
+        if (scrollTop === null || scrollTop === undefined) return;
+        const modal = scenarioModalEl();
+        if (!modal) return;
+        modal.scrollTop = scrollTop;
+        try {
+          requestAnimationFrame(() => { modal.scrollTop = scrollTop; });
+        } catch (e) {}
+      }
+
+      async function sendLight(d, addr, state, brightness) {
+        const payload = { state: state };
+        if (brightness !== undefined) payload.brightness = brightness;
+        if (d && String(d.origin || '') === 'ha') {
+          const dom = String(d.domain || (String(d.entity_id||'').split('.',1)[0]||'light')).toLowerCase();
+          if (dom === 'switch') {
+            await getJson(`api/control/ha/switch/${encodeURIComponent(String(d.entity_id||addr))}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ state: state }) });
+            return;
+          }
+          await getJson(`api/control/ha/light/${encodeURIComponent(String(d.entity_id||addr))}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+          return;
+        }
+        const parts = String(addr || '').split('.').map(Number);
+        const s = parts[0], dd = parts[1], c = parts[2];
+        await getJson(`api/control/light/${s}/${dd}/${c}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      }
+
+      async function loadLightScenarios() {
+        const r = await getJson('api/user/light_scenarios');
+        lightScenarios = (r && r.items) ? r.items : [];
+        if (!Array.isArray(lightScenarios)) lightScenarios = [];
+        try {
+          const tr = await getJson('api/user/scenario_ha_triggers');
+          scenarioHaTriggers = (tr && Array.isArray(tr.items)) ? tr.items : [];
+        } catch (e) {
+          scenarioHaTriggers = [];
+        }
+        try {
+          const st = await getJson('api/user/light_scenarios_status');
+          scenarioStates = (st && st.states && typeof st.states === 'object') ? st.states : {};
+          scenarioRunning = (st && st.running && typeof st.running === 'object') ? st.running : {};
+        } catch (e) {
+          scenarioStates = {};
+          scenarioRunning = {};
+        }
+        try { await ensureCoverGroupsCache(); } catch (e) {}
+        renderLightScenarios();
+      }
+
+      function scenarioById(id) {
+        const sid = String(id || '').trim();
+        if (!sid) return null;
+        for (const sc of (lightScenarios || [])) {
+          if (String(sc && sc.id || '').trim() === sid) return sc;
+        }
+        return null;
+      }
+
+      function deviceByAddrLookup() {
+        const m = new Map();
+        for (const d of (lastDevices || [])) {
+          if (!isScenarioListDevice(d)) continue;
+          m.set(addrOf(d), d);
+        }
+        return m;
+      }
+
+      function groupsFromDevices() {
+        const allLights = (lastDevices || []).filter(isScenarioListDevice);
+        const groups = new Map(); // key -> label
+        for (const d of allLights) {
+          const key = groupKeyFromGroup(d.group);
+          const label = groupLabelFromKey(key);
+          groups.set(key, label);
+        }
+        const keys = Array.from(groups.keys()).sort((a,b) => String(groups.get(a)||a).localeCompare(String(groups.get(b)||b), undefined, { sensitivity:'base' }));
+        return keys.map((k) => ({ key: k, label: String(groups.get(k) || k) }));
+      }
+
+      function selectedScenarioGroupKey() {
+        const sel = qs('scGroupSelect');
+        const v = String((sel && sel.value) || '__all__').trim();
+        return v;
+      }
+
+      function ensureScenarioGroupSelect() {
+        const sel = qs('scGroupSelect');
+        if (!sel) return;
+        const prev = selectedScenarioGroupKey();
+        const groups = groupsFromDevices();
+        const opts = [{ key: '__all__', label: 'TUTTE' }, ...groups.map((g) => ({ key: g.key, label: g.label }))];
+        sel.replaceChildren();
+        for (const o of opts) {
+          const opt = document.createElement('option');
+          opt.value = o.key;
+          opt.textContent = String(o.label || o.key).toUpperCase();
+          sel.appendChild(opt);
+        }
+        let desired = prev;
+        if (desired === '__all__') {
+          try {
+            const stored = String(localStorage.getItem(LS_SC_GROUP) || '').trim();
+            if (stored) desired = stored;
+          } catch (e) {}
+        }
+        const has = Array.from(sel.options || []).some((o) => String(o.value) === desired);
+        sel.value = has ? desired : '__all__';
+      }
+
+      function renderLightScenarios() {
+        const scScroll = captureScenarioScroll();
+        const root = qs('scList');
+        const err = qs('scErr');
+        const editor = qs('scEditor');
+        const editingOpen = !!(editor && editor.classList.contains('show') && String(editingScenarioId || '').trim());
+        if (!root) return;
+        root.replaceChildren();
+        if (err) err.textContent = '';
+        if (editor && !editingOpen) editor.classList.remove('show');
+
+        const items = (lightScenarios || []).slice().sort((a,b) => String(a.name||'').localeCompare(String(b.name||''), undefined, {sensitivity:'base'}));
+        if (!items.length) {
+          const empty = document.createElement('div');
+          empty.className = 'row scRow';
+          empty.innerHTML = `<div class="scName">Nessuno scenario salvato</div><div class="scMeta">Crea uno scenario dopo aver impostato le luci</div>`;
+          root.appendChild(empty);
+          restoreScenarioScroll(scScroll);
+          return;
+        }
+
+        for (const sc of items) {
+          const row = document.createElement('div');
+          row.className = 'row scRow';
+          const name = String(sc.name || '').trim() || '(senza nome)';
+          const count = Array.isArray(sc.items) ? sc.items.length : 0;
+          const coverCount = Array.isArray(sc.covers) ? sc.covers.length : 0;
+          const isOn = String((scenarioStates && scenarioStates[String(sc.id||'')]) || '').toUpperCase() === 'ON';
+          const isRunning = !!(scenarioRunning && scenarioRunning[String(sc.id||'')]);
+          const runEnabled = !!sc.run_enabled;
+          const onoffEnabled = (sc.onoff_enabled === undefined) ? true : !!sc.onoff_enabled;
+          const btns = [];
+          if (runEnabled) {
+            btns.push(`<button class="btn" type="button" data-act="run" data-id="${escapeHtml(String(sc.id||''))}">Esegui</button>`);
+            btns.push(`<button class="btn ${isRunning ? 'danger' : ''}" type="button" data-act="stop" data-id="${escapeHtml(String(sc.id||''))}">Stop</button>`);
+          }
+          if (onoffEnabled) btns.push(`<button class="btn ${isOn ? 'danger' : 'primary'}" type="button" data-act="toggle" data-id="${escapeHtml(String(sc.id||''))}">${isOn ? 'Spegni' : 'Accendi'}</button>`);
+          row.innerHTML = `
+            <div class="scLeft">
+              <div class="scName">${escapeHtml(name)}</div>
+              <div class="scMeta">${escapeHtml(String(count))} luci &bull; ${escapeHtml(String(coverCount))} tapparelle</div>
+            </div>
+            <div class="btnRow scBtns">
+              ${btns.join('')}
+              <button class="btn" type="button" data-act="edit" data-id="${escapeHtml(String(sc.id||''))}">Modifica</button>
+              <button class="btn danger" type="button" data-act="del" data-id="${escapeHtml(String(sc.id||''))}">Elimina</button>
+            </div>
+          `;
+          root.appendChild(row);
+        }
+
+        root.querySelectorAll('button[data-act="toggle"]').forEach((b) => {
+          b.addEventListener('click', async () => {
+            animatePress(b);
+            const id = b.getAttribute('data-id') || '';
+            try {
+              if (err) err.textContent = '';
+              const nowOn = String((scenarioStates && scenarioStates[id]) || '').toUpperCase() === 'ON';
+              await getJson(`api/control/light_scenario/${encodeURIComponent(id)}`, {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ state: nowOn ? 'OFF' : 'ON' })
+              });
+              await loadLightScenarios();
+            } catch (e) {
+              if (err) err.textContent = 'Errore esecuzione scenario';
+            }
+          });
+        });
+        root.querySelectorAll('button[data-act="run"]').forEach((b) => {
+          b.addEventListener('click', async () => {
+            animatePress(b);
+            const id = b.getAttribute('data-id') || '';
+            if (!id) return;
+            try {
+              if (err) err.textContent = '';
+              await getJson(`api/control/light_scenario/${encodeURIComponent(id)}`, { method:'POST' });
+              await loadLightScenarios();
+            } catch (e) {
+              if (err) err.textContent = 'Errore esecuzione scenario';
+            }
+          });
+        });
+        root.querySelectorAll('button[data-act="stop"]').forEach((b) => {
+          b.addEventListener('click', async () => {
+            animatePress(b);
+            const id = b.getAttribute('data-id') || '';
+            if (!id) return;
+            try {
+              if (err) err.textContent = '';
+              await getJson(`api/control/light_scenario/${encodeURIComponent(id)}`, {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ command: 'STOP' })
+              });
+              await loadLightScenarios();
+            } catch (e) {
+              if (err) err.textContent = 'Errore stop scenario';
+            }
+          });
+        });
+        root.querySelectorAll('button[data-act="del"]').forEach((b) => {
+          b.addEventListener('click', async () => {
+            animatePress(b);
+            const id = b.getAttribute('data-id') || '';
+            if (!id) return;
+            const ok = await askConfirm('Eliminare questo scenario?');
+            if (!ok) return;
+            try {
+              if (err) err.textContent = '';
+              await getJson(`api/user/light_scenarios/${encodeURIComponent(id)}`, { method:'DELETE' });
+              await loadLightScenarios();
+            } catch (e) {
+              if (err) err.textContent = 'Errore eliminazione scenario';
+            }
+          });
+        });
+
+        root.querySelectorAll('button[data-act="edit"]').forEach((b) => {
+          b.addEventListener('click', async () => {
+            animatePress(b);
+            const id = b.getAttribute('data-id') || '';
+            if (!id) return;
+            openScenarioEditor(id);
+          });
+        });
+        restoreScenarioScroll(scScroll);
+      }
+
+      function openScenarioEditor(id) {
+        const sc = scenarioById(id);
+        const err = qs('scErr');
+        if (!sc) {
+          if (err) err.textContent = 'Scenario non trovato';
+          return;
+        }
+        if (err) err.textContent = '';
+        editingScenarioId = String(sc.id || '');
+        editingScenarioName = String(sc.name || '').trim();
+        const items = Array.isArray(sc.items) ? sc.items : [];
+        editingScenarioItems = items
+          .filter(it => it && typeof it === 'object')
+          .map(it => {
+            const eid = String(it.entity_id || '').trim();
+            if (eid) {
+              return {
+                entity_id: eid,
+                domain: String(it.domain || (eid.split('.',1)[0]||'light')).trim().toLowerCase(),
+                state: String(it.state || '').toUpperCase() === 'OFF' ? 'OFF' : 'ON',
+                brightness: (it.brightness === null || it.brightness === undefined) ? null : Math.max(0, Math.min(255, Number(it.brightness))),
+              };
+            }
+            return {
+              subnet_id: Number(it.subnet_id),
+              device_id: Number(it.device_id),
+              channel: Number(it.channel),
+              state: String(it.state || '').toUpperCase() === 'OFF' ? 'OFF' : 'ON',
+              brightness: (it.brightness === null || it.brightness === undefined) ? null : Math.max(0, Math.min(255, Number(it.brightness))),
+            };
+          })
+          .filter(it => (it && it.entity_id) || (Number.isFinite(it.subnet_id) && Number.isFinite(it.device_id) && Number.isFinite(it.channel)));
+
+        const covers = Array.isArray(sc.covers) ? sc.covers : [];
+        editingScenarioCovers = covers
+          .filter(it => it && typeof it === 'object')
+          .map(it => {
+            const kind = String(it.kind || 'single').toLowerCase();
+            let cmd = String(it.command || '').toUpperCase();
+            const pos = (it.position === null || it.position === undefined) ? null : Math.max(0, Math.min(100, Number(it.position)));
+            const ramp_minutes = Math.max(0, Math.min(240, Number(it.ramp_minutes ?? 0) || 0));
+            const step_seconds = Math.max(1, Math.min(120, Number(it.step_seconds ?? 5) || 5));
+            const two_phase_open = !!it.two_phase_open;
+            const phase1_pct = Math.max(1, Math.min(99, Number(it.phase1_pct ?? 25) || 25));
+            const phase2_delay_minutes = Math.max(0, Math.min(240, Number(it.phase2_delay_minutes ?? 4) || 4));
+            if (cmd === 'SET_POSITION') {
+              cmd = 'STOP';
+            }
+            if (kind === 'group') {
+              return { kind: 'group', group_id: String(it.group_id || it.id || '').trim(), command: cmd, position: null, ramp_minutes, step_seconds, two_phase_open, phase1_pct, phase2_delay_minutes };
+            }
+            if (kind === 'ha') {
+              return { kind: 'ha', entity_id: String(it.entity_id || '').trim().toLowerCase(), command: cmd, position: null, ramp_minutes, step_seconds, two_phase_open, phase1_pct, phase2_delay_minutes };
+            }
+            return {
+              kind: 'single',
+              subnet_id: Number(it.subnet_id),
+              device_id: Number(it.device_id),
+              channel: Number(it.channel),
+              command: cmd,
+              position: null,
+              ramp_minutes,
+              step_seconds,
+              two_phase_open,
+              phase1_pct,
+              phase2_delay_minutes,
+            };
+          })
+          .filter(it => (it.kind === 'group'
+            ? !!it.group_id
+            : (it.kind === 'ha'
+              ? !!it.entity_id
+              : (Number.isFinite(it.subnet_id) && Number.isFinite(it.device_id) && Number.isFinite(it.channel))))
+          )
+          .filter(it => ['OPEN','CLOSE','STOP'].includes(String(it.command||'')));
+
+        const nameInput = qs('scNameInput');
+        if (nameInput) nameInput.value = editingScenarioName;
+        if (qs('scFlagRun')) qs('scFlagRun').checked = !!sc.run_enabled;
+        if (qs('scFlagOnOff')) qs('scFlagOnOff').checked = (sc.onoff_enabled === undefined) ? true : !!sc.onoff_enabled;
+        const trig = (sc && typeof sc.trigger === 'object') ? sc.trigger : {};
+        if (qs('scTrigEnabled')) qs('scTrigEnabled').checked = !!trig.enabled;
+        if (qs('scTrigType')) qs('scTrigType').value = String(trig.type || 'none');
+        if (qs('scTrigTime')) qs('scTrigTime').value = String(trig.time || '');
+        if (qs('scTrigOffset')) qs('scTrigOffset').value = String((trig.offset_min === undefined || trig.offset_min === null) ? 0 : trig.offset_min);
+        fillScenarioHaTriggerSelect(String(sc.ha_trigger_id || ''));
+        if (qs('scHaTrigEnabled')) qs('scHaTrigEnabled').checked = !!sc.ha_trigger_enabled;
+        updateTriggerInputs();
+
+        qs('scList').style.display = 'none';
+        const editor = qs('scEditor');
+        if (editor) editor.classList.add('show');
+        renderScenarioEditorItems();
+        renderScenarioAddList();
+        renderScenarioEditorCovers();
+        renderScenarioCoverAddList();
+      }
+
+      function openNewScenarioEditor() {
+        const err = qs('scErr');
+        if (err) err.textContent = '';
+        editingScenarioId = '__new__';
+        editingScenarioName = '';
+        editingScenarioItems = [];
+        editingScenarioCovers = [];
+        const editor = qs('scEditor');
+        const list = qs('scList');
+        if (list) list.style.display = 'none';
+        if (editor) editor.classList.add('show');
+        const nameInput = qs('scNameInput');
+        if (nameInput) nameInput.value = '';
+        if (qs('scFlagRun')) qs('scFlagRun').checked = false;
+        if (qs('scFlagOnOff')) qs('scFlagOnOff').checked = true;
+        if (qs('scTrigEnabled')) qs('scTrigEnabled').checked = false;
+        if (qs('scTrigType')) qs('scTrigType').value = 'none';
+        if (qs('scTrigTime')) qs('scTrigTime').value = '';
+        if (qs('scTrigOffset')) qs('scTrigOffset').value = '0';
+        fillScenarioHaTriggerSelect('');
+        if (qs('scHaTrigEnabled')) qs('scHaTrigEnabled').checked = false;
+        updateTriggerInputs();
+        renderScenarioEditorItems();
+        renderScenarioAddList();
+        renderScenarioEditorCovers();
+        renderScenarioCoverAddList();
+      }
+
+      function closeScenarioEditor() {
+        editingScenarioId = '';
+        editingScenarioName = '';
+        editingScenarioItems = [];
+        editingScenarioCovers = [];
+        qs('scList').style.display = '';
+        const editor = qs('scEditor');
+        if (editor) editor.classList.remove('show');
+        try { qs('scItems').replaceChildren(); } catch (e) {}
+        try { qs('scAddList').replaceChildren(); } catch (e) {}
+        try { qs('scCoverItems').replaceChildren(); } catch (e) {}
+        try { qs('scCoverAddList').replaceChildren(); } catch (e) {}
+      }
+
+      function addrFromItem(it) {
+        if (it && it.entity_id) return String(it.entity_id);
+        return `${Number(it.subnet_id)}.${Number(it.device_id)}.${Number(it.channel)}`;
+      }
+
+      function coverKeyFromItem(it) {
+        if (!it) return '';
+        const k = String(it.kind || 'single');
+        if (k === 'group') return `group:${String(it.group_id || '')}`;
+        if (k === 'ha') return `ha:${String(it.entity_id || '')}`;
+        return `cover:${Number(it.subnet_id)}.${Number(it.device_id)}.${Number(it.channel)}`;
+      }
+
+      function coverAddrFromItem(it) {
+        if (it && String(it.kind || '') === 'ha') return String(it.entity_id || '');
+        return `${Number(it.subnet_id)}.${Number(it.device_id)}.${Number(it.channel)}`;
+      }
+
+      async function ensureCoverGroupsCache() {
+        try {
+          const res = await getJson('api/cover_groups');
+          coverGroupsCache = Array.isArray(res && res.groups) ? res.groups : (Array.isArray(res && res.items) ? res.items : []);
+        } catch (e) {
+          coverGroupsCache = [];
+        }
+      }
+
+      function coverDeviceMap() {
+        const m = new Map(); // id (addr or entity_id) -> device
+        for (const d of (lastDevices || [])) {
+          if (String(d.type || '').toLowerCase() !== 'cover') continue;
+          if (String(d.origin || '') === 'ha') {
+            const eid = String(d.entity_id || '').trim().toLowerCase();
+            if (!eid) continue;
+            m.set(eid, d);
+          } else {
+            const addr = `${Number(d.subnet_id)}.${Number(d.device_id)}.${Number(d.channel)}`;
+            m.set(addr, d);
+          }
+        }
+        return m;
+      }
+
+      function coverGroupMap() {
+        const m = new Map(); // gid -> group
+        for (const g of (coverGroupsCache || [])) {
+          const gid = String(g.id || g.name || '').trim();
+          if (!gid) continue;
+          m.set(gid, g);
+        }
+        return m;
+      }
+
+      function renderScenarioEditorCovers() {
+        const scScroll = captureScenarioScroll();
+        const root = qs('scCoverItems');
+        const err = qs('scErr');
+        if (!root) return;
+        root.replaceChildren();
+
+        const devMap = coverDeviceMap();
+        const grpMap = coverGroupMap();
+
+        const items = (editingScenarioCovers || []).slice().sort((a,b) => {
+          const ka = coverKeyFromItem(a);
+          const kb = coverKeyFromItem(b);
+          const ta = (String(a.kind||'')==='group') ? String((grpMap.get(String(a.group_id||''))||{}).name || a.group_id || ka) : String((devMap.get(coverAddrFromItem(a))||{}).name || coverAddrFromItem(a) || ka);
+          const tb = (String(b.kind||'')==='group') ? String((grpMap.get(String(b.group_id||''))||{}).name || b.group_id || kb) : String((devMap.get(coverAddrFromItem(b))||{}).name || coverAddrFromItem(b) || kb);
+          return ta.localeCompare(tb, undefined, { sensitivity:'base' });
+        });
+
+        const header = document.createElement('div');
+        header.className = 'scItem';
+        header.innerHTML = `<div class="scItemLeft"><div class="scItemTitle">Tapparelle scenario</div><div class="scItemSub">Su / Gi&#249; / Stop</div></div>`;
+        root.appendChild(header);
+
+        if (!items.length) {
+          const empty = document.createElement('div');
+          empty.className = 'scItem';
+          empty.innerHTML = `<div class="scItemLeft"><div class="scItemTitle">Nessuna tapparella nello scenario</div><div class="scItemSub">Aggiungi tapparelle o gruppi dalla lista sotto</div></div>`;
+          root.appendChild(empty);
+          restoreScenarioScroll(scScroll);
+          return;
+        }
+
+        for (const it of items) {
+          const key = coverKeyFromItem(it);
+          const kind = String(it.kind || 'single');
+          const cmd = String(it.command || '').toUpperCase();
+          const isGroup = kind === 'group';
+          const title = isGroup
+            ? String(((grpMap.get(String(it.group_id||''))||{}).name) || it.group_id || key)
+            : String(((devMap.get(coverAddrFromItem(it))||{}).name) || coverAddrFromItem(it) || key);
+          const isHa = kind === 'ha';
+          const sub = isGroup
+            ? `Gruppo &bull; ${escapeHtml(String(it.group_id||''))}`
+            : `${escapeHtml(coverAddrFromItem(it))}${isHa ? ' &bull; E-manager' : ''}`;
+          const rampMin = Math.max(0, Math.min(240, Number(it.ramp_minutes ?? 0) || 0));
+          const stepSec = Math.max(1, Math.min(120, Number(it.step_seconds ?? 5) || 5));
+          const twoPhase = !!it.two_phase_open;
+          const phase1Pct = Math.max(1, Math.min(99, Number(it.phase1_pct ?? 25) || 25));
+          const phase2Delay = Math.max(0, Math.min(240, Number(it.phase2_delay_minutes ?? 4) || 4));
+          const canUseTwoPhase = !isHa;
+
+          const row = document.createElement('div');
+          row.className = 'scItem scCoverItem';
+          row.setAttribute('data-key', key);
+          row.innerHTML = `
+            <div class="scItemLeft">
+              <div class="scItemTitle">${escapeHtml(title)}</div>
+              <div class="scItemSub">${sub}</div>
+            </div>
+            <div class="scItemCtrls">
+              <button class="btn ${cmd==='OPEN' ? 'primary':''}" type="button" data-act="c_open" data-key="${escapeHtml(key)}">Su</button>
+              <button class="btn ${cmd==='CLOSE' ? 'primary':''}" type="button" data-act="c_close" data-key="${escapeHtml(key)}">Gi&#249;</button>
+              <button class="btn ${cmd==='STOP' ? 'primary':''}" type="button" data-act="c_stop" data-key="${escapeHtml(key)}">Stop</button>
+              <div class="scItemRamp">
+                <label>Min</label>
+                <input type="number" min="0" max="240" step="1" value="${escapeHtml(String(rampMin))}" data-act="c_ramp" data-key="${escapeHtml(key)}" />
+                <label>Step s</label>
+                <input type="number" min="1" max="120" step="1" value="${escapeHtml(String(stepSec))}" data-act="c_step" data-key="${escapeHtml(key)}" />
+                <label style="display:flex;align-items:center;gap:6px;white-space:nowrap;${canUseTwoPhase ? '' : 'opacity:.45;'}">
+                  <input type="checkbox" data-act="c_2p" data-key="${escapeHtml(key)}" ${twoPhase ? 'checked' : ''} ${canUseTwoPhase ? '' : 'disabled'} />
+                  2 fasi Su
+                </label>
+                <label>%1</label>
+                <input type="number" min="1" max="99" step="1" value="${escapeHtml(String(phase1Pct))}" data-act="c_2p_pct" data-key="${escapeHtml(key)}" ${(twoPhase && canUseTwoPhase) ? '' : 'disabled'} />
+                <label>Delay m</label>
+                <input type="number" min="0" max="240" step="1" value="${escapeHtml(String(phase2Delay))}" data-act="c_2p_delay" data-key="${escapeHtml(key)}" ${(twoPhase && canUseTwoPhase) ? '' : 'disabled'} />
+              </div>
+              <button class="btn danger" type="button" data-act="c_del" data-key="${escapeHtml(key)}">Rimuovi</button>
+            </div>
+          `;
+          root.appendChild(row);
+        }
+
+        root.querySelectorAll('button[data-act="c_del"]').forEach((b) => {
+          b.addEventListener('click', () => {
+            animatePress(b);
+            const key = b.getAttribute('data-key') || '';
+            editingScenarioCovers = (editingScenarioCovers || []).filter((x) => coverKeyFromItem(x) !== key);
+            renderScenarioEditorCovers();
+            renderScenarioCoverAddList();
+          });
+        });
+        root.querySelectorAll('button[data-act="c_open"]').forEach((b) => {
+          b.addEventListener('click', () => {
+            animatePress(b);
+            const key = b.getAttribute('data-key') || '';
+            for (const it of (editingScenarioCovers || [])) if (coverKeyFromItem(it) === key) { it.command = 'OPEN'; it.position = null; }
+            renderScenarioEditorCovers();
+          });
+        });
+        root.querySelectorAll('button[data-act="c_close"]').forEach((b) => {
+          b.addEventListener('click', () => {
+            animatePress(b);
+            const key = b.getAttribute('data-key') || '';
+            for (const it of (editingScenarioCovers || [])) if (coverKeyFromItem(it) === key) { it.command = 'CLOSE'; it.position = null; }
+            renderScenarioEditorCovers();
+          });
+        });
+        root.querySelectorAll('button[data-act="c_stop"]').forEach((b) => {
+          b.addEventListener('click', () => {
+            animatePress(b);
+            const key = b.getAttribute('data-key') || '';
+            for (const it of (editingScenarioCovers || [])) if (coverKeyFromItem(it) === key) { it.command = 'STOP'; it.position = null; }
+            renderScenarioEditorCovers();
+          });
+        });
+        root.querySelectorAll('input[data-act="c_ramp"]').forEach((inp) => {
+          inp.addEventListener('change', () => {
+            const key = inp.getAttribute('data-key') || '';
+            const v = Math.max(0, Math.min(240, Number(inp.value || 0) || 0));
+            for (const it of (editingScenarioCovers || [])) if (coverKeyFromItem(it) === key) { it.ramp_minutes = v; }
+          });
+        });
+        root.querySelectorAll('input[data-act="c_step"]').forEach((inp) => {
+          inp.addEventListener('change', () => {
+            const key = inp.getAttribute('data-key') || '';
+            const v = Math.max(1, Math.min(120, Number(inp.value || 5) || 5));
+            for (const it of (editingScenarioCovers || [])) if (coverKeyFromItem(it) === key) { it.step_seconds = v; }
+          });
+        });
+        root.querySelectorAll('input[data-act="c_2p"]').forEach((inp) => {
+          inp.addEventListener('change', () => {
+            const key = inp.getAttribute('data-key') || '';
+            for (const it of (editingScenarioCovers || [])) if (coverKeyFromItem(it) === key) { it.two_phase_open = !!inp.checked; }
+            renderScenarioEditorCovers();
+          });
+        });
+        root.querySelectorAll('input[data-act="c_2p_pct"]').forEach((inp) => {
+          inp.addEventListener('change', () => {
+            const key = inp.getAttribute('data-key') || '';
+            const v = Math.max(1, Math.min(99, Number(inp.value || 25) || 25));
+            for (const it of (editingScenarioCovers || [])) if (coverKeyFromItem(it) === key) { it.phase1_pct = v; }
+          });
+        });
+        root.querySelectorAll('input[data-act="c_2p_delay"]').forEach((inp) => {
+          inp.addEventListener('change', () => {
+            const key = inp.getAttribute('data-key') || '';
+            const v = Math.max(0, Math.min(240, Number(inp.value || 4) || 4));
+            for (const it of (editingScenarioCovers || [])) if (coverKeyFromItem(it) === key) { it.phase2_delay_minutes = v; }
+          });
+        });
+        restoreScenarioScroll(scScroll);
+      }
+
+      function renderScenarioCoverAddList() {
+        const scScroll = captureScenarioScroll();
+        const root = qs('scCoverAddList');
+        if (!root) return;
+        root.replaceChildren();
+
+        const search = String((qs('scCoverAddSearch') && qs('scCoverAddSearch').value) || '').trim().toLowerCase();
+        const groupSel = selectedScenarioGroupKey();
+
+        const existing = new Set((editingScenarioCovers || []).map(coverKeyFromItem));
+        const devMap = coverDeviceMap();
+        const grpMap = coverGroupMap();
+
+        const candidates = [];
+        for (const [id, d] of devMap.entries()) {
+          const idStr = String(id || '').trim();
+          const isHa2 = idStr.toLowerCase().startsWith('cover.');
+          const key = isHa2 ? `ha:${idStr.toLowerCase()}` : `cover:${idStr}`;
+          if (existing.has(key)) continue;
+          if (groupSel && groupSel !== '__all__' && groupKeyFromGroup(d.group) !== groupSel) continue;
+          const name = String(d.name || idStr);
+          if (search && !(idStr.toLowerCase().includes(search) || name.toLowerCase().includes(search))) continue;
+          candidates.push({ key, kind: isHa2 ? 'ha' : 'single', id: idStr, name, meta: `${idStr}${isHa2 ? ' \u2022 E-manager' : ''}` });
+        }
+        for (const [gid, g] of grpMap.entries()) {
+          const key = `group:${gid}`;
+          if (existing.has(key)) continue;
+          const name = String(g.name || gid);
+          if (search && !(gid.toLowerCase().includes(search) || name.toLowerCase().includes(search))) continue;
+          candidates.push({ key, kind:'group', gid, name, meta: `Gruppo \u2022 ${gid}` });
+        }
+
+        candidates.sort((a,b) => String(a.name||a.key).localeCompare(String(b.name||b.key), undefined, { sensitivity:'base' }));
+
+        if (!candidates.length) {
+          const empty = document.createElement('div');
+          empty.className = 'scAddRow';
+          empty.innerHTML = `<div class="scAddName">Nessuna tapparella da aggiungere</div><div class="scAddMeta">usa la ricerca</div>`;
+          root.appendChild(empty);
+          restoreScenarioScroll(scScroll);
+          return;
+        }
+
+        for (const c of candidates) {
+          const row = document.createElement('div');
+          row.className = 'scAddRow';
+          row.setAttribute('data-key', c.key);
+          row.innerHTML = `<div class="scAddName">${escapeHtml(c.name)}</div><div class="scAddMeta">${escapeHtml(c.meta)}</div>`;
+          row.addEventListener('click', () => {
+            animatePress(row);
+            if (c.kind === 'group') {
+              editingScenarioCovers = (editingScenarioCovers || []).concat([{ kind:'group', group_id: String(c.gid), command:'STOP', position:null, ramp_minutes:0, step_seconds:5, two_phase_open:false, phase1_pct:25, phase2_delay_minutes:4 }]);
+            } else if (c.kind === 'ha') {
+              editingScenarioCovers = (editingScenarioCovers || []).concat([{ kind:'ha', entity_id: String(c.id || '').trim().toLowerCase(), command:'STOP', position:null, ramp_minutes:0, step_seconds:5, two_phase_open:false, phase1_pct:25, phase2_delay_minutes:4 }]);
+            } else {
+              const parts = String(c.id).split('.').map(Number);
+              editingScenarioCovers = (editingScenarioCovers || []).concat([{ kind:'single', subnet_id: parts[0], device_id: parts[1], channel: parts[2], command:'STOP', position:null, ramp_minutes:0, step_seconds:5, two_phase_open:false, phase1_pct:25, phase2_delay_minutes:4 }]);
+            }
+            renderScenarioEditorCovers();
+            renderScenarioCoverAddList();
+          });
+          root.appendChild(row);
+        }
+        restoreScenarioScroll(scScroll);
+      }
+
+      function renderScenarioEditorItems() {
+        const scScroll = captureScenarioScroll();
+        const root = qs('scItems');
+        const err = qs('scErr');
+        if (!root) return;
+        root.replaceChildren();
+        const devMap = deviceByAddrLookup();
+
+        const items = (editingScenarioItems || []).slice().sort((a,b) => {
+          const aa = addrFromItem(a), bb = addrFromItem(b);
+          const da = devMap.get(aa), db = devMap.get(bb);
+          const na = String((da && da.name) || aa);
+          const nb = String((db && db.name) || bb);
+          return na.localeCompare(nb, undefined, { sensitivity:'base' });
+        });
+
+        if (!items.length) {
+          const empty = document.createElement('div');
+          empty.className = 'scItem';
+          empty.innerHTML = `<div class="scItemLeft"><div class="scItemTitle">Nessuna luce nello scenario</div><div class="scItemSub">Aggiungi luci dalla lista sotto</div></div>`;
+          root.appendChild(empty);
+          restoreScenarioScroll(scScroll);
+          return;
+        }
+
+        for (const it of items) {
+          const addr = addrFromItem(it);
+          const d = devMap.get(addr);
+          const title = String((d && d.name) || addr);
+          const sub = d ? `${addr} \u2022 ${d.dimmable ? 'dimmer' : 'on/off'}` : `${addr}`;
+          const dimmable = !!(d && d.dimmable);
+          const state = String(it.state || 'ON').toUpperCase() === 'OFF' ? 'OFF' : 'ON';
+          const br = (it.brightness === null || it.brightness === undefined) ? null : Number(it.brightness);
+          const br255 = (br === null) ? 255 : Math.max(0, Math.min(255, Number.isFinite(br) ? br : 255));
+          const pct = Math.round((Math.max(0, Math.min(255, br255)) * 100) / 255);
+
+          const row = document.createElement('div');
+          row.className = 'scItem';
+          row.setAttribute('data-addr', addr);
+          row.innerHTML = `
+            <div class="scItemLeft">
+              <div class="scItemTitle">${escapeHtml(title)}</div>
+              <div class="scItemSub">${escapeHtml(sub)}</div>
+            </div>
+            <div class="scItemCtrls">
+              <select class="scSel" data-act="state" data-addr="${escapeHtml(addr)}">
+                <option value="ON" ${state === 'ON' ? 'selected' : ''}>ON</option>
+                <option value="OFF" ${state === 'OFF' ? 'selected' : ''}>OFF</option>
+              </select>
+              ${dimmable ? `
+                <span class="bubble" style="margin:0">${escapeHtml(String(state === 'ON' ? pct : 0))}</span>
+                <input class="scRange" type="range" min="1" max="255" value="${escapeHtml(String(Math.max(1, br255)))}" data-act="br" data-addr="${escapeHtml(addr)}" ${state === 'OFF' ? 'disabled' : ''} />
+              ` : ''}
+              <button class="btn danger" type="button" data-act="rm" data-addr="${escapeHtml(addr)}">Rimuovi</button>
+            </div>
+          `;
+          root.appendChild(row);
+        }
+
+        root.querySelectorAll('[data-act="rm"]').forEach((b) => {
+          b.addEventListener('click', () => {
+            animatePress(b);
+            const addr = b.getAttribute('data-addr') || '';
+            editingScenarioItems = (editingScenarioItems || []).filter((x) => addrFromItem(x) !== addr);
+            renderScenarioEditorItems();
+            renderScenarioAddList();
+          });
+        });
+
+        root.querySelectorAll('select[data-act="state"]').forEach((sel) => {
+          sel.addEventListener('change', () => {
+            const addr = sel.getAttribute('data-addr') || '';
+            const v = String(sel.value || '').toUpperCase() === 'OFF' ? 'OFF' : 'ON';
+            for (const it of (editingScenarioItems || [])) {
+              if (addrFromItem(it) !== addr) continue;
+              it.state = v;
+              if (v === 'OFF') it.brightness = null;
+              break;
+            }
+            renderScenarioEditorItems();
+          });
+        });
+
+        root.querySelectorAll('input[data-act="br"]').forEach((inp) => {
+          inp.addEventListener('input', () => {
+            const addr = inp.getAttribute('data-addr') || '';
+            const v = Math.max(1, Math.min(255, Number(inp.value || 255)));
+            for (const it of (editingScenarioItems || [])) {
+              if (addrFromItem(it) !== addr) continue;
+              it.state = 'ON';
+              it.brightness = v;
+              break;
+            }
+            renderScenarioEditorItems();
+          });
+        });
+
+        if (err) err.textContent = '';
+        restoreScenarioScroll(scScroll);
+      }
+
+      function renderScenarioAddList() {
+        const scScroll = captureScenarioScroll();
+        const root = qs('scAddList');
+        if (!root) return;
+        root.replaceChildren();
+        const search = String((qs('scAddSearch') && qs('scAddSearch').value) || '').trim().toLowerCase();
+        const groupSel = selectedScenarioGroupKey();
+        const devMap = deviceByAddrLookup();
+        const existing = new Set((editingScenarioItems || []).map(addrFromItem));
+        const all = Array.from(devMap.entries())
+          .map(([addr, d]) => ({ addr, d }))
+          .filter(({addr, d}) => !existing.has(addr))
+          .filter(({addr, d}) => {
+            if (!groupSel || groupSel === '__all__') return true;
+            return groupKeyFromGroup(d.group) === groupSel;
+          })
+          .filter(({addr, d}) => {
+            if (!search) return true;
+            const name = String((d && d.name) || '').toLowerCase();
+            return addr.toLowerCase().includes(search) || name.includes(search);
+          })
+          .sort((a,b) => String(a.d.name||a.addr).localeCompare(String(b.d.name||b.addr), undefined, {sensitivity:'base'}));
+
+        if (!all.length) {
+          const empty = document.createElement('div');
+          empty.className = 'scAddRow';
+          empty.innerHTML = `<div class="scAddName">Nessuna luce da aggiungere</div><div class="scAddMeta">usa la ricerca</div>`;
+          root.appendChild(empty);
+          restoreScenarioScroll(scScroll);
+          return;
+        }
+        for (const { addr, d } of all) {
+          const row = document.createElement('div');
+          row.className = 'scAddRow';
+          row.setAttribute('data-addr', addr);
+          const meta = d.dimmable ? 'dimmer' : 'on/off';
+          row.innerHTML = `<div class="scAddName">${escapeHtml(String(d.name||addr))}</div><div class="scAddMeta">${escapeHtml(addr)} \u2022 ${escapeHtml(meta)}</div>`;
+          row.addEventListener('click', () => {
+            animatePress(row);
+            const it = (String(d.origin || '') === 'ha')
+              ? { entity_id: String(d.entity_id || addr), domain: String(d.domain || 'light'), state: 'ON', brightness: d.dimmable ? 255 : null }
+              : { subnet_id: Number(d.subnet_id), device_id: Number(d.device_id), channel: Number(d.channel), state: 'ON', brightness: d.dimmable ? 255 : null };
+            editingScenarioItems = (editingScenarioItems || []).concat([it]);
+            renderScenarioEditorItems();
+            renderScenarioAddList();
+          });
+          root.appendChild(row);
+        }
+        restoreScenarioScroll(scScroll);
+      }
+
+      async function saveScenarioEdits() {
+        const err = qs('scErr');
+        try {
+          if (err) err.textContent = '';
+          const sid = String(editingScenarioId || '').trim();
+          if (!sid) return;
+          const nameInput = qs('scNameInput');
+          const name = String((nameInput && nameInput.value) || '').trim();
+          if (!name) {
+            if (err) err.textContent = 'Nome scenario obbligatorio';
+            return;
+          }
+          const flags = getScenarioFlags();
+          if (!flags.run_enabled && !flags.onoff_enabled) {
+            if (err) err.textContent = 'Seleziona RUN o ON/OFF';
+            return;
+          }
+          const trigger = getScenarioTrigger();
+          const haTrigger = getScenarioHaTrigger();
+          const items = (editingScenarioItems || []).map((it) => {
+            const st = String(it.state || 'ON').toUpperCase() === 'OFF' ? 'OFF' : 'ON';
+            let br = it.brightness;
+            if (st === 'OFF') br = null;
+            if (br === null || br === undefined) br = null;
+            else br = Math.max(0, Math.min(255, Number(br)));
+            if (it && it.entity_id) {
+              const eid = String(it.entity_id || '').trim();
+              const dom = String(it.domain || (eid.split('.',1)[0]||'light')).trim().toLowerCase();
+              return { entity_id: eid, domain: dom, state: st, brightness: br };
+            }
+            return { subnet_id: Number(it.subnet_id), device_id: Number(it.device_id), channel: Number(it.channel), state: st, brightness: br };
+          });
+          const covers = (editingScenarioCovers || []).map((it) => {
+            const kindRaw = String(it.kind || 'single');
+            const kind = kindRaw === 'group' ? 'group' : (kindRaw === 'ha' ? 'ha' : 'single');
+            const cmd = String(it.command || '').toUpperCase();
+            const ramp_minutes = Math.max(0, Math.min(240, Number(it.ramp_minutes ?? 0) || 0));
+            const step_seconds = Math.max(1, Math.min(120, Number(it.step_seconds ?? 5) || 5));
+            const two_phase_open = !!it.two_phase_open;
+            const phase1_pct = Math.max(1, Math.min(99, Number(it.phase1_pct ?? 25) || 25));
+            const phase2_delay_minutes = Math.max(0, Math.min(240, Number(it.phase2_delay_minutes ?? 4) || 4));
+            if (kind === 'group') {
+              return { kind: 'group', group_id: String(it.group_id || '').trim(), command: cmd, position: null, ramp_minutes, step_seconds, two_phase_open, phase1_pct, phase2_delay_minutes };
+            }
+            if (kind === 'ha') {
+              return { kind: 'ha', entity_id: String(it.entity_id || '').trim().toLowerCase(), command: cmd, position: null, ramp_minutes, step_seconds, two_phase_open, phase1_pct, phase2_delay_minutes };
+            }
+            return {
+              kind: 'single',
+              subnet_id: Number(it.subnet_id),
+              device_id: Number(it.device_id),
+              channel: Number(it.channel),
+              command: cmd,
+              position: null,
+              ramp_minutes,
+              step_seconds,
+              two_phase_open,
+              phase1_pct,
+              phase2_delay_minutes,
+            };
+          });
+          if (!items.length && !covers.length) {
+            if (err) err.textContent = 'Aggiungi almeno una luce o una tapparella';
+            return;
+          }
+          if (sid === '__new__') {
+            await getJson('api/user/light_scenarios', {
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({ name, items, covers, run_enabled: flags.run_enabled, onoff_enabled: flags.onoff_enabled, trigger, ha_trigger_enabled: haTrigger.ha_trigger_enabled, ha_trigger_id: haTrigger.ha_trigger_id }),
+            });
+          } else {
+            await getJson(`api/user/light_scenarios/${encodeURIComponent(sid)}`, {
+              method:'PUT',
+              headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({ name, items, covers, run_enabled: flags.run_enabled, onoff_enabled: flags.onoff_enabled, trigger, ha_trigger_enabled: haTrigger.ha_trigger_enabled, ha_trigger_id: haTrigger.ha_trigger_id }),
+            });
+          }
+          await loadLightScenarios();
+          closeScenarioEditor();
+        } catch (e) {
+          if (err) err.textContent = 'Errore salvataggio modifiche';
+        }
+      }
+
+      function buildScenarioItems({ onlyOn, onlyOff }) {
+        const items = [];
+        const groupSel = selectedScenarioGroupKey();
+        const lights = (lastDevices || []).filter(isLightListDevice);
+        for (const d of lights) {
+          if (groupSel && groupSel !== '__all__' && groupKeyFromGroup(d.group) !== groupSel) continue;
+          const addr = addrOf(d);
+          const st = stateByAddr.get(addr) || { state:'?', brightness:0 };
+          const on = String(st.state || '').toUpperCase() === 'ON';
+          if (onlyOn && !on) continue;
+          if (onlyOff && on) continue;
+          const it = { subnet_id: Number(d.subnet_id), device_id: Number(d.device_id), channel: Number(d.channel), state: on ? 'ON' : 'OFF' };
+          if (on && d.dimmable) {
+            const b = Number(st.brightness ?? 0);
+            const b255 = Math.max(1, Math.min(255, Number.isFinite(b) ? b : (lastBrightness.get(addr) || 255)));
+            it.brightness = b255;
+          }
+          items.push(it);
+        }
+        return items;
+      }
+
+      async function saveScenario({ onlyOn, onlyOff }) {
+        const err = qs('scErr');
+        try {
+          if (err) err.textContent = '';
+          const name = await askScenarioName();
+          if (!name) return;
+          const flags = getScenarioFlags();
+          if (!flags.run_enabled && !flags.onoff_enabled) {
+            if (err) err.textContent = 'Seleziona RUN o ON/OFF';
+            return;
+          }
+          const items = buildScenarioItems({ onlyOn, onlyOff });
+          if (!items.length) {
+            if (err) err.textContent = 'Nessuna luce da salvare';
+            return;
+          }
+          await getJson('api/user/light_scenarios', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ name, items, run_enabled: flags.run_enabled, onoff_enabled: flags.onoff_enabled }),
+          });
+          await loadLightScenarios();
+        } catch (e) {
+          if (err) err.textContent = 'Errore salvataggio scenario';
+        }
+      }
+
+      function openScenarios() {
+        const back = qs('scenesModalBack');
+        if (!back) return;
+        back.classList.add('show');
+        ensureScenarioGroupSelect();
+        loadLightScenarios().catch(() => {});
+      }
+      function closeScenarios() {
+        const back = qs('scenesModalBack');
+        if (!back) return;
+        back.classList.remove('show');
+        closeScenarioEditor();
+      }
+
+      function mdiName(iconValue) {
+        const v = (iconValue === null || iconValue === undefined) ? '' : String(iconValue).trim();
+        const m = /^mdi:([a-z0-9_-]+)$/i.exec(v);
+        return m ? m[1].toLowerCase() : 'lightbulb';
+      }
+      function iconUrl(iconValue) {
+        const name = mdiName(iconValue);
+        return absUrl(`api/icons/mdi/${name}.svg`);
+      }
+      function normalizeGroup(v) { 
+        const s = (v === null || v === undefined) ? '' : String(v).trim(); 
+        if (!s) return ''; 
+        return s.startsWith('#') ? s.slice(1).trim() : s; 
+      } 
+      function isGroupHeader(v) {
+        return String(v || '').trim().startsWith('#');
+      }
+      function isValidCssColor(value) {
+        const v = String(value || '').trim();
+        if (!v || !window.CSS || !CSS.supports) return false;
+        return CSS.supports('color', v);
+      }
+      function parseGroupHeader(v) {
+        const raw = String(v || '').trim();
+        if (!raw.startsWith('#')) return null;
+        const body = raw.slice(1).trim();
+        if (!body) return null;
+        const parts = body.split('|');
+        const title = normalizeGroup(parts.shift() || '');
+        const colorRaw = parts.join('|').trim();
+        const color = isValidCssColor(colorRaw) ? colorRaw : '';
+        if (!title) return null;
+        return { title, color, raw: colorRaw ? `# ${title} | ${colorRaw}` : `# ${title}` };
+      }
+      function normalizeGroupOrderEntry(v) {
+        const s = (v === null || v === undefined) ? '' : String(v).trim();
+        if (!s) return '';
+        if (s.startsWith('#')) {
+          const header = parseGroupHeader(s);
+          return header ? header.raw : '';
+        }
+        return normalizeGroup(s);
+      }
+      function groupIndex(groupName) { 
+        const key = normalizeGroup(groupName).toLowerCase(); 
+        if (!key) return 1e9; 
+        for (let i = 0; i < groupOrder.length; i++) { 
+          const entry = normalizeGroupOrderEntry(groupOrder[i]);
+          if (!entry || isGroupHeader(entry)) continue;
+          if (normalizeGroup(entry).toLowerCase() === key) return i; 
+        } 
+        return 1e8; 
+      } 
+
+      function floorInfoForGroupKey(groupKey) {
+        const key = String(groupKey || '').toLowerCase();
+        if (!key || key === GROUP_NONE) return null;
+        let floor = null;
+        for (const item of groupOrder || []) {
+          const entry = normalizeGroupOrderEntry(item);
+          if (!entry) continue;
+          if (isGroupHeader(entry)) {
+            floor = parseGroupHeader(entry);
+            continue;
+          }
+          if (normalizeGroup(entry).toLowerCase() === key) return floor;
+        }
+        return null;
+      }
+
+      function isExtraSwitch(d) {
+        const t = String(d.type || 'light').toLowerCase();
+        if (t !== 'light') return false;
+        const cat = String(d.category || '').trim().toLowerCase();
+        return cat === 'switch' || cat === 'extra' || cat === 'ventil';
+      }
+
+      function isLightListDevice(d) {
+        if (String(d.type || 'light').toLowerCase() !== 'light') return false;
+        if (String(d.origin || '') === 'ha') return String(d.page || 'lights') === 'lights';
+        return !isExtraSwitch(d);
+      }
+
+      function isScenarioListDevice(d) {
+        if (String(d.type || 'light').toLowerCase() !== 'light') return false;
+        if (String(d.origin || '') === 'ha') {
+          const page = String(d.page || 'lights').toLowerCase();
+          return page === 'lights' || page === 'extra';
+        }
+        // For scenario editing include all BusPro light outputs, even if categorized
+        // as Switch/Extra for list-page purposes.
+        return true;
+      }
+
+      function isActiveLight(d) {
+        const addr = addrOf(d);
+        const st = stateByAddr.get(addr);
+        return st && String(st.state || '').toUpperCase() === 'ON';
+      }
+
+      function isActiveState(st) {
+        return !!(st && String(st.state || '').toUpperCase() === 'ON');
+      }
+
+      function applyScenarioStateEvent(ev) {
+        if (!ev) return;
+        const id = String(ev.id || '').trim();
+        const st = String(ev.state || '').trim().toUpperCase();
+        if (!id || (st !== 'ON' && st !== 'OFF')) return;
+        scenarioStates = scenarioStates && typeof scenarioStates === 'object' ? scenarioStates : {};
+        scenarioStates[id] = st;
+        // While editing a scenario, avoid forcing list re-render that can hide the editor panel.
+        if (String(editingScenarioId || '').trim()) return;
+        try { renderLightScenarios(); } catch (e) {}
+      }
+
+      function applyScenarioRunningEvent(ev) {
+        if (!ev) return;
+        const id = String(ev.id || '').trim();
+        if (!id) return;
+        scenarioRunning = scenarioRunning && typeof scenarioRunning === 'object' ? scenarioRunning : {};
+        scenarioRunning[id] = !!ev.running;
+        if (String(editingScenarioId || '').trim()) return;
+        try { renderLightScenarios(); } catch (e) {}
+      }
+
+      function refreshDeviceIndex() {
+        deviceByAddr.clear();
+        for (const d of (lastDevices || [])) {
+          if (!isLightListDevice(d)) continue;
+          deviceByAddr.set(addrOf(d), d);
+        }
+      }
+
+      function applyLightStateToRow(addr) {
+        const row = rowByAddr.get(addr) || document.querySelector(`.row[data-addr="${cssEscape(addr)}"]`);
+        if (!row) return;
+        const d = deviceByAddr.get(addr);
+        const st = stateByAddr.get(addr) || { state: '?', brightness: 0 };
+        const on = String(st.state || '').toUpperCase() === 'ON';
+        const b = Number(st.brightness ?? 0);
+        const b255 = Math.max(0, Math.min(255, Number.isFinite(b) ? b : 0));
+        if (on && b255 > 0) lastBrightness.set(addr, Math.max(1, b255));
+        const pct = on ? Math.round((Math.max(0, Math.min(255, b255)) * 100) / 255) : 0;
+
+        row.classList.toggle('on', !!on);
+        if (on) {
+          const intensity = (d && d.dimmable) ? (Math.max(0, Math.min(100, pct)) / 100) : 1;
+          row.style.setProperty('--int', String(intensity));
+        } else {
+          row.style.removeProperty('--int');
+        }
+        try {
+          const bubble = row.querySelector('.bubble');
+          if (bubble && bubble.style.display !== 'none') bubble.textContent = String(pct);
+        } catch (e) {}
+        try {
+          const range = row.querySelector('input[type=\"range\"]');
+          if (range) range.value = String(on ? Math.max(1, b255 || 255) : 1);
+        } catch (e) {}
+      }
+
+      function queueCountsUpdate() {
+        if (countsQueued) return;
+        countsQueued = true;
+        setTimeout(() => {
+          countsQueued = false;
+          try { updateSectionCounts(); } catch (e) {}
+        }, 400);
+      }
+
+      function updateSectionCounts() {
+        const allLights = (lastDevices || []).filter(isLightListDevice);
+        const groupStats = new Map();
+        for (const d of allLights) {
+          const k = groupKeyFromGroup(d.group);
+          const cur = groupStats.get(k) || { total: 0, active: 0 };
+          cur.total += 1;
+          const addr = addrOf(d);
+          if (isActiveState(stateByAddr.get(addr))) cur.active += 1;
+          groupStats.set(k, cur);
+        }
+        for (const [k, el] of sectionByGroup.entries()) {
+          const st = groupStats.get(k) || { total: 0, active: 0 };
+          const count = el.querySelector('.count');
+          if (count) count.textContent = `${st.active}/${st.total}`;
+          el.classList.toggle('active', st.active > 0);
+        }
+      }
+ 
+      function render() { 
+        const root = qs('list'); 
+        root.replaceChildren();
+        rowByAddr.clear();
+        sectionByGroup.clear();
+        refreshDeviceIndex();
+ 
+        const allLights = lastDevices
+          .filter(isLightListDevice)
+          .slice();
+        const lights = buildRgbDisplayItems(allLights)
+          .filter((item) => {
+            if (!showActiveOnly) return true;
+            if (item.kind === 'rgb') return item.channels.some((ch) => isActiveLight(ch));
+            return isActiveLight(item.d);
+          });
+
+        // Stats per group (active/total) computed on ALL lights (not filtered by showActiveOnly).
+        const groupStats = new Map();
+        for (const d of allLights) {
+          const k = groupKeyFromGroup(d.group);
+          const cur = groupStats.get(k) || { total: 0, active: 0 };
+          cur.total += 1;
+          if (isActiveLight(d)) cur.active += 1;
+          groupStats.set(k, cur);
+        }
+        const knownGroups = Array.from(groupStats.keys());
+        const allCollapsed = knownGroups.length > 0 && knownGroups.every((k) => collapsedGroups.has(k));
+        qs('collapseBtn').classList.toggle('on', allCollapsed);
+        setCollapseIcon(allCollapsed);
+ 
+        let lastGroupKey = null; 
+        let lastFloorKey = null;
+        for (const item of lights) { 
+          const dForGroup = item.kind === 'rgb' ? { group: item.group } : item.d;
+          const groupKey = groupKeyFromGroup(dForGroup.group);
+          const label = groupLabelFromKey(groupKey);
+          if (groupKey !== lastGroupKey) { 
+            const floorInfo = floorInfoForGroupKey(groupKey);
+            const floorKey = floorInfo ? `${floorInfo.title}|${floorInfo.color || ''}` : '';
+            if (floorInfo && floorKey !== lastFloorKey) {
+              const floor = document.createElement('div');
+              floor.className = 'floorSection';
+              floor.textContent = floorInfo.title;
+              if (floorInfo.color) floor.style.setProperty('--floor-color', floorInfo.color);
+              root.appendChild(floor);
+              lastFloorKey = floorKey;
+            } else if (!floorInfo) {
+              lastFloorKey = '';
+            }
+            const sec = document.createElement('div'); 
+            sec.className = 'section'; 
+            sec.setAttribute('data-act', 'toggle-group');
+            sec.setAttribute('data-group', groupKey);
+            const st = groupStats.get(groupKey) || { total: 0, active: 0 };
+            sec.classList.toggle('active', st.active > 0);
+            const sectionIcon = iconUrl('mdi:lightbulb');
+            sec.innerHTML = `<span class="sectionLabel"><span class="sectionIcon" style="-webkit-mask-image:url('${escapeHtml(sectionIcon)}');mask-image:url('${escapeHtml(sectionIcon)}')"></span><span>${escapeHtml(label)}</span></span><span class="count">${escapeHtml(String(st.active))}/${escapeHtml(String(st.total))}</span>`;
+            root.appendChild(sec); 
+            sectionByGroup.set(groupKey, sec);
+            lastGroupKey = groupKey; 
+          } 
+          if (collapsedGroups.has(groupKey)) continue;
+
+          if (item.kind === 'rgb') {
+            const g = item;
+            const rgbState = getRgbState(g.key, g.channels);
+            const active = g.channels.some((ch) => isActiveLight(ch));
+            const master = Math.max(1, Math.min(255, Number(rgbState.master || 255)));
+            const masterPct = active ? Math.round((master * 100) / 255) : 0;
+            const currentHex = currentRgbHex(g, rgbState);
+            const masterIntensity = Math.max(0, Math.min(1, masterPct / 100));
+            const masterStyle = active
+              ? `--int:${masterIntensity};--rgb-master-color:${escapeHtml(currentHex)};--rgb-master-bg:${escapeHtml(hexToRgba(currentHex, .08 + masterIntensity * .18))};--rgb-master-glow:${escapeHtml(hexToRgba(currentHex, .16 + masterIntensity * .34))}`
+              : '';
+            const groupEl = document.createElement('div');
+            groupEl.className = 'rgbGroup';
+            groupEl.setAttribute('data-rgb-group', g.key);
+            const first = g.channels[0] || {};
+            groupEl.innerHTML = `
+              <div class="rgbMaster ${active ? 'on' : ''}" data-act="rgb-toggle" data-rgb-group="${escapeHtml(g.key)}" style="${masterStyle}">
+                <span class="ico" aria-hidden="true"
+                  style="-webkit-mask-image:url('${escapeHtml(iconUrl(first.icon || 'mdi:led-strip-variant'))}');mask-image:url('${escapeHtml(iconUrl(first.icon || 'mdi:led-strip-variant'))}')"></span>
+                <div class="content">
+                  <div class="rgbMasterHead">
+                    <div class="name">${escapeHtml(g.name || 'RGB')}</div>
+                    <button class="rgbPaletteBtn ${openRgbPalettes.has(g.key) ? 'open' : ''}" type="button" data-act="rgb-palette-toggle" data-rgb-group="${escapeHtml(g.key)}" aria-label="Apri tavola colori"></button>
+                  </div>
+                  <div class="ctrl">
+                    <span class="bubble">${escapeHtml(String(masterPct))}</span>
+                    <input type="range" min="1" max="255" value="${String(master)}" data-act="rgb-master" data-rgb-group="${escapeHtml(g.key)}" />
+                  </div>
+                </div>
+              </div>
+              <div class="rgbPalette ${openRgbPalettes.has(g.key) ? 'open' : ''}" data-rgb-palette="${escapeHtml(g.key)}" style="--rgb-preview:${escapeHtml(currentHex)}">
+                <div class="rgbPalettePreview"></div>
+                <div class="rgbWheelWrap">
+                  <button class="rgbWheel" type="button" data-act="rgb-wheel" data-rgb-group="${escapeHtml(g.key)}" data-color="${escapeHtml(currentHex)}" aria-label="Ruota colore"></button>
+                </div>
+                <div class="rgbSwatches">
+                  ${RGB_PRESETS.map((hex) => `<button class="rgbSwatch" type="button" data-act="rgb-swatch" data-rgb-group="${escapeHtml(g.key)}" data-color="${escapeHtml(hex)}" style="--swatch:${escapeHtml(hex)}" aria-label="${escapeHtml(hex)}"></button>`).join('')}
+                </div>
+                <div class="rgbCustom">
+                  <input type="color" value="${escapeHtml(currentHex)}" data-act="rgb-color" data-rgb-group="${escapeHtml(g.key)}" aria-label="Colore personalizzato" />
+                  <span class="bubble">${escapeHtml(currentHex.toUpperCase())}</span>
+                </div>
+              </div>
+              <div class="rgbSlaves" style="${active ? '' : 'display:none'}"></div>
+            `;
+            const slavesEl = groupEl.querySelector('.rgbSlaves');
+            for (const chDev of g.channels) {
+              const addr = addrOf(chDev);
+              const ch = rgbChannelOf(chDev);
+              const slave = Math.max(0, Math.min(255, Number(rgbState.slaves[addr] || 0)));
+              const slavePct = Math.round((slave * 100) / 255);
+              const slaveIntensity = Math.max(0, Math.min(1, slavePct / 100));
+              const slaveOn = slave > 0;
+              const slaveEl = document.createElement('div');
+              slaveEl.className = `rgbSlave ${slaveOn ? 'on' : ''}`;
+              slaveEl.setAttribute('data-addr', addr);
+              slaveEl.style.setProperty('--rgb-bg', channelRgba(ch, .06 + slaveIntensity * .20));
+              slaveEl.style.setProperty('--rgb-glow', channelRgba(ch, .10 + slaveIntensity * .34));
+              slaveEl.style.setProperty('--rgb-border', channelRgba(ch, .22 + slaveIntensity * .38));
+              slaveEl.innerHTML = `
+                <span class="rgbDot" style="--rgb:${escapeHtml(channelColor(ch))}" aria-hidden="true"></span>
+                <div class="content">
+                  <div class="name">${escapeHtml(chDev.name || channelLabel(ch))}</div>
+                  <div class="ctrl">
+                    <span class="bubble">${escapeHtml(String(slavePct))}</span>
+                    <input type="range" min="0" max="255" value="${String(slave)}" data-act="rgb-slave" data-rgb-group="${escapeHtml(g.key)}" data-addr="${escapeHtml(addr)}" />
+                  </div>
+                </div>
+              `;
+              slavesEl.appendChild(slaveEl);
+              activeByAddr.set(addr, isActiveLight(chDev));
+            }
+            root.appendChild(groupEl);
+            continue;
+          }
+
+          const d = item.d;
+          const addr = addrOf(d);
+          const st = stateByAddr.get(addr) || { state:'?', brightness:0 };
+          const on = String(st.state || '').toUpperCase() === 'ON';
+          const b = Number(st.brightness ?? 0);
+          if (on && Number.isFinite(b) && b > 0) lastBrightness.set(addr, Math.max(1, Math.min(255, b)));
+          const pct = on ? Math.round((Math.max(0,Math.min(255,b)) * 100) / 255) : 0;
+
+          const row = document.createElement('div');
+          row.className = `row ${on ? 'on' : ''}`;
+          if (on) {
+            const intensity = d.dimmable ? (Math.max(0, Math.min(100, pct)) / 100) : 1;
+            row.style.setProperty('--int', String(intensity));
+          }
+
+          row.setAttribute('data-act', 'toggle');
+          row.setAttribute('data-addr', addr);
+
+          row.innerHTML = `
+            <span class="ico" aria-hidden="true"
+              style="-webkit-mask-image:url('${escapeHtml(iconUrl(d.icon))}');mask-image:url('${escapeHtml(iconUrl(d.icon))}')"></span>
+            <div class="content">
+              <div class="name" data-act="toggle" data-addr="${escapeHtml(addr)}">${escapeHtml(d.name || '')}</div>
+              ${d.dimmable ? `
+                <div class="ctrl">
+                  <span class="bubble">${escapeHtml(String(pct))}</span>
+                  <input type="range" min="1" max="255" value="${on ? String(Math.max(1,Math.min(255,b||255))) : '1'}" data-act="br" data-addr="${escapeHtml(addr)}" />
+                </div>
+              ` : `
+                <div class="ctrl">
+                  <span class="bubble" style="display:none"></span>
+                </div>
+              `}
+            </div>
+          `;
+          root.appendChild(row);
+          rowByAddr.set(addr, row);
+          activeByAddr.set(addr, isActiveLight(d));
+        }
+
+        // Group collapse toggle
+        root.querySelectorAll('.section[data-act="toggle-group"]').forEach((el) => {
+          el.addEventListener('click', () => {
+            const g = el.getAttribute('data-group') || GROUP_NONE;
+            if (collapsedGroups.has(g)) collapsedGroups.delete(g);
+            else collapsedGroups.add(g);
+            try { localStorage.setItem(LS_COLLAPSED, JSON.stringify(Array.from(collapsedGroups))); } catch (e) {}
+            queueRender();
+          });
+        });
+
+        root.querySelectorAll('[data-act="rgb-toggle"]').forEach((el) => {
+          el.addEventListener('click', async (evt) => {
+            const t = evt && evt.target;
+            if (t && t.tagName && String(t.tagName).toLowerCase() === 'input') return;
+            if (t && t.closest && t.closest('[data-act="rgb-palette-toggle"]')) return;
+            const key = el.getAttribute('data-rgb-group') || '';
+            const group = lights.find((it) => it.kind === 'rgb' && it.key === key);
+            if (!group) return;
+            animatePress(el);
+            qs('err').textContent = '';
+            try {
+              const active = group.channels.some((ch) => isActiveLight(ch));
+              if (active) {
+                for (const chDev of group.channels) await sendRgbLight(chDev, addrOf(chDev), 'OFF');
+              } else {
+                const rgbState = getRgbState(key, group.channels);
+                for (const chDev of group.channels) {
+                  const addr = addrOf(chDev);
+                  await sendRgbLight(chDev, addr, 'ON', rgbEffectiveBrightness(rgbState.slaves[addr], rgbState.master));
+                }
+              }
+            } catch (e) { qs('err').textContent = e.message || String(e); }
+          });
+        });
+
+        root.querySelectorAll('[data-act="rgb-palette-toggle"]').forEach((el) => {
+          el.addEventListener('click', (evt) => {
+            try { evt.preventDefault(); evt.stopPropagation(); } catch(e){}
+            const key = el.getAttribute('data-rgb-group') || '';
+            if (!key) return;
+            if (openRgbPalettes.has(key)) openRgbPalettes.delete(key);
+            else openRgbPalettes.add(key);
+            queueRender();
+          });
+        });
+
+        root.querySelectorAll('[data-act="rgb-swatch"]').forEach((el) => {
+          el.addEventListener('click', async (evt) => {
+            try { evt.preventDefault(); evt.stopPropagation(); } catch(e){}
+            const key = el.getAttribute('data-rgb-group') || '';
+            const group = lights.find((it) => it.kind === 'rgb' && it.key === key);
+            if (!group) return;
+            qs('err').textContent = '';
+            try { await applyRgbColor(group, el.getAttribute('data-color') || '#ffffff'); } catch (e) { qs('err').textContent = e.message || String(e); }
+          });
+        });
+
+        root.querySelectorAll('[data-act="rgb-wheel"]').forEach((el) => {
+          let dragging = false;
+          let pendingColor = String(el.getAttribute('data-color') || '#ffffff');
+          function preview(evt) {
+            const picked = wheelEventToColor(el, evt);
+            pendingColor = picked.hex;
+            el.style.setProperty('--wheel-x', `${picked.xPct}%`);
+            el.style.setProperty('--wheel-y', `${picked.yPct}%`);
+            const panel = el.closest ? el.closest('.rgbPalette') : null;
+            if (panel) panel.style.setProperty('--rgb-preview', pendingColor);
+          }
+          async function commit() {
+            const key = el.getAttribute('data-rgb-group') || '';
+            const group = lights.find((it) => it.kind === 'rgb' && it.key === key);
+            if (!group) return;
+            qs('err').textContent = '';
+            try { await applyRgbColor(group, pendingColor); } catch (e) { qs('err').textContent = e.message || String(e); }
+          }
+          el.addEventListener('pointerdown', (evt) => {
+            try { evt.preventDefault(); evt.stopPropagation(); el.setPointerCapture(evt.pointerId); } catch(e){}
+            dragging = true;
+            preview(evt);
+          });
+          el.addEventListener('pointermove', (evt) => {
+            if (!dragging) return;
+            try { evt.preventDefault(); evt.stopPropagation(); } catch(e){}
+            preview(evt);
+          });
+          el.addEventListener('pointerup', async (evt) => {
+            if (!dragging) return;
+            try { evt.preventDefault(); evt.stopPropagation(); el.releasePointerCapture(evt.pointerId); } catch(e){}
+            dragging = false;
+            preview(evt);
+            await commit();
+          });
+          el.addEventListener('pointercancel', () => { dragging = false; });
+        });
+
+        root.querySelectorAll('[data-act="rgb-color"]').forEach((el) => {
+          el.addEventListener('click', (evt) => { try { evt.stopPropagation(); } catch(e){} });
+          el.addEventListener('input', () => {
+            const panel = el.closest ? el.closest('.rgbPalette') : null;
+            if (panel) panel.style.setProperty('--rgb-preview', String(el.value || '#ffffff'));
+            const bubble = el.parentElement && el.parentElement.querySelector ? el.parentElement.querySelector('.bubble') : null;
+            if (bubble) bubble.textContent = String(el.value || '#ffffff').toUpperCase();
+          });
+          el.addEventListener('change', async () => {
+            const key = el.getAttribute('data-rgb-group') || '';
+            const group = lights.find((it) => it.kind === 'rgb' && it.key === key);
+            if (!group) return;
+            qs('err').textContent = '';
+            try { await applyRgbColor(group, el.value || '#ffffff'); } catch (e) { qs('err').textContent = e.message || String(e); }
+          });
+        });
+
+        root.querySelectorAll('[data-act="rgb-master"]').forEach((el) => {
+          el.addEventListener('click', (evt) => { try { evt.stopPropagation(); } catch(e){} });
+          el.addEventListener('input', () => {
+            const v = Number(el.value || 1);
+            const bubble = (el.parentElement && el.parentElement.querySelector) ? el.parentElement.querySelector('.bubble') : null;
+            if (bubble) bubble.textContent = String(Math.round((Math.max(0, Math.min(255, v)) * 100) / 255));
+          });
+          el.addEventListener('change', async () => {
+            const key = el.getAttribute('data-rgb-group') || '';
+            const group = lights.find((it) => it.kind === 'rgb' && it.key === key);
+            if (!group) return;
+            qs('err').textContent = '';
+            try {
+              const rgbState = getRgbState(key, group.channels);
+              rgbState.master = Math.max(1, Math.min(255, Number(el.value || 1)));
+              saveRgbState(key, rgbState);
+              for (const chDev of group.channels) {
+                const addr = addrOf(chDev);
+                await sendRgbLight(chDev, addr, 'ON', rgbEffectiveBrightness(rgbState.slaves[addr], rgbState.master));
+              }
+            } catch (e) { qs('err').textContent = e.message || String(e); }
+          });
+        });
+
+        root.querySelectorAll('[data-act="rgb-slave"]').forEach((el) => {
+          el.addEventListener('click', (evt) => { try { evt.stopPropagation(); } catch(e){} });
+          el.addEventListener('input', () => {
+            const v = Number(el.value || 1);
+            const bubble = (el.parentElement && el.parentElement.querySelector) ? el.parentElement.querySelector('.bubble') : null;
+            if (bubble) bubble.textContent = String(Math.round((Math.max(0, Math.min(255, v)) * 100) / 255));
+          });
+          el.addEventListener('change', async () => {
+            const key = el.getAttribute('data-rgb-group') || '';
+            const addr = el.getAttribute('data-addr') || '';
+            const group = lights.find((it) => it.kind === 'rgb' && it.key === key);
+            if (!group || !addr) return;
+            const dev = deviceByAddr.get(addr);
+            if (!dev) return;
+            qs('err').textContent = '';
+            try {
+              const rgbState = getRgbState(key, group.channels);
+              rgbState.slaves[addr] = Math.max(0, Math.min(255, Number(el.value || 0)));
+              saveRgbState(key, rgbState);
+              await sendRgbLight(dev, addr, 'ON', rgbEffectiveBrightness(rgbState.slaves[addr], rgbState.master));
+            } catch (e) { qs('err').textContent = e.message || String(e); }
+          });
+        });
+
+        // Toggle on whole row tap (not on slider)
+        root.querySelectorAll('.row[data-act="toggle"]').forEach((el) => {
+          el.addEventListener('click', async (evt) => {
+            const t = evt && evt.target;
+            if (t && t.tagName && String(t.tagName).toLowerCase() === 'input') return;
+            animatePress(el);
+            qs('err').textContent = '';
+            const addr = el.getAttribute('data-addr');
+            if (!addr) return;
+            const dev = deviceByAddr.get(addr);
+            if (!dev) return;
+            try {
+              const cur = stateByAddr.get(addr) || { state:'OFF', brightness:255 };
+              const isOn = String(cur.state||'').toUpperCase() === 'ON';
+              if (!isOn) {
+                const remembered = Number(lastBrightness.get(addr) || 255);
+                const use = Number.isFinite(remembered) && remembered > 1 ? remembered : 255;
+                await sendLight(dev, addr, 'ON', use);
+              } else {
+                await sendLight(dev, addr, 'OFF');
+              }
+            } catch (e) { qs('err').textContent = e.message || String(e); }
+          });
+        });
+
+        root.querySelectorAll('[data-act="br"]').forEach((el) => {
+          el.addEventListener('click', (evt) => { try { evt.stopPropagation(); } catch(e){} });
+          el.addEventListener('input', () => {
+            const addr = el.getAttribute('data-addr');
+            const v = Number(el.value || 1);
+            lastBrightness.set(addr, v);
+            const bubble = (el.parentElement && el.parentElement.querySelector) ? el.parentElement.querySelector('.bubble') : null;
+            if (bubble) bubble.textContent = String(Math.round((Math.max(0, Math.min(255, v)) * 100) / 255));
+          });
+          el.addEventListener('change', async () => {
+            qs('err').textContent = '';
+            const addr = el.getAttribute('data-addr');
+            const dev = deviceByAddr.get(addr);
+            if (!dev) return;
+            try { await sendLight(dev, addr, 'ON', Number(el.value || 1)); } catch (e) { qs('err').textContent = e.message || String(e); }
+          });
+        });
+
+        queueCenter();
+      }
+
+      function queueCenter() {
+        try { requestAnimationFrame(applyCenter); } catch(e) { applyCenter(); }
+      }
+      function applyCenter() {
+        const main = document.querySelector('main');
+        const list = qs('list');
+        if (!main || !list) return;
+        const padT = parseFloat(getComputedStyle(main).paddingTop || '0') || 0;
+        const padB = parseFloat(getComputedStyle(main).paddingBottom || '0') || 0;
+        const listH = list.getBoundingClientRect().height || 0;
+        const avail = Math.max(0, window.innerHeight - padT - padB);
+        main.classList.toggle('centerY', listH > 0 && listH < (avail - 40));
+      }
+
+      function wsUrl() {
+        const u = new URL('ws', window.location.href);
+        u.protocol = (location.protocol === 'https:') ? 'wss:' : 'ws:';
+        return u.toString();
+      }
+
+      function applySnapshot(data) {
+        const snap = data || {};
+        lastDevices = snap.devices || [];
+        refreshDeviceIndex();
+        const states = snap.states || {};
+        for (const [addr, st] of Object.entries(states)) {
+          const state = String(st.state || '').toUpperCase() || '?';
+          const brightness = (st.brightness === null || st.brightness === undefined) ? 0 : Number(st.brightness);
+          stateByAddr.set(addr, { state, brightness });
+        }
+        const ha = snap.ha_states || {};
+        if (ha && typeof ha === 'object') {
+          for (const [eid, st] of Object.entries(ha)) {
+            const s0 = (st && typeof st === 'object') ? st : {};
+            const state = String(s0.state || '').toUpperCase() || '?';
+            const brightness = (s0.brightness === null || s0.brightness === undefined) ? 0 : Number(s0.brightness);
+            stateByAddr.set(String(eid), { state, brightness });
+          }
+        }
+        syncRgbSlavesFromKnownStates();
+        queueRender();
+      }
+
+      function startPolling() {
+        async function tick() {
+          try {
+            applySnapshot(await getJson('api/user/snapshot', { cache:'no-store' }, 12000));
+          } catch (e) {
+            uiLog('poll_error', e && e.message ? e.message : String(e));
+          }
+        }
+        tick();
+        setInterval(tick, 3000);
+      }
+
+      function connectWs() {
+        const ws = new WebSocket(wsUrl());
+        ws.onopen = () => {};
+        ws.onclose = (evt) => {
+          if (!connectWs._reportedClose) {
+            connectWs._reportedClose = true;
+            uiLog('ws_close', `code=${evt && evt.code ? evt.code : 0}`);
+          }
+          setTimeout(connectWs, 1500);
+        };
+        ws.onerror = () => {
+          if (!connectWs._reportedError) {
+            connectWs._reportedError = true;
+            uiLog('ws_error', 'websocket error');
+          }
+        };
+        ws.onmessage = (evt) => {
+          try {
+            const msg = JSON.parse(evt.data);
+            if (msg.type === 'snapshot') {
+              applySnapshot(msg.data || {});
+              return;
+            }
+            if (msg.type === 'devices') { 
+              lastDevices = msg.data.devices || []; 
+              refreshDeviceIndex();
+              queueRender(); 
+              return; 
+            } 
+            if (msg.type === 'ui') { 
+              groupOrder = Array.isArray(msg.data && msg.data.group_order) ? msg.data.group_order.map(normalizeGroupOrderEntry).filter(Boolean) : groupOrder; 
+              queueRender(); 
+              return; 
+            } 
+            if (msg.type === 'light_state') { 
+              const ev = msg.data || {}; 
+              const addr = `${ev.subnet_id}.${ev.device_id}.${ev.channel}`; 
+              const next = { state: ev.state, brightness: ev.brightness };
+              stateByAddr.set(addr, next);
+              const nowActive = isActiveState(next);
+              const prevActive = activeByAddr.get(addr);
+              activeByAddr.set(addr, nowActive);
+              if (rgbGroupByAddr.has(addr)) {
+                syncRgbSlaveFromBusState(addr, next);
+                queueRender();
+                return;
+              }
+              applyLightStateToRow(addr);
+              queueCountsUpdate();
+              if (showActiveOnly && prevActive !== nowActive) queueRender();
+              return;
+            }
+            if (msg.type === 'ha_light_state') {
+              const ev = msg.data || {};
+              const addr = String(ev.entity_id || '').trim();
+              if (!addr) return;
+              const next = { state: ev.state, brightness: ev.brightness };
+              stateByAddr.set(addr, next);
+              const nowActive = isActiveState(next);
+              const prevActive = activeByAddr.get(addr);
+              activeByAddr.set(addr, nowActive);
+              applyLightStateToRow(addr);
+              queueCountsUpdate();
+              if (showActiveOnly && prevActive !== nowActive) queueRender();
+              return;
+            }
+            if (msg.type === 'ha_switch_state') {
+              const ev = msg.data || {};
+              const addr = String(ev.entity_id || '').trim();
+              if (!addr) return;
+              const next = { state: ev.state, brightness: 0 };
+              stateByAddr.set(addr, next);
+              const nowActive = isActiveState(next);
+              const prevActive = activeByAddr.get(addr);
+              activeByAddr.set(addr, nowActive);
+              applyLightStateToRow(addr);
+              queueCountsUpdate();
+              if (showActiveOnly && prevActive !== nowActive) queueRender();
+              return;
+            }
+            if (msg.type === 'light_scenario_state') {
+              applyScenarioStateEvent(msg.data || {});
+              return;
+            }
+            if (msg.type === 'light_scenario_running') {
+              applyScenarioRunningEvent(msg.data || {});
+              return;
+            }
+          } catch (e) {}
+        };
+      }
+
+      (async () => { 
+        try { 
+          uiLog('load_start', 'init');
+          const hasCollapsedPref = (localStorage.getItem(LS_COLLAPSED) !== null);
+          try {
+            showActiveOnly = JSON.parse(localStorage.getItem('buspro_show_active_only_lights') || 'false') === true;
+          } catch (e) { showActiveOnly = false; }
+          try {
+            const raw = JSON.parse(localStorage.getItem(LS_COLLAPSED) || '[]');
+            if (Array.isArray(raw)) collapsedGroups = new Set(raw.map((x) => String(x || '').trim()).filter(Boolean));
+          } catch (e) { collapsedGroups = new Set(); }
+          const fb = qs('filterBtn');
+          if (fb) fb.classList.toggle('on', !!showActiveOnly);
+          const meta = await getJson('api/meta', { cache:'no-store' }, 12000); 
+          uiLog('meta_ok', 'ok');
+          window.__backGestureEnabled = !(meta && typeof meta.back_gesture_enabled === 'boolean') ? true : !!meta.back_gesture_enabled;
+          groupOrder = Array.isArray(meta.group_order) ? meta.group_order.map(normalizeGroupOrderEntry).filter(Boolean) : []; 
+          lastDevices = await getJson('api/user/devices', { cache:'no-store' }, 12000); 
+          uiLog('devices_ok', `count=${Array.isArray(lastDevices) ? lastDevices.length : 0}`);
+          refreshDeviceIndex();
+          // Default: all groups expanded on first load (no collapsed preference).
+          queueRender(); 
+        } catch (e) {
+          const msg = (e && e.name === 'AbortError') ? 'timeout caricamento dati' : (e && e.message ? e.message : String(e));
+          uiLog('load_error', msg);
+          try {
+            qs('list').innerHTML = '<div class="section"><span>Errore caricamento</span><span class="count">offline</span></div>';
+            qs('err').textContent = 'Pagina non caricata: ' + msg + '. Riapri la pagina o aggiorna.';
+          } catch (ignore) {}
+        } 
+        if (window.busproPollMode) startPolling();
+        else connectWs(); 
+      })(); 
+
+      window.addEventListener('error', (evt) => {
+        try { uiLog('js_error', (evt && evt.message) || 'error'); } catch (e) {}
+      });
+      window.addEventListener('unhandledrejection', (evt) => {
+        try {
+          const r = evt && evt.reason;
+          uiLog('js_rejection', (r && r.message) ? r.message : String(r || 'rejection'));
+        } catch (e) {}
+      });
+
+      qs('filterBtn').addEventListener('click', () => {
+        animatePress(qs('filterBtn'));
+        showActiveOnly = !showActiveOnly;
+        try { localStorage.setItem('buspro_show_active_only_lights', JSON.stringify(showActiveOnly)); } catch (e) {}
+        qs('filterBtn').classList.toggle('on', !!showActiveOnly);
+        queueRender();
+      });
+
+      qs('collapseBtn').addEventListener('click', () => {
+        animatePress(qs('collapseBtn'));
+        const allLights = lastDevices
+          .filter(isLightListDevice)
+          .slice();
+        const groups = new Set(allLights.map((d) => groupKeyFromGroup(d.group)));
+        const keys = Array.from(groups);
+        const allCollapsed = keys.length > 0 && keys.every((k) => collapsedGroups.has(k));
+        collapsedGroups = new Set(allCollapsed ? [] : keys);
+        try { localStorage.setItem(LS_COLLAPSED, JSON.stringify(Array.from(collapsedGroups))); } catch (e) {}
+        queueRender();
+      });
+
+      // Scenarios navigation + editor
+      qs('scenesPageBtn').addEventListener('click', () => {
+        animatePress(qs('scenesPageBtn'));
+        try { window.location.href = absUrl('scenarios'); } catch (e) {}
+      });
+      qs('extraPageBtn').addEventListener('click', () => {
+        animatePress(qs('extraPageBtn'));
+        try { window.location.href = absUrl('extra'); } catch (e) {}
+      });
+      qs('scenesSettingsBtn').addEventListener('click', () => { animatePress(qs('scenesSettingsBtn')); openScenarios(); });
+      qs('scCloseBtn').addEventListener('click', () => { animatePress(qs('scCloseBtn')); closeScenarios(); });
+      qs('scNewBtn').addEventListener('click', () => { animatePress(qs('scNewBtn')); openNewScenarioEditor(); });
+      qs('scSaveOnBtn').addEventListener('click', () => { animatePress(qs('scSaveOnBtn')); saveScenario({ onlyOn: true }); });
+      qs('scSaveOffBtn').addEventListener('click', () => { animatePress(qs('scSaveOffBtn')); saveScenario({ onlyOff: true }); });
+      qs('scSaveAllBtn').addEventListener('click', () => { animatePress(qs('scSaveAllBtn')); saveScenario({ onlyOn: false }); });
+      qs('scBackBtn').addEventListener('click', () => { animatePress(qs('scBackBtn')); closeScenarioEditor(); });
+      qs('scSaveEditBtn').addEventListener('click', () => { animatePress(qs('scSaveEditBtn')); saveScenarioEdits(); });
+      if (qs('scTrigType')) qs('scTrigType').addEventListener('change', updateTriggerInputs);
+      if (qs('scHaTrigEnabled')) qs('scHaTrigEnabled').addEventListener('change', updateTriggerInputs);
+      if (qs('scHaTrigId')) qs('scHaTrigId').addEventListener('change', updateTriggerInputs);
+      updateTriggerInputs();
+      qs('scAddSearch').addEventListener('input', () => renderScenarioAddList());
+      try { qs('scCoverAddSearch').addEventListener('input', () => renderScenarioCoverAddList()); } catch (e) {}
+      qs('scGroupSelect').addEventListener('change', () => {
+        try { localStorage.setItem(LS_SC_GROUP, selectedScenarioGroupKey()); } catch (e) {}
+        try { renderScenarioAddList(); } catch (e) {}
+        try { renderScenarioCoverAddList(); } catch (e) {}
+      });
+      qs('scenesModalBack').addEventListener('click', (evt) => {
+        if (evt && evt.target === qs('scenesModalBack')) closeScenarios();
+      });
+      document.addEventListener('keydown', (evt) => {
+        if (evt && evt.key === 'Escape') closeScenarios();
+      });
+
+      // Deep-link: /lights?sc=1 opens scenario editor
+      (function () {
+        try {
+          const u = new URL(window.location.href);
+          if (u.searchParams.get('sc') === '1') {
+            setTimeout(() => { try { openScenarios(); } catch (e) {} }, 50);
+          }
+        } catch (e) {}
+      })();
+
+      window.addEventListener('resize', () => queueCenter());
+    </script>
+    <script>
+      // Hidden back gesture: long-press top-left corner.
+      (function () {
+        async function backEnabled() {
+          if (typeof window.__backGestureEnabled === 'boolean') return window.__backGestureEnabled;
+          try {
+            const meta = await getJson('api/meta');
+            return !(meta && typeof meta.back_gesture_enabled === 'boolean') ? true : !!meta.back_gesture_enabled;
+          } catch (e) {
+            return true;
+          }
+        }
+        (async () => {
+          const enabled = await backEnabled();
+          if (!enabled) return;
+          const CORNER = 60;
+          const HOLD_MS = 450;
+          let timer = null;
+          function inCorner(e) {
+            return !!e && Number(e.clientX) <= CORNER && Number(e.clientY) <= CORNER;
+          }
+          function goHome() {
+            try {
+              window.location.href = new URL('home2', window.location.href).toString();
+            } catch (e) {}
+          }
+          function doBack() {
+            try {
+              if (window.history && window.history.length > 1) {
+                window.history.back();
+                return;
+              }
+            } catch (e) {}
+            goHome();
+          }
+          function clear() {
+            if (timer) {
+              clearTimeout(timer);
+              timer = null;
+            }
+          }
+          document.addEventListener('pointerdown', (e) => {
+            if (timer) return;
+            if (!inCorner(e)) return;
+            timer = setTimeout(() => {
+              timer = null;
+              doBack();
+            }, HOLD_MS);
+          }, { passive: true });
+          document.addEventListener('pointerup', clear, { passive: true });
+          document.addEventListener('pointercancel', clear, { passive: true });
+          document.addEventListener('pointermove', (e) => {
+            if (!timer) return;
+            if (!inCorner(e)) clear();
+          }, { passive: true });
+        })();
+      })();
+    </script>
+  </body>
+</html>
