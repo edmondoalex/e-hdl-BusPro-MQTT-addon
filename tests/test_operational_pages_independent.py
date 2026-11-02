@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 
 ROOT = Path(__file__).resolve().parents[1] / "e_hdl_buspro_mqtt" / "app" / "static"
@@ -47,4 +48,13 @@ def test_admin_sidebar_only_becomes_a_drawer_on_phone_widths():
     assert "@media(max-width:700px){body.hub-shell-ready" in css
     assert "@media(max-width:900px){body.hub-shell-ready" not in css
     assert 'href="static/hub/hub.css?v=0.1.566.3"' in admin
+
+
+def test_public_entry_points_keep_user_webui_and_admin_ingress_separate():
+    config = json.loads((ROOT.parents[1] / "config.json").read_text(encoding="utf-8"))
+    assert config["webui"] == "http://[HOST]:[PORT:8124]"
+    assert config["ingress"] is True
+    assert config["ingress_port"] == 8125
+    assert config["ports"]["8124/tcp"] == 8124
+    assert config["ports"]["8125/tcp"] == 8125
 
