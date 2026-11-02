@@ -2,7 +2,7 @@
     "name":  "e-Control Hub",
     "slug":  "e_hdl_buspro_mqtt",
     "description":  "Ekonex multi-bus edge gateway. Active driver: HDL BusPro.",
-    "version":  "0.1.566.1",
+    "version":  "0.1.566.2",
     "startup":  "services",
     "boot":  "auto",
     "homeassistant_api":  true,
@@ -98,7 +98,7 @@
                                 "ksenia_client_id":  "str?"
                             }
                },
-    "webui":  "http://[HOST]:[PORT:8124]",
+    "webui":  "http://[HOST]:[PORT:8125]",
     "build_from":  {
                        "amd64":  "ghcr.io/home-assistant/amd64-base:3.19",
                        "aarch64":  "ghcr.io/home-assistant/aarch64-base:3.19",
@@ -115,7 +115,7 @@
                               "6000/udp":  "BusPro UDP (default)"
                           },
     "ingress":  true,
-    "ingress_port":  8124,
+    "ingress_port":  8125,
     "ingress_entry":  "index.html",
     "panel_title":  "e-Control Hub",
     "panel_icon":  "mdi:lan-connect"
