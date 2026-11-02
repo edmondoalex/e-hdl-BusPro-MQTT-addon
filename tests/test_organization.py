@@ -120,6 +120,19 @@ class OrganizationTests(unittest.TestCase):
         self.store.assign({"source":"ha","device_id":"sensor.battery","icon_override":"mdi:battery-heart"})
         self.assertEqual("mdi:battery-heart", self.store.snapshot()["devices"]["ha:sensor.battery"]["icon"])
 
+    def test_invalid_catalog_icon_falls_back_without_breaking_snapshot(self):
+        data = self.store.sync_devices([
+            {
+                "source": "ksenia",
+                "device_id": "legacy-output",
+                "name": "Uscita legacy",
+                "device_class": "switch",
+                "icon_auto": "light-switch",
+            }
+        ])
+        self.assertEqual("mdi:light-switch", data["devices"]["ksenia:legacy-output"]["icon_auto"])
+        self.assertEqual("mdi:light-switch", self.store.snapshot()["devices"]["ksenia:legacy-output"]["icon"])
+
     def test_bus_configuration_fields_are_persistent(self):
         self.store.sync_devices([{"source":"knx","device_id":"light-1","name":"Luce","device_class":"light"}])
         row = self.store.assign({"source":"knx","device_id":"light-1","name_override":"Luce sala","device_class_override":"dimmer","icon_override":"mdi:ceiling-light","dimmable_override":True,"rgb_group":"RGB sala","rgb_channel":"2"})

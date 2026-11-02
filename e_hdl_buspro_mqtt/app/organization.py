@@ -139,6 +139,15 @@ def default_icon(device_class: Any) -> str:
     return ICON_DEFAULTS.get(str(device_class or "").strip().lower(), "mdi:devices")
 
 
+def _catalog_icon(value: Any, device_class: Any) -> str:
+    """Return a safe automatic icon supplied by an integration catalog."""
+    fallback = default_icon(device_class)
+    try:
+        return _icon(value or fallback, optional=False)
+    except ValueError:
+        return fallback
+
+
 def default_categories(device_class: Any) -> list[str]:
     return list(CATEGORY_DEFAULTS.get(str(device_class or "").strip().lower(), ["extra"]))
 
@@ -316,7 +325,7 @@ class OrganizationStore:
                     "device_id": str(device.get("device_id")),
                     "name": _clean_optional_text(device.get("name") or device.get("device_id"), "device.name", 160),
                     "device_class": device_class,
-                    "icon_auto": _icon(device.get("icon_auto") or default_icon(device_class), optional=False),
+                    "icon_auto": _catalog_icon(device.get("icon_auto"), device_class),
                     "orphaned": False,
                 })
                 current.setdefault("floor_id", "")
